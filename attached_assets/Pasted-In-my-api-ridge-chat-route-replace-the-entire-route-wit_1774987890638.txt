@@ -1,0 +1,54 @@
+In my /api/ridge/chat route, replace the entire route with this exact code:
+
+app.post('/api/ridge/chat', async (req, res) => {
+  try {
+    const raw = req.body.messages || [];
+
+    const messages = raw
+      .map(m => ({
+        role: m.role === 'ridge' ? 'assistant' : m.role,
+        content: String(m.content)
+      }))
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .filter((m, i, arr) => i === 0 || m.role !== arr[i - 1].role);
+
+    const firstUser = messages.findIndex(m => m.role === 'user');
+    const trimmed = firstUser > 0 ? messages.slice(firstUser) : messages;
+
+    if (!trimmed.length || trimmed[0].role !== 'user') {
+      return res.status(400).json({ error: 'No valid user message' });
+    }
+
+    console.log('RIDGE chat — sending messages:', JSON.stringify(trimmed, null, 2));
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: `You are RIDGE, the CFO of BlackRidge Platforms. Your principal is Chris Gee, Founder and CEO, Edmond Oklahoma, sole proprietor. Be direct, sharp, lead with the number or verdict. Never soften bad news. Under 3 sentences for voice responses. End with one clear action.`,
+        messages: trimmed.slice(-14)
+      })
+    });
+
+    const data = await response.json();
+    console.log('Anthropic response status:', response.status);
+    console.log('Anthropic data:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return res.status(500).json({ error: data.error?.message || 'Anthropic error' });
+    }
+
+    const reply = data.content?.[0]?.text || 'No response.';
+    res.json({ reply });
+
+  } catch (err) {
+    console.error('RIDGE chat hard error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});

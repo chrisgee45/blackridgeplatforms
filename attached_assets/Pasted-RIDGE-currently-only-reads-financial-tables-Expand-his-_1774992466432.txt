@@ -1,0 +1,82 @@
+RIDGE currently only reads financial tables. Expand his Supabase context 
+builder to pull data from the entire BlackRidge portal so he has a full 
+business overview before every response.
+
+In the /api/ridge/chat route, add these additional queries to the 
+existing context builder alongside the financial queries:
+
+LEADS & OUTREACH:
+- Query the leads table — get all leads from the last 60 days including 
+  business name, contact name, status, source, and date added
+- Query the outreach table — get all outreach activity from the last 
+  30 days including lead name, message type, sent date, and response status
+- Calculate: total leads this month, leads by status (new/contacted/
+  responded/qualified/dead), outreach sent this week vs last week
+
+PIPELINE:
+- Query the pipeline table — get all active deals including 
+  client name, deal value, stage, and expected close date
+- Calculate: total pipeline value, weighted pipeline by stage, 
+  deals closing this month
+
+CLIENTS & PROJECTS:
+- Query the clients table — get all active clients including 
+  name, monthly value, start date, and status
+- Query the projects table — get all active projects including 
+  client name, project name, status, deadline, and completion percentage
+- Flag any projects that are past deadline or have no recent activity
+
+CRM:
+- Query the contacts or crm table — get any follow-ups or tasks 
+  due within the next 7 days including contact name, task, and due date
+
+Then expand the snapshot string to include all of this:
+
+const snapshot = `
+LIVE BLACKRIDGE PORTAL DATA AS OF ${dateString} ${timeString}:
+
+--- FINANCIALS ---
+MTD Revenue: ${mtdRevenue}
+MTD Expenses: ${mtdExpenses}
+Net: ${net}
+
+Outstanding Invoices:
+${outstandingInvoices}
+
+Contractor Spend YTD:
+${contractorSpend}
+
+--- LEADS & OUTREACH ---
+Total Leads This Month: ${leadsThisMonth}
+Lead Pipeline by Status: ${leadsByStatus}
+Outreach Sent This Week: ${outreachThisWeek}
+Outreach Sent Last Week: ${outreachLastWeek}
+Response Rate: ${responseRate}
+
+--- ACTIVE PIPELINE ---
+Total Pipeline Value: ${totalPipelineValue}
+Deals Closing This Month: ${closingThisMonth}
+${pipelineDeals}
+
+--- ACTIVE CLIENTS & PROJECTS ---
+Active Clients: ${activeClientCount}
+${activeClients}
+
+Projects Overdue or Stalled: ${stalledProjects}
+${activeProjects}
+
+--- CRM FOLLOW-UPS DUE THIS WEEK ---
+${upcomingFollowUps}
+`
+
+Wrap every single query in its own try/catch so if one table does 
+not exist or fails it shows [data unavailable] for that section 
+and never crashes the whole request.
+
+Also — if a table name in my schema is different from what you 
+assume, check our existing Supabase queries elsewhere in the 
+codebase to find the correct table names and column names 
+before writing the queries. Match our exact schema.
+
+Log the total character count of the snapshot so we can monitor 
+context size on each request.

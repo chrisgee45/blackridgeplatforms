@@ -1,0 +1,87 @@
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  numeric,
+  varchar,
+  index,
+  uniqueIndex,
+  boolean,
+  pgEnum,
+} from "drizzle-orm/pg-core";
+
+// Types of accounts on financial statements
+export const accountTypeEnum = pgEnum("account_type", [
+  "asset",
+  "liability",
+  "equity",
+  "revenue",
+  "expense",
+]);
+
+// Optional: helps you build UI pickers
+export const paymentMethodEnum = pgEnum("payment_method", [
+  "cash",
+  "credit_card",
+  "stripe",
+  "ach",
+  "check",
+]);
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").notNull(), // if you have multi-tenant portals
+    code: varchar("code", { length: 32 }), // optional e.g. 1000, 4000
+    name: text("name").notNull(),
+    type: accountTypeEnum("type").notNull(),
+    isSystem: boolean("is_system").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    uniq: uniqueIndex("accounts_tenant_name_uniq").on(t.tenantId, t.name),
+    tenantIdx: index("accounts_tenant_idx").on(t.tenantId),
+  })
+);
+
+export const transactions = pgTable(
+  "transactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+    memo: text("memo"),
+    referenceType: varchar("reference_type", { length: 32 }), // "revenue" | "expense" | "invoice" etc
+    referenceId: uuid("reference_id"), // optional link to invoice/payment/etc
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantIdx: index("tx_tenant_idx").on(t.tenantId),
+    occurredIdx: index("tx_occurred_idx").on(t.tenantId, t.occurredAt),
+  })
+);
+
+// Each line is a debit or credit to an account.
+// Store as NUMERIC so you don't get NaN issues.
+export const transactionLines = pgTable(
+  "transaction_lines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    transactionId: uuid("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id),
+    // Drizzle numeric comes back as string depending on config; we handle formatting in API.
+    debit: numeric("debit", { precision: 14, scale: 2 }).notNull().default("0"),
+    credit: numeric("credit", { precision: 14, scale: 2 }).notNull().default("0"),
+    lineMemo: text("line_memo"),
+  },
+  (t) => ({
+    txIdx: index("lines_tx_idx").on(t.transactionId),
+    acctIdx: index("lines_acct_idx").on(t.accountId),
+  })
+);

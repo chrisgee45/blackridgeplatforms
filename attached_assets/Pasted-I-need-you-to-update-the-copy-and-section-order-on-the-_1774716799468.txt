@@ -1,0 +1,45 @@
+I need you to update the copy and section order on the homepage of my website to reflect our new positioning as an "AI-Powered Systems Integrator." Do not change the overall design system, color palette, or styling—just update the text, reorder the sections as specified, and update the copyright year.
+
+Please make the following changes to the homepage:
+
+### 1. Update the Hero Section
+Change the text in the Hero section to the following:
+- **Eyebrow (small text above headline):** AI-Powered Systems Integration
+- **Headline:** We Architect the Business Systems That AI Chatbots Can't Build
+- **Subheadline:** Stop outgrowing your software. We leverage enterprise AI development tools to architect custom CRMs, client portals, and operational dashboards faster than traditional agencies—and with the complex business logic that DIY builders cannot handle.
+- Keep the existing CTAs ("Start Your Project" and "View Our Work") and the existing stats row (50+ Platforms Delivered, etc.).
+
+### 2. Reorder Sections
+Move the "Security" section (currently titled "Your Data Is Always Protected") so that it appears *below* the "Services" section. 
+
+### 3. Create a New Section: "The Blackridge Advantage"
+Insert a new section immediately below the Hero section (where the Security section used to be). Use the same design layout as the Services or Security section (a headline with a 3-column grid below it).
+- **Eyebrow:** Why Choose Us
+- **Headline:** The Blackridge Advantage
+- **Subheadline:** We combine the speed of AI with the precision of senior engineering.
+- **Column 1 Title:** Speed of AI, Precision of Engineering
+- **Column 1 Text:** We use advanced AI development environments to cut development time in half, but every line of code is architected by senior engineers to ensure it scales.
+- **Column 2 Title:** Complex Business Logic
+- **Column 2 Text:** Consumer AI can build a landing page. We build multi-tenant SaaS platforms, double-entry ledgers, and HIPAA-compliant portals.
+- **Column 3 Title:** Day 2 Reliability
+- **Column 3 Text:** We don't just generate code and walk away. We provide the ongoing strategic partnership required to maintain and scale enterprise systems.
+
+### 4. Update the Services Section
+Add a new service to the existing grid in the "Services Built for Impact" section.
+- **New Service Title:** Enterprise AI Integration
+- **New Service Text:** We don't just use AI to build your system; we build AI into your system. From automated lead scoring and predictive analytics to custom internal chatbots trained on your proprietary data.
+
+### 5. Update the Portfolio / Case Studies Section
+Update the descriptions for the following case studies to focus more on business ROI and less on just the tech stack:
+- **BlackRidge Ops Description:** Our flagship operations platform. One platform that replaces Salesforce, QuickBooks, and Monday.com. Features CRM, project management, double-entry bookkeeping, tax planning, and AI-powered outreach.
+- **ITAD Portal Description:** Reduced compliance reporting time by 80%. A full-featured operations portal tracking assets through intake, data wipe, grading, and resale with chain-of-custody logging and R2 compliance certificates.
+- **Heatwave Fitness Description:** Increased member retention by 40%. A bold member portal with on-demand video access, class scheduling, and community features that keep members engaged between sessions.
+
+### 6. Update the About Section
+Change the text in the "Built Different. Built to Last." section to the following:
+- **Body Text:** Blackridge Platforms was founded on the belief that the future of software isn't writing every line of code by hand—it's architecting brilliant systems. We are an AI-native agency. By combining senior-level systems architecture with cutting-edge AI development tools, we deliver enterprise-grade platforms faster, more securely, and more cost-effectively than legacy agencies. Every project gets our A-team. Every platform is built to scale. That's the BlackRidge standard.
+
+### 7. Update the Footer
+Change the copyright year in the footer from "© 2025" to "© 2026".
+
+Please implement these changes across the relevant React components and let me know when it's ready to preview.

@@ -1,0 +1,148 @@
+Add an automated 3-email welcome sequence to the BlackRidge Platforms portal that triggers when a project is marked Active. Also add a manual trigger so I can fire the sequence on any existing project at any time.
+
+TECH STACK
+
+React + Tailwind (existing portal stack)
+Supabase for data storage and scheduled jobs
+Resend for email delivery
+Existing portal auth context and project data structure
+
+
+SUPABASE TABLE — create if it doesn't exist
+welcome_sequences
+
+id (uuid, primary key)
+project_id (uuid, foreign key → projects.id)
+client_name (text)
+client_email (text)
+company_name (text)
+status (text) — "pending" | "running" | "completed" | "cancelled"
+email_1_sent_at (timestamp)
+email_2_sent_at (timestamp)
+email_3_sent_at (timestamp)
+triggered_by (text) — "auto" | "manual"
+created_at (timestamp)
+
+
+TRIGGER 1 — AUTOMATIC
+When a project's status is changed to "Active" anywhere in the portal:
+
+Check if a welcome sequence already exists for this project — if one exists and status is "running" or "completed", do nothing
+If no sequence exists, automatically create a row in welcome_sequences and start the sequence
+Show a small toast notification: "Welcome sequence started for [Client Name]"
+
+
+TRIGGER 2 — MANUAL
+Inside the project detail view, add a "Sequence" tab alongside existing tabs.
+Sequence Tab — no sequence started yet:
+
+Empty state: "Start the welcome sequence to begin onboarding this client."
+Button: "Start Welcome Sequence" (gold)
+Clicking opens a small confirmation modal:
+
+Pre-filled: Client Name, Client Email, Company Name from the project record
+Editable in case anything needs to be corrected
+Confirm button: "Start Sequence"
+On confirm: create row in welcome_sequences, kick off Email 1 immediately, show toast: "Sequence started — Email 1 sent to [email]"
+
+
+
+Sequence Tab — sequence running:
+
+Show a timeline view of all three emails with status indicators:
+
+Green checkmark = sent
+Gold pulsing dot = scheduled / pending
+Gray = not yet scheduled
+
+
+For each email show: subject line, sent timestamp or scheduled time, status
+Button: "Cancel Sequence" — stops any unsent emails, sets status to "cancelled", asks for confirmation before executing
+Button: "Resend Email [1/2/3]" on any already-sent email in case of delivery issues
+
+Sequence Tab — sequence completed:
+
+All three checkmarks green
+Completed timestamp
+Note: "Kickoff form sent as part of Email 3. View responses in the Kickoff tab."
+Button: "Restart Sequence" — only if needed, requires confirmation
+
+
+EMAIL SEQUENCE AND TIMING
+All emails sent via Resend. Use Supabase Edge Functions or a scheduled background job to handle the delays. The sequence runs fully automatically once triggered — no manual steps required after the initial trigger.
+Email 1 — Send immediately on trigger
+
+Subject: "You made a good call."
+Body:
+
+
+Hey [First Name],
+Welcome to BlackRidge.
+I don't take on every client. I take on the right ones. So the fact that you're here means I already believe in what you're building and I'm ready to go all in on it.
+Here's what the next few days look like.
+I'm going to send you a kickoff form. It's not busy work. Every question in it is something I actually need to build this thing right. The more you give me, the better this turns out.
+Once I have that back I'll review everything, map out the build, and reach out with a clear plan and timeline before anything starts.
+No surprises. No guessing. Just clean execution.
+Talk soon.
+Chris
+Founder, BlackRidge Platforms
+
+
+Email 2 — Send 2 hours after Email 1
+
+Subject: "Before we build — a few things worth knowing."
+Body:
+
+
+Hey [First Name],
+Before the kickoff form hits your inbox, I want to give you a heads up so you're not scrambling when it arrives.
+Start pulling these together now:
+Your logo files. Find the highest quality version — ideally SVG or PNG with a transparent background. If you don't have them, no problem, we'll talk about it.
+Photos. Professional photos of your team, your space, your work. If you have them, start a folder. If you don't, we'll figure out a plan.
+Websites you love. Pull up two or three sites that catch your eye and bookmark them. Doesn't have to be your industry. Just things that feel right.
+Logins. Think about what platforms and accounts are tied to your business online. Domain registrar, social media, existing website, Google Business. You don't need to share passwords yet — just know where they live.
+One thing I want you to know:
+This build is a collaboration. The answers you give me on that form are the foundation everything gets built on. Take your time with it. Be specific. The clients who fill it out thoroughly always end up with something they're proud of.
+The form is coming in a couple hours.
+Chris
+Founder, BlackRidge Platforms
+
+
+Email 3 — Send 2 hours after Email 2
+
+Subject: "Let's get started — your kickoff form is ready."
+Body:
+
+
+Hey [First Name],
+This is it. The form that kicks everything off.
+It covers your brand, your pages, your content, your features, your timeline, and everything in between. Takes most people about 10 to 15 minutes if they've got their thoughts together.
+A couple things before you dive in:
+Be specific. "I want it to look clean and professional" tells me nothing. "I want it to feel like a luxury brand but approachable, like a high-end gym rather than a law firm" tells me everything. The more specific you are the less we go back and forth.
+Upload what you have. Even if it's rough. Logos, photos, old brand files, screenshots of things you like. Throw it all in. I'd rather have too much than too little.
+If you get stuck on something, skip it and come back. Nothing is permanent. But do your best to fill it out completely before you submit.
+[FILL OUT YOUR KICKOFF FORM →] — link to /kickoff/[token] — auto-generate the kickoff token and insert the row in kickoff_submissions at this point if it doesn't already exist
+Once I have this back I'll be in touch within one business day with next steps.
+Let's build something great.
+Chris
+Founder, BlackRidge Platforms
+
+
+EMAIL STYLING — all three emails
+
+Black background
+BlackRidge logo centered at top
+White body text
+Gold (#C9A840) CTA button where applicable
+Footer: "BlackRidge Platforms | Edmond, Oklahoma" in small gray text
+Clean, minimal — no clutter, no stock imagery
+
+
+IMPORTANT LOGIC NOTES
+
+If the sequence is triggered manually and Email 3 fires, it must auto-generate the kickoff token and create the kickoff_submissions row at that moment if one doesn't already exist — the kickoff link in Email 3 must be a real working URL
+If the kickoff form was already sent separately before the sequence ran, use the existing token — don't generate a duplicate
+Only one sequence per project — if one is already running or completed, the manual trigger button should reflect that state clearly and offer a restart option instead
+If a project already has a status of "Active" when this feature is first deployed, do NOT auto-trigger — only trigger on status change going forward. Manual trigger handles existing projects
+All email send attempts should be logged — success or failure — so I can see delivery status in the Sequence tab
+

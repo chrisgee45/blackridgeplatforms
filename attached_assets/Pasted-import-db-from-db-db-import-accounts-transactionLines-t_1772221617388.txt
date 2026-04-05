@@ -1,0 +1,97 @@
+import { db } from "../../db/db";
+import { accounts, transactionLines, transactions } from "../../db/schema/accounting";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
+
+// Net activity for an account over a period
+// For Revenue/Liability/Equity: credit increases balance
+// For Asset/Expense: debit increases balance
+export async function getAccountActivity(params: {
+  tenantId: string;
+  start: Date;
+  end: Date;
+}) {
+  const rows = await db
+    .select({
+      accountId: accounts.id,
+      name: accounts.name,
+      type: accounts.type,
+      debit: sql<string>`COALESCE(SUM(${transactionLines.debit}), 0)`,
+      credit: sql<string>`COALESCE(SUM(${transactionLines.credit}), 0)`,
+    })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .innerJoin(accounts, eq(transactionLines.accountId, accounts.id))
+    .where(
+      and(
+        eq(transactions.tenantId, params.tenantId),
+        gte(transactions.occurredAt, params.start),
+        lte(transactions.occurredAt, params.end)
+      )
+    )
+    .groupBy(accounts.id, accounts.name, accounts.type);
+
+  // Convert numeric strings to numbers and compute normal-balance amount
+  return rows.map((r) => {
+    const debit = Number(r.debit);
+    const credit = Number(r.credit);
+
+    // normal balance rule
+    const normal =
+      r.type === "asset" || r.type === "expense"
+        ? debit - credit
+        : credit - debit;
+
+    return {
+      ...r,
+      debit,
+      credit,
+      amount: Math.round(normal * 100) / 100,
+    };
+  });
+}
+
+export async function getIncomeStatement(params: {
+  tenantId: string;
+  start: Date;
+  end: Date;
+}) {
+  const activity = await getAccountActivity(params);
+
+  const revenue = activity.filter((a) => a.type === "revenue");
+  const expenses = activity.filter((a) => a.type === "expense");
+
+  const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
+  const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
+  const netIncome = Math.round((totalRevenue - totalExpenses) * 100) / 100;
+
+  return { revenue, expenses, totalRevenue, totalExpenses, netIncome };
+}
+
+export async function getBalanceSheetAsOf(params: {
+  tenantId: string;
+  asOf: Date;
+}) {
+  // Balance sheet is "all time up to asOf"
+  const activity = await getAccountActivity({
+    tenantId: params.tenantId,
+    start: new Date("2000-01-01"),
+    end: params.asOf,
+  });
+
+  const assets = activity.filter((a) => a.type === "asset");
+  const liabilities = activity.filter((a) => a.type === "liability");
+  const equity = activity.filter((a) => a.type === "equity");
+
+  const totalAssets = assets.reduce((s, a) => s + a.amount, 0);
+  const totalLiabilities = liabilities.reduce((s, a) => s + a.amount, 0);
+  const totalEquity = equity.reduce((s, a) => s + a.amount, 0);
+
+  return {
+    assets,
+    liabilities,
+    equity,
+    totalAssets,
+    totalLiabilities,
+    totalEquity,
+  };
+}

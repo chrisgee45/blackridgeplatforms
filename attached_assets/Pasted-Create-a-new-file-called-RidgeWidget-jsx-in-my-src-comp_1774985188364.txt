@@ -1,0 +1,57 @@
+Create a new file called RidgeWidget.jsx in my src/components folder.
+
+This is a floating AI voice assistant widget that sits fixed in the bottom-right 
+corner of every portal page. Here is exactly what it needs to do:
+
+APPEARANCE:
+- Collapsed state: a 58px gold-bordered circular black button with a gold "R" 
+  in Georgia serif font and a red notification dot in the top right
+- Expanded state: a 372px wide by 534px tall dark panel (background #111111) 
+  with rounded corners and a dark header bar
+- Header shows "RIDGE" in gold Georgia serif, "BLACKRIDGE CFO" subtitle in small 
+  gray text, and a colored status dot (green=online, gold=speaking/thinking, blue=listening)
+- Messages appear in a scrollable area. RIDGE messages are dark (#1C1C1C) bubbles 
+  on the left with a small gold R avatar. User messages are dark blue (#1A2A40) 
+  bubbles on the right.
+- Thinking state shows three animated gold dots
+- Bottom input bar has a mic button, text input, and send button
+- When RIDGE is speaking or the mic is active, show an animated waveform bar 
+  below the header (gold bars when speaking, blue bars when listening)
+
+VOICE - SPEAKING (ElevenLabs via proxy):
+- Call POST /api/speak with { text } in the body
+- Receive audio/mpeg blob back, create an object URL, play it with the Audio API
+- Show the gold waveform animation while audio is playing
+- On audio end, stop the waveform and clean up the object URL
+- If /api/speak fails, fall back to browser speechSynthesis with a deep voice
+
+VOICE - LISTENING (Web Speech API):
+- Mic button toggles listening on and off
+- Use SpeechRecognition with lang en-US, continuous false, interimResults false
+- Show blue waveform animation while listening
+- On result, send the transcript to askRidge()
+- Stop waveform on end or error
+
+BRAIN:
+- Call POST /api/ridge/chat with { messages: conversationHistory.slice(-14) }
+- Receive { reply } back
+- Add reply to messages, then call speak(reply)
+- Keep full conversation history in state for context
+
+AUTO-GREET ON LOGIN:
+- Accept an autoGreet prop (boolean)
+- When autoGreet is true, after a 1200ms delay, open the panel and have RIDGE 
+  say this greeting (varying by time of day using morning/afternoon/evening):
+  "[Morning/Afternoon/Evening], Chris — RIDGE online. I've reviewed the financials. 
+  One flag: Nightengale Chiropractic is 14 days overdue on $1,400. Everything else 
+  is clean. What do you need?"
+- Also expose window.ridgeGreet so the auth/login handler can trigger it
+- Also expose window.ridgeAlert(text) so any page can trigger a proactive spoken alert
+
+STYLES:
+- Use a <style> tag injected into document.head (id="ridge-styles") with keyframe 
+  animations for: pulse on the badge, fade-in on messages, slide-up on panel open, 
+  and dot bounce for thinking state
+- Brand colors: gold #C9A840, black #0A0A0A, dark panel #111111, 
+  charcoal #1C1C1C, dark blue message #1A2A40
+- The widget uses position fixed so it floats above all portal content

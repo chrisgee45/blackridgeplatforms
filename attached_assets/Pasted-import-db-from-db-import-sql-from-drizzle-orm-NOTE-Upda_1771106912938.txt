@@ -1,0 +1,166 @@
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+
+// NOTE: Update table/column names to match your schema.
+// This service is intentionally written in a way that's easy to adapt.
+
+export type WeeklyOpsData = {
+  totals: {
+    totalUsers: number;
+    newUsersLast7Days: number;
+    activeUsersLast7Days: number;
+    inactiveUsers14Days: number;
+  };
+  churnRiskUsers: Array<{
+    user_id: string;
+    email?: string | null;
+    last_active_at?: string | null;
+    reason: string;
+  }>;
+  revenue: {
+    mrr: number;
+    mrrChange: number;
+    subscriptionsPastDue: number;
+    canceledLast30Days: number;
+    churnRate: number; // calculated
+    activeUserRatio: number; // calculated
+    mrrTrend: "down" | "flat" | "up"; // calculated
+  };
+};
+
+function toNumber(val: unknown): number {
+  const n = typeof val === "string" ? Number(val) : (val as number);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export async function getWeeklyOpsData(): Promise<WeeklyOpsData> {
+  // --- USERS ---
+  // Assumptions:
+  // users table has: id, email, created_at
+  // user activity table OR users.last_login_at exists
+  //
+  // If you don't have activity tracking yet, add users.last_active_at and update it on login.
+  // For now, we attempt users.last_login_at, and if not present, agent can adjust.
+
+  const [totalUsersRow] = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+    FROM users
+  `);
+
+  const [newUsers7dRow] = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+    FROM users
+    WHERE created_at >= (NOW() - INTERVAL '7 days')
+  `);
+
+  // last_login_at approach
+  const [activeUsers7dRow] = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+    FROM users
+    WHERE last_login_at IS NOT NULL
+      AND last_login_at >= (NOW() - INTERVAL '7 days')
+  `);
+
+  const [inactiveUsers14dRow] = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+    FROM users
+    WHERE (last_login_at IS NULL OR last_login_at < (NOW() - INTERVAL '14 days'))
+  `);
+
+  // Top churn risk users (inactive 14 days)
+  const churnRisk = await db.execute(sql`
+    SELECT
+      id::text AS user_id,
+      email,
+      last_login_at::text AS last_active_at
+    FROM users
+    WHERE (last_login_at IS NULL OR last_login_at < (NOW() - INTERVAL '14 days'))
+    ORDER BY last_login_at ASC NULLS FIRST
+    LIMIT 25
+  `);
+
+  // --- REVENUE / SUBSCRIPTIONS ---
+  // Assumptions:
+  // subscriptions table has:
+  //   id, user_id, status ('active','past_due','canceled'), current_period_amount (cents), canceled_at
+  //
+  // If your schema is different (Stripe tables, payments table, etc.), agent maps queries.
+
+  const [mrrRow] = await db.execute(sql`
+    SELECT COALESCE(SUM(current_period_amount), 0)::bigint AS mrr_cents
+    FROM subscriptions
+    WHERE status = 'active'
+  `);
+
+  // previous MRR snapshot (30 days ago) for change
+  // If you don't have history, you can compute change using payments last 30 days vs prior 30.
+  // Here is a simple approach assuming subscription amounts don't fluctuate wildly:
+  const [mrrPrevRow] = await db.execute(sql`
+    SELECT COALESCE(SUM(current_period_amount), 0)::bigint AS mrr_cents
+    FROM subscriptions
+    WHERE status = 'active'
+      AND created_at < (NOW() - INTERVAL '30 days')
+  `);
+
+  const [pastDueRow] = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+    FROM subscriptions
+    WHERE status = 'past_due'
+  `);
+
+  const [canceled30Row] = await db.execute(sql`
+    SELECT COUNT(*)::int AS count
+    FROM subscriptions
+    WHERE status = 'canceled'
+      AND canceled_at >= (NOW() - INTERVAL '30 days')
+  `);
+
+  const totalUsers = toNumber((totalUsersRow as any)?.count);
+  const newUsersLast7Days = toNumber((newUsers7dRow as any)?.count);
+  const activeUsersLast7Days = toNumber((activeUsers7dRow as any)?.count);
+  const inactiveUsers14Days = toNumber((inactiveUsers14dRow as any)?.count);
+
+  const mrrCents = toNumber((mrrRow as any)?.mrr_cents);
+  const mrrPrevCents = toNumber((mrrPrevRow as any)?.mrr_cents);
+
+  const mrr = mrrCents / 100;
+  const mrrPrev = mrrPrevCents / 100;
+  const mrrChange = mrr - mrrPrev;
+
+  const subscriptionsPastDue = toNumber((pastDueRow as any)?.count);
+  const canceledLast30Days = toNumber((canceled30Row as any)?.count);
+
+  // Hybrid, non-AI metrics
+  const churnRate = totalUsers > 0 ? canceledLast30Days / totalUsers : 0;
+  const activeUserRatio = totalUsers > 0 ? activeUsersLast7Days / totalUsers : 0;
+
+  let mrrTrend: "down" | "flat" | "up" = "flat";
+  if (mrrChange > 25) mrrTrend = "up";
+  if (mrrChange < -25) mrrTrend = "down";
+
+  return {
+    totals: {
+      totalUsers,
+      newUsersLast7Days,
+      activeUsersLast7Days,
+      inactiveUsers14Days,
+    },
+    churnRiskUsers: (churnRisk as any[]).map((u) => ({
+      user_id: u.user_id,
+      email: u.email,
+      last_active_at: u.last_active_at,
+      reason: u.last_active_at
+        ? "No login in 14+ days"
+        : "No login recorded",
+    })),
+    revenue: {
+      mrr,
+      mrrChange,
+      subscriptionsPastDue,
+      canceledLast30Days,
+      churnRate,
+      activeUserRatio,
+      mrrTrend,
+    },
+  };
+}

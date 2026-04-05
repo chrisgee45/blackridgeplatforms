@@ -1,0 +1,41 @@
+PART 1 — FINANCIALS: EXPENSE CATEGORIES
+Replace the current flat expense list with a structured category system. Create a expense_categories table with a group field and schedule_c_line field so every expense maps directly to a Schedule C tax line. Here are the categories, their group, and their Schedule C line:
+Operating Expenses
+	∙	Software & Subscriptions → Line 27a (Other)
+	∙	Advertising & Marketing → Line 8
+	∙	Office Supplies & Expenses → Line 18
+	∙	Phone & Internet → Line 25
+	∙	Utilities → Line 25
+	∙	Rent / Workspace → Line 20b
+People Costs
+	∙	Contract Labor / Freelancers → Line 11
+	∙	Employee Wages → Line 26
+	∙	Commissions Paid → Line 10
+Business Development
+	∙	Travel & Lodging → Line 24a
+	∙	Meals & Entertainment → Line 24b (flag: only 50% deductible — show deductible amount automatically)
+	∙	Client Gifts → Line 27a (flag: IRS limit $25/person — show warning if any single entry exceeds $25)
+Professional Services
+	∙	Legal Fees → Line 17
+	∙	Accounting / Bookkeeping → Line 17
+	∙	Consulting → Line 11
+Assets & Equipment
+	∙	Equipment Purchases → Line 13
+	∙	Depreciation → Line 13
+	∙	Vehicle / Mileage → Line 9 (flag: show mileage rate input at $0.70/mile for 2026, calculate dollar value automatically)
+Insurance
+	∙	Business Insurance → Line 15
+	∙	Health Insurance → Line 15 (flag: “May qualify for self-employed health insurance deduction — consult your CPA”)
+	∙	Liability Insurance → Line 15
+Financial Costs
+	∙	Bank Fees → Line 27a
+	∙	Merchant Processing Fees → Line 27a (Stripe fees, etc.)
+	∙	Interest Paid → Line 16b
+When recording an expense, the user selects a group first, then a category within that group. The Schedule C line maps automatically — never shown to the user, only used for the Tax Center and CPA export.
+Add an “Industry Presets” feature: when a new client is onboarded, they select their industry and the system pre-activates the most relevant categories. Inactive categories are hidden but can be turned on. Presets:
+	∙	Fitness/Health → activate: Software, Advertising, Contract Labor, Travel, Meals, Insurance, Equipment, Merchant Fees
+	∙	Automotive → activate: Software, Advertising, Vehicle/Mileage, Equipment, Rent, Utilities, Merchant Fees
+	∙	Pest Control → activate: Software, Advertising, Vehicle/Mileage, Equipment, Insurance, Contract Labor, Merchant Fees
+	∙	Construction → activate: Software, Advertising, Contract Labor, Equipment, Depreciation, Vehicle, Insurance, Merchant Fees
+	∙	Healthcare → activate: Software, Advertising, Rent, Equipment, Insurance, Legal, Accounting, Merchant Fees
+	∙	General → activate all

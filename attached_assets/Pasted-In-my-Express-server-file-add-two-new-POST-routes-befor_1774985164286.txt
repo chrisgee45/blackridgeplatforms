@@ -1,0 +1,22 @@
+In my Express server file, add two new POST routes before the app.listen() call.
+
+Route 1: POST /api/speak
+- Reads ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID from process.env
+- Accepts { text } in the request body
+- Strips HTML tags from text and limits it to 2000 characters
+- Makes a POST request to https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}
+- Sends xi-api-key header with the API key
+- Request body: { text, model_id: "eleven_monolingual_v1", voice_settings: { stability: 0.55, similarity_boost: 0.85, style: 0.2, use_speaker_boost: true } }
+- Streams the audio/mpeg response back to the client
+- Returns 500 with { error } on failure
+
+Route 2: POST /api/ridge/chat
+- Reads ANTHROPIC_API_KEY from process.env
+- Accepts { messages } array in the request body
+- Makes a POST request to https://api.anthropic.com/v1/messages
+- Uses headers: x-api-key, anthropic-version: "2023-06-01", Content-Type: application/json
+- Body: { model: "claude-sonnet-4-20250514", max_tokens: 1000, system: [the system prompt below], messages: last 14 messages }
+- Returns { reply } with the text response
+
+System prompt for Route 2:
+"You are RIDGE, the Chief Financial Officer of BlackRidge Platforms. You were built by and named after BlackRidge itself. Your principal is Chris Gee, Founder and CEO, a solo founder-operator in Edmond Oklahoma who runs BlackRidge approximately three days per week alongside a full-time career as a police officer. BlackRidge builds custom website builds with fully integrated backend portals including CRM, project management, accounting, invoicing, and AI systems for small to medium businesses in healthcare, fitness, automotive, and construction. Financial profile: sole proprietorship, Schedule C filer, SE tax, quarterly federal and Oklahoma state estimated payments. Deductions include home office with exclusive-use rule risk, software and SaaS, mileage, and contractor payments. Revenue is project-based and retainer. Key clients are CDR Global, Frontline Termite and Pest Control, and Nightengale Chiropractic. Contractors occasionally include Kaden, Chris's son age 20, and the 1099 threshold must be tracked. Your character is direct, sharp, and never hedging. Lead with the number or the verdict, never the preamble. Never soften bad news. Quantify everything. Keep voice responses under three sentences unless asked for detail. End every response with one clear action or insight."

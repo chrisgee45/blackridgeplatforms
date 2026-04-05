@@ -1,0 +1,36 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# env
+.env
+.env.local
+.env.*.local
+
+# python
+__pycache__
+*.pyc
+.venv
+venv
+.pythonlibs
+uv.lock.bak
+
+# databases / local data
+*.db
+*.sqlite
+*.sqlite3
+
+# replit runtime
+.cache
+.upm
+.local
+.config
+.breakpoints
+
+# editors
+.vscode
+.idea
+*.swp

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlackRidge QA Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background: #0f1117; color: #f1f5f9; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1a1d27; }
+    ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+    input, textarea { background: #0f1117 !important; border: 1px solid #2a2d3a; color: #f1f5f9; }
+    input:focus, textarea:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const API = '';
+const getHeaders = () => {
+  const token = localStorage.getItem('qa_token');
+  return { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
+};
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+
+function gradeColor(grade) {
+  if (!grade) return '#94a3b8';
+  if (grade.startsWith('A')) return '#22c55e';
+  if (grade.startsWith('B')) return '#eab308';
+  if (grade === 'C') return '#f59e0b';
+  return '#ef4444';
+}
+
+function scoreColor(score) {
+  if (score >= 80) return '#22c55e';
+  if (score >= 60) return '#eab308';
+  return '#ef4444';
+}
+
+function sevColor(sev) {
+  const m = { CRITICAL: '#dc2626', HIGH: '#f59e0b', MEDIUM: '#eab308', LOW: '#3b82f6', INFO: '#94a3b8' };
+  return m[sev] || '#94a3b8';
+}
+
+function sevEmoji(sev) {
+  const m = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🔵', INFO: 'ℹ️' };
+  return m[sev] || '';
+}
+
+function Shield() {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+}
+
+function Sparkle() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg>;
+}
+
+function LoginModal({ onLogin }) {
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true); setErr('');
+    try {
+      const r = await fetch(`${API}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      if (!r.ok) { setErr('Invalid password'); setLoading(false); return; }
+      const data = await r.json();
+      localStorage.setItem('qa_token', data.token);
+      localStorage.setItem('qa_user', data.user_id);
+      onLogin(data.user_id);
+    } catch { setErr('Connection error'); }
+    setLoading(false);
+  };
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999}}>
+      <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:40,width:380,textAlign:'center'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:8}}>
+          <Shield /><span style={{fontSize:20,fontWeight:700,letterSpacing:2}}>BLACKRIDGE</span>
+        </div>
+        <p style={{color:'#f59e0b',fontSize:11,letterSpacing:3,marginBottom:24}}>QA AUDIT PORTAL</p>
+        <form onSubmit={submit}>
+          <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Enter portal password" style={{width:'100%',padding:'10px 14px',borderRadius:6,marginBottom:12,fontSize:14,boxSizing:'border-box'}} autoFocus />
+          {err && <p style={{color:'#ef4444',fontSize:13,marginBottom:8}}>{err}</p>}
+          <button type="submit" disabled={loading} style={{width:'100%',padding:'10px 0',background:'#f59e0b',color:'#000',fontWeight:700,borderRadius:6,border:'none',cursor:'pointer',fontSize:14}}>
+            {loading ? 'Authenticating...' : 'Sign In'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function FindingCard({ finding }) {
+  const [open, setOpen] = useState(finding.status === 'FAILED' || finding.status === 'WARNING');
+  return (
+    <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:8,marginBottom:8,overflow:'hidden'}}>
+      <div onClick={()=>setOpen(!open)} style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10}}>
+        <span style={{color:sevColor(finding.severity),fontSize:12,fontWeight:600,minWidth:70}}>{finding.severity}</span>
+        <span style={{flex:1,fontSize:14}}>{finding.title}</span>
+        <span style={{background: finding.status==='PASSED'?'rgba(34,197,94,0.15)':finding.status==='FAILED'?'rgba(239,68,68,0.15)':'rgba(234,179,8,0.15)', color: finding.status==='PASSED'?'#22c55e':finding.status==='FAILED'?'#ef4444':'#eab308', padding:'2px 8px',borderRadius:4,fontSize:11,fontWeight:600}}>{finding.status}</span>
+        <span style={{background:'rgba(148,163,184,0.1)',color:'#94a3b8',padding:'2px 8px',borderRadius:4,fontSize:11}}>{finding.agent}</span>
+        <span style={{color:'#94a3b8',fontSize:14}}>{open?'▲':'▼'}</span>
+      </div>
+      {open && (
+        <div style={{padding:'0 16px 16px',borderTop:'1px solid #2a2d3a'}}>
+          <p style={{color:'#94a3b8',fontSize:13,marginTop:12}}>{finding.description}</p>
+          {finding.endpoint && <p style={{color:'#64748b',fontSize:12,marginTop:8,display:'flex',alignItems:'center',gap:4}}>Endpoint: <code style={{background:'#0f1117',padding:'2px 6px',borderRadius:4,fontSize:11}}>{finding.endpoint}</code>
+            <button onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(finding.endpoint)}} style={{background:'none',border:'none',color:'#f59e0b',cursor:'pointer',fontSize:11}}>Copy</button>
+          </p>}
+          {finding.response_code && <p style={{color:'#64748b',fontSize:12}}>Status: {finding.response_code}{finding.response_time_ms ? ` · ${finding.response_time_ms.toFixed(0)}ms` : ''}</p>}
+          {finding.evidence && <div style={{marginTop:8}}><p style={{color:'#64748b',fontSize:11,marginBottom:4}}>Evidence:</p><pre style={{background:'#0f1117',padding:10,borderRadius:6,fontSize:11,color:'#94a3b8',overflow:'auto',maxHeight:150,whiteSpace:'pre-wrap'}}>{finding.evidence}</pre></div>}
+          {finding.remediation && <div style={{marginTop:8,background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:6,padding:10}}><p style={{color:'#f59e0b',fontSize:12,fontWeight:600,marginBottom:4}}>Remediation</p><p style={{color:'#e2e8f0',fontSize:13}}>{finding.remediation}</p></div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(localStorage.getItem('qa_user'));
+  const [projectName, setProjectName] = useState('');
+  const [targetUrl, setTargetUrl] = useState('');
+  const [authToken, setAuthToken] = useState('');
+  const [endpoints, setEndpoints] = useState('');
+  const [running, setRunning] = useState(false);
+  const [audits, setAudits] = useState([]);
+  const [currentAudit, setCurrentAudit] = useState(null);
+  const [agentStatus, setAgentStatus] = useState({});
+  const [selectedAudit, setSelectedAudit] = useState(null);
+  const [view, setView] = useState('empty');
+  const pollRef = useRef(null);
+
+  const loadAudits = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/api/audits`, { headers: getHeaders() });
+      if (r.ok) { const d = await r.json(); setAudits(d.audits || []); }
+    } catch {}
+  }, []);
+
+  useEffect(() => { if (user) loadAudits(); }, [user, loadAudits]);
+
+  const loadReport = async (auditId) => {
+    try {
+      const r = await fetch(`${API}/api/audits/${auditId}`, { headers: getHeaders() });
+      if (r.ok) { const d = await r.json(); setSelectedAudit(d); setView('complete'); }
+    } catch {}
+  };
+
+  const startAudit = async () => {
+    if (!projectName || !targetUrl) return;
+    setRunning(true); setView('running');
+    setAgentStatus({ Security: 'pending', Infrastructure: 'pending', API: 'pending', 'Data Flow': 'pending' });
+    setSelectedAudit(null);
+    try {
+      const r = await fetch(`${API}/api/audits/run`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ project_name: projectName, target_url: targetUrl, auth_token: authToken || null, known_endpoints: endpoints ? endpoints.split('\n').map(e => e.trim()).filter(Boolean) : [] })
+      });
+      if (!r.ok) { setRunning(false); setView('empty'); return; }
+      const { audit_id } = await r.json();
+      setCurrentAudit(audit_id);
+
+      const streamResp = await fetch(`${API}/api/audits/${audit_id}/stream`, { headers: getHeaders() });
+      if (!streamResp.ok || !streamResp.body) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(async () => {
+          try {
+            const r2 = await fetch(`${API}/api/audits/${audit_id}`, { headers: getHeaders() });
+            if (r2.ok) {
+              const d = await r2.json();
+              if (d.status === 'completed') { clearInterval(pollRef.current); setRunning(false); setSelectedAudit(d); setView('complete'); loadAudits(); }
+              else if (d.status === 'failed') { clearInterval(pollRef.current); setRunning(false); setView('empty'); }
+            }
+          } catch {}
+        }, 3000);
+        return;
+      }
+      const reader = streamResp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const processSSE = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === 'heartbeat') continue;
+              if (event.type === 'progress') setAgentStatus(prev => ({ ...prev, [event.agent]: 'running' }));
+              if (event.type === 'agent_complete') setAgentStatus(prev => ({ ...prev, [event.agent]: { status: 'done', passed: event.passed, failed: event.failed } }));
+              if (event.type === 'complete') { setRunning(false); loadReport(event.audit_id); loadAudits(); return; }
+              if (event.type === 'error') { setRunning(false); setView('empty'); alert('Audit error: ' + event.message); return; }
+            } catch {}
+          }
+        }
+      };
+      processSSE().catch(() => { setRunning(false); setView('empty'); });
+    } catch { setRunning(false); setView('empty'); }
+  };
+
+  const logout = () => { localStorage.removeItem('qa_token'); localStorage.removeItem('qa_user'); setUser(null); };
+
+  if (!user) return <LoginModal onLogin={setUser} />;
+
+  const agentList = ['Security', 'Infrastructure', 'API', 'Data Flow'];
+  const completedAgents = agentList.filter(a => typeof agentStatus[a] === 'object' && agentStatus[a].status === 'done').length;
+  const progressPct = running ? Math.round((completedAgents / 4) * 100) : 0;
+
+  return (
+    <div style={{minHeight:'100vh'}}>
+      <div style={{background:'#1a1d27',borderBottom:'1px solid #2a2d3a',padding:'12px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <Shield />
+          <span style={{fontWeight:700,letterSpacing:2,fontSize:15}}>BLACKRIDGE</span>
+          <span style={{color:'#f59e0b',fontSize:10,letterSpacing:2}}>QA PORTAL</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <span style={{color:'#94a3b8',fontSize:13}}>{user}</span>
+          <button onClick={logout} style={{background:'rgba(239,68,68,0.1)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.2)',padding:'4px 12px',borderRadius:6,fontSize:12,cursor:'pointer'}}>Logout</button>
+        </div>
+      </div>
+
+      <div style={{display:'flex',gap:24,padding:24,maxWidth:1400,margin:'0 auto',flexWrap:'wrap'}}>
+        <div style={{width:420,minWidth:320,flexShrink:0}}>
+          <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:24,marginBottom:16}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+              <Shield /><h2 style={{margin:0,fontSize:18,fontWeight:700}}>BlackRidge QA Agent</h2>
+            </div>
+            <p style={{color:'#94a3b8',fontSize:13,marginBottom:20}}>Automated quality assurance for every build</p>
+
+            <label style={{color:'#94a3b8',fontSize:12,display:'block',marginBottom:4}}>Project Name *</label>
+            <input value={projectName} onChange={e=>setProjectName(e.target.value)} placeholder="BlackRidge Ops" style={{width:'100%',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:14,boxSizing:'border-box'}} />
+
+            <label style={{color:'#94a3b8',fontSize:12,display:'block',marginBottom:4}}>Target URL *</label>
+            <input value={targetUrl} onChange={e=>setTargetUrl(e.target.value)} placeholder="https://api.myproject.com" style={{width:'100%',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:14,boxSizing:'border-box'}} />
+
+            <label style={{color:'#94a3b8',fontSize:12,display:'block',marginBottom:4}}>Auth Token (optional)</label>
+            <input type="password" value={authToken} onChange={e=>setAuthToken(e.target.value)} placeholder="JWT for protected endpoints" style={{width:'100%',padding:'8px 12px',borderRadius:6,marginBottom:12,fontSize:14,boxSizing:'border-box'}} />
+
+            <label style={{color:'#94a3b8',fontSize:12,display:'block',marginBottom:4}}>Known API Endpoints (one per line)</label>
+            <textarea value={endpoints} onChange={e=>setEndpoints(e.target.value)} placeholder="/api/users&#10;/api/orders" rows={3} style={{width:'100%',padding:'8px 12px',borderRadius:6,marginBottom:16,fontSize:14,resize:'vertical',boxSizing:'border-box'}} />
+
+            <button onClick={startAudit} disabled={running || !projectName || !targetUrl} style={{width:'100%',padding:'12px 0',background: running ? '#78716c' : '#f59e0b',color:'#000',fontWeight:700,borderRadius:8,border:'none',cursor: running?'not-allowed':'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              {running && <span style={{width:16,height:16,border:'2px solid rgba(0,0,0,0.3)',borderTop:'2px solid #000',borderRadius:'50%',display:'inline-block'}} className="spin" />}
+              {running ? 'Running Audit...' : 'Run QA Audit'}
+            </button>
+
+            <p style={{color:'#64748b',fontSize:11,textAlign:'center',marginTop:8}}>Tests run: Security · Infrastructure · API · Data Flow</p>
+          </div>
+
+          <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:16}}>
+            <h3 style={{fontSize:14,fontWeight:600,marginBottom:12,color:'#94a3b8'}}>Audit History</h3>
+            <div style={{maxHeight:400,overflowY:'auto'}}>
+              {audits.length === 0 && <p style={{color:'#64748b',fontSize:13,textAlign:'center',padding:20}}>No audits yet</p>}
+              {audits.map(a => (
+                <div key={a.id} onClick={()=>loadReport(a.id)} style={{padding:'10px 12px',borderRadius:8,cursor:'pointer',marginBottom:4,border:'1px solid transparent',background: selectedAudit?.id===a.id ? 'rgba(245,158,11,0.08)' : 'transparent',borderColor: selectedAudit?.id===a.id ? 'rgba(245,158,11,0.2)' : 'transparent'}}
+                  onMouseEnter={e=>{ if(selectedAudit?.id!==a.id) e.currentTarget.style.background='rgba(255,255,255,0.03)' }}
+                  onMouseLeave={e=>{ if(selectedAudit?.id!==a.id) e.currentTarget.style.background='transparent' }}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                    <span style={{fontSize:13,fontWeight:600}}>{a.project_name}</span>
+                    <div style={{display:'flex',gap:6}}>
+                      {a.score != null && <span style={{background:`${scoreColor(a.score)}20`,color:scoreColor(a.score),padding:'1px 6px',borderRadius:4,fontSize:11,fontWeight:600}}>{a.score}</span>}
+                      {a.grade && <span style={{background:`${gradeColor(a.grade)}20`,color:gradeColor(a.grade),padding:'1px 6px',borderRadius:4,fontSize:11,fontWeight:600}}>{a.grade}</span>}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between'}}>
+                    <span style={{color:'#64748b',fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.target_url}</span>
+                    <span style={{color:'#64748b',fontSize:11}}>{timeAgo(a.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{flex:1,minWidth:400}}>
+          {view === 'empty' && (
+            <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:80,textAlign:'center'}}>
+              <Shield /><br/>
+              <p style={{color:'#94a3b8',fontSize:15,marginTop:16}}>Enter a URL and click <strong style={{color:'#f59e0b'}}>Run QA Audit</strong> to begin</p>
+            </div>
+          )}
+
+          {view === 'running' && (
+            <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:32}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:24}}>
+                <div style={{width:10,height:10,borderRadius:'50%',background:'#f59e0b'}} className="pulse-dot" />
+                <h2 style={{margin:0,fontSize:18,fontWeight:700}}>Audit in progress...</h2>
+              </div>
+
+              {agentList.map((name, i) => {
+                const s = agentStatus[name];
+                const isDone = typeof s === 'object' && s.status === 'done';
+                const isRunning = s === 'running';
+                return (
+                  <div key={name} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 0',borderBottom: i < 3 ? '1px solid #2a2d3a' : 'none'}}>
+                    <div style={{width:28,height:28,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+                      background: isDone ? 'rgba(34,197,94,0.15)' : isRunning ? 'rgba(245,158,11,0.15)' : 'rgba(148,163,184,0.08)'}}>
+                      {isDone ? <span style={{color:'#22c55e',fontSize:14}}>✓</span> :
+                       isRunning ? <span style={{width:12,height:12,border:'2px solid rgba(245,158,11,0.3)',borderTop:'2px solid #f59e0b',borderRadius:'50%',display:'block'}} className="spin" /> :
+                       <span style={{width:8,height:8,borderRadius:'50%',background:'#64748b',display:'block'}} />}
+                    </div>
+                    <div style={{flex:1}}>
+                      <p style={{margin:0,fontSize:14,fontWeight:600,color: isDone?'#22c55e':isRunning?'#f59e0b':'#64748b'}}>{name} Agent</p>
+                      <p style={{margin:0,fontSize:12,color:'#64748b'}}>
+                        {isDone ? `${s.passed} passed, ${s.failed} failed` : isRunning ? 'Running tests...' : 'Waiting...'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{marginTop:20}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                  <span style={{color:'#94a3b8',fontSize:12}}>Overall Progress</span>
+                  <span style={{color:'#f59e0b',fontSize:12,fontWeight:600}}>{progressPct}%</span>
+                </div>
+                <div style={{background:'#0f1117',borderRadius:6,height:8,overflow:'hidden'}}>
+                  <div style={{background:'#f59e0b',height:'100%',width:`${progressPct}%`,transition:'width 0.5s ease',borderRadius:6}} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {view === 'complete' && selectedAudit && (() => {
+            const a = selectedAudit;
+            const findings = a.findings || [];
+            const failed = findings.filter(f => f.status === 'FAILED');
+            const warned = findings.filter(f => f.status === 'WARNING');
+            const passed = findings.filter(f => f.status === 'PASSED');
+            const agentBreakdown = {};
+            findings.forEach(f => {
+              if (!agentBreakdown[f.agent]) agentBreakdown[f.agent] = { total: 0, passed: 0, failed: 0 };
+              agentBreakdown[f.agent].total++;
+              if (f.status === 'PASSED') agentBreakdown[f.agent].passed++;
+              if (f.status === 'FAILED') agentBreakdown[f.agent].failed++;
+            });
+
+            return (
+              <div>
+                <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:24,marginBottom:16}}>
+                  <div style={{display:'flex',alignItems:'center',gap:20,flexWrap:'wrap'}}>
+                    <div style={{textAlign:'center'}}>
+                      <span style={{fontSize:48,fontWeight:800,color:scoreColor(a.score || 0)}}>{a.score || 0}</span>
+                      <span style={{fontSize:18,color:'#64748b'}}>/100</span>
+                    </div>
+                    <div style={{background:`${gradeColor(a.grade)}20`,color:gradeColor(a.grade),padding:'8px 20px',borderRadius:8,fontSize:28,fontWeight:800}}>{a.grade}</div>
+                    <div style={{display:'flex',gap:10,flexWrap:'wrap',flex:1,justifyContent:'flex-end'}}>
+                      {[['Total', a.total_tests, '#94a3b8'], ['Passed', a.passed, '#22c55e'], ['Failed', a.failed, '#ef4444'], ['Warnings', warned.length, '#eab308']].map(([l,v,c]) => (
+                        <div key={l} style={{background:'#0f1117',border:'1px solid #2a2d3a',borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:70}}>
+                          <div style={{fontSize:20,fontWeight:700,color:c}}>{v||0}</div>
+                          <div style={{fontSize:10,color:'#64748b',marginTop:2}}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:16,marginTop:16,flexWrap:'wrap'}}>
+                    {[['CRITICAL', a.critical_count, '#dc2626'], ['HIGH', a.high_count, '#f59e0b'], ['MEDIUM', a.medium_count, '#eab308'], ['LOW', a.low_count, '#3b82f6']].map(([l,v,c]) => (
+                      <span key={l} style={{fontSize:12,color:c}}>{sevEmoji(l)} {l}: {v||0}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {a.ai_analysis && (
+                  <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:24,marginBottom:16}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                      <Sparkle /><h3 style={{margin:0,fontSize:16,fontWeight:700}}>AI Analysis</h3>
+                    </div>
+                    {a.ai_analysis.split('\n').filter(Boolean).map((p, i) => <p key={i} style={{color:'#94a3b8',fontSize:14,lineHeight:1.7,marginBottom:12}}>{p}</p>)}
+                  </div>
+                )}
+
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:12,marginBottom:16}}>
+                  {Object.entries(agentBreakdown).map(([name, stats]) => (
+                    <div key={name} style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:10,padding:16}}>
+                      <h4 style={{margin:'0 0 8px',fontSize:13,fontWeight:600}}>{name}</h4>
+                      <div style={{display:'flex',gap:8}}>
+                        <span style={{color:'#22c55e',fontSize:12}}>✓ {stats.passed}</span>
+                        <span style={{color:'#ef4444',fontSize:12}}>✗ {stats.failed}</span>
+                        <span style={{color:'#64748b',fontSize:12}}>Σ {stats.total}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:12,padding:24,marginBottom:16}}>
+                  <h3 style={{margin:'0 0 16px',fontSize:16,fontWeight:700}}>Findings</h3>
+                  {['CRITICAL','HIGH','MEDIUM','LOW','INFO'].map(sev => {
+                    const sevFindings = findings.filter(f => f.severity === sev && f.status !== 'PASSED');
+                    if (!sevFindings.length) return null;
+                    return (
+                      <div key={sev} style={{marginBottom:16}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                          <span style={{background:`${sevColor(sev)}20`,color:sevColor(sev),padding:'2px 10px',borderRadius:6,fontSize:12,fontWeight:700}}>{sev}</span>
+                          <span style={{color:'#64748b',fontSize:12}}>{sevFindings.length} finding{sevFindings.length>1?'s':''}</span>
+                        </div>
+                        {sevFindings.map((f, i) => <FindingCard key={i} finding={f} />)}
+                      </div>
+                    );
+                  })}
+
+                  {passed.length > 0 && (
+                    <div style={{marginTop:16}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                        <span style={{background:'rgba(34,197,94,0.15)',color:'#22c55e',padding:'2px 10px',borderRadius:6,fontSize:12,fontWeight:700}}>PASSED</span>
+                        <span style={{color:'#64748b',fontSize:12}}>{passed.length} test{passed.length>1?'s':''}</span>
+                      </div>
+                      {passed.map((f, i) => <FindingCard key={i} finding={f} />)}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{display:'flex',gap:12}}>
+                  <button onClick={async()=>{try{const r=await fetch(`${API}/api/audits/${a.id}/download/json`,{headers:getHeaders()});if(r.ok){const b=await r.blob();const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download=`qa-report-${a.id}.json`;l.click();URL.revokeObjectURL(u)}}catch{}}} style={{flex:1,padding:'10px 0',background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:8,color:'#f1f5f9',cursor:'pointer',fontSize:13,fontWeight:600}}>Download JSON Report</button>
+                  <button onClick={async()=>{try{const r=await fetch(`${API}/api/audits/${a.id}/download/markdown`,{headers:getHeaders()});if(r.ok){const b=await r.blob();const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download=`qa-report-${a.id}.md`;l.click();URL.revokeObjectURL(u)}}catch{}}} style={{flex:1,padding:'10px 0',background:'#1a1d27',border:'1px solid #2a2d3a',borderRadius:8,color:'#f1f5f9',cursor:'pointer',fontSize:13,fontWeight:600}}>Download Markdown Report</button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

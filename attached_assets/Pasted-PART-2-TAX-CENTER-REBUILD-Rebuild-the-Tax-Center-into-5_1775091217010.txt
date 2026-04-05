@@ -1,0 +1,34 @@
+PART 2 — TAX CENTER REBUILD
+Rebuild the Tax Center into 5 clearly separated sections:
+Section 1 — Business Profile (set once on setup)
+Fields: Business name, Filing type (Sole Prop / LLC / S-Corp), EIN or SSN, State, Federal tax rate (%), State tax rate (%), Self-employment tax rate (default 15.3%), QBI deduction toggle (20%), Fiscal year start month
+Section 2 — Income Summary (auto-calculated, locked — no manual editing)
+	∙	Gross Revenue: pulls ONLY from payments table where status = “succeeded”
+	∙	Refunds Issued: pulls from any refund records
+	∙	Net Gross Income: Gross Revenue minus Refunds
+	∙	This section must NEVER pull from CRM deal values or closed-won deal status. Only actual collected payments count. Display a lock icon and tooltip: “This figure is calculated automatically from collected payments.”
+Section 3 — Deductions (auto-mapped from expense categories)
+Display a clean table: Expense Category | Schedule C Line | Amount | Notes
+	∙	Meals & Entertainment: show full amount AND 50% deductible amount side by side
+	∙	Vehicle/Mileage: show miles entered × rate = deductible amount
+	∙	Health Insurance: show amount with a gold “Self-Employed Deduction” badge
+	∙	Client Gifts: show warning badge if any entry exceeds $25
+	∙	Total Deductions auto-calculates at the bottom
+Section 4 — Quarterly Tax Estimates
+This is the most important section for clients. Show a quarterly breakdown card for each quarter:
+Q1 — Jan 1 to Mar 31 → Due April 15
+Q2 — Apr 1 to May 31 → Due June 15
+Q3 — Jun 1 to Aug 31 → Due September 15
+Q4 — Sep 1 to Dec 31 → Due January 15 (next year)
+Each card shows:
+	∙	Income earned that quarter (from payments)
+	∙	Estimated tax owed that quarter
+	∙	Payment status: Unpaid / Paid (togglable by the user)
+	∙	Days until due date (show in red if within 30 days)
+	∙	A “Mark as Paid” button that logs the date paid
+At the top of this section show a summary banner: “Your next estimated tax payment of $X is due in Y days.”
+Section 5 — CPA Export
+Three export buttons:
+	∙	“Download Schedule C Preview (PDF)” — formatted exactly like IRS Schedule C with all lines populated
+	∙	“Download Full P&L (PDF)” — income statement with all revenue and expenses
+	∙	“Download Expense Summary (CSV)” — all expenses by category with dates, amounts, notes

@@ -1,0 +1,140 @@
+Add a Sequence Dashboard to the BlackRidge Platforms portal. This is a dedicated top-level page that gives me a bird's eye view of every welcome and follow-up sequence running across all projects. I can see exactly where every client stands in their journey with BlackRidge — from day one through 12 months post-launch — without having to click into individual projects.
+
+TECH STACK
+
+React + Tailwind (existing portal stack)
+Supabase for data
+Existing portal auth context
+React Router for routing
+
+
+WHERE IT LIVES
+Add a new top-level page called "Sequences" in the main sidebar navigation. Icon: something that suggests a timeline or pipeline — a signal/broadcast icon works well. Route: /sequences
+
+PAGE LAYOUT
+Top of page — Summary Stats Bar
+Four gold-accented stat cards in a row:
+
+Active Welcome Sequences — count of welcome sequences with status "running"
+Active Follow-Up Sequences — count of follow-up sequences with status "running"
+Emails Sent This Month — total across both tables where sent timestamp is within current calendar month
+Sequences Completed — total sequences across both tables with status "completed"
+
+
+Below stats — Two Tabbed Sections
+Tab 1: Welcome Sequences
+Tab 2: Follow-Up Sequences
+Default to Tab 1 on load.
+
+TAB 1 — WELCOME SEQUENCES
+A card-based list or clean table showing every row in welcome_sequences. Each row displays:
+
+Client Name (linked — clicking opens their project)
+Company Name
+Project Name
+Status badge: gold = running / green = completed / gray = cancelled
+Triggered by: Auto or Manual (small label)
+Email 1 status + sent time
+Email 2 status + sent time
+Email 3 status + sent time
+Started date
+
+Each email status shows one of three states:
+
+✅ Sent — with timestamp
+🟡 Scheduled — with "Sends [date] at [time]"
+⬜ Pending
+
+Row actions (end of each row):
+
+"View Project" — navigates to that project
+"Resend" dropdown — resend Email 1, 2, or 3 individually
+"Cancel" — cancels any unsent emails in the sequence, requires confirmation
+
+Filter bar above the list:
+
+Filter by status: All / Running / Completed / Cancelled
+Search by client name or company
+
+
+TAB 2 — FOLLOW-UP SEQUENCES
+Same layout as Tab 1 but for followup_sequences. Each row displays:
+
+Client Name (linked to project)
+Company Name
+Project Name
+Status badge
+Triggered by: Auto or Manual
+A condensed timeline showing all 5 emails as small status dots in a row — green = sent, gold = scheduled, gray = pending — with a tooltip on hover showing the email subject and scheduled/sent date
+Started date
+Next email due: "Email 3 — sends in 14 days" or "Completed" if all sent
+
+Row actions:
+
+"View Project"
+"Resend" dropdown for any sent email
+"Cancel" with confirmation
+
+Filter bar:
+
+Filter by status: All / Running / Completed / Cancelled
+Filter by next email due: This Week / This Month / All
+Search by client name or company
+
+
+EMPTY STATES
+If no sequences exist yet:
+
+Welcome tab: "No welcome sequences started yet. Mark a project Active to trigger one automatically."
+Follow-up tab: "No follow-up sequences started yet. Mark a project Completed to trigger one automatically."
+
+
+QUICK ACTION — Start Sequence From Dashboard
+On both tabs, add a button in the top right: "Start Sequence" (gold)
+Clicking opens a modal:
+
+Dropdown to select a project (pulls from existing projects)
+Shows client name and email pre-filled from that project
+Toggle: Welcome Sequence or Follow-Up Sequence
+Confirm button fires the sequence immediately
+This covers any edge cases where a status change was missed or a sequence needs to be manually kicked off without navigating into the project
+
+
+TIMELINE DETAIL MODAL
+Clicking any row anywhere other than the action buttons opens a slide-over panel on the right showing:
+
+Client name, company, project name, email address
+Triggered by and start date
+Full email-by-email timeline:
+
+Email subject
+Status
+Sent timestamp or scheduled date
+"Resend" button per email
+
+
+For follow-up sequences: days elapsed since project completed and days until next email
+"Go to Project" button at the bottom of the panel
+"Cancel Sequence" button at the bottom if still running
+
+
+NOTIFICATION BADGE
+Add a small notification badge to the "Sequences" sidebar nav item that shows the count of currently running sequences across both tables combined. Updates in real time. Clears when all are completed or cancelled.
+
+GENERAL NOTES
+
+Data loads on page mount with a loading skeleton — no blank flashes
+Real-time updates via Supabase subscriptions — if an email fires while I'm on this page the status updates without a refresh
+Mobile responsive but this page is primarily a desktop view
+Match all existing portal UI patterns exactly — sidebar, topbar, card style, badge style, table style
+Timestamps displayed in local time with a friendly format: "Today at 9:41 AM" / "Yesterday at 2:15 PM" / "Mar 28 at 11:00 AM"
+Cancelled sequences are hidden by default but visible when "Cancelled" filter is selected
+If an email failed to deliver, show a red warning indicator on that email dot with a "Retry" option
+
+
+THE FULL PICTURE
+When this is built the Sequences page shows you the entire client communication pipeline in one place:
+
+New client committed today → Welcome sequence running, Email 1 sent, Email 2 scheduled for this afternoon
+Project wrapped last month → Follow-up running, 30-day check-in sent, 90-day due in 8 weeks
+Client from 11 months ago → Year anniversary email sending next week

@@ -1,0 +1,857 @@
+Build a full-stack BlackRidge QA Audit Portal — an internal tool for BlackRidge Platforms that lets authenticated users run automated quality assurance checks on any website or API URL and view the results in a live dashboard.
+
+
+
+
+Tech Stack
+
+Use the following stack:
+
+•
+Backend: Python with FastAPI
+
+•
+Frontend: React with Vite (or a single HTML/JS/CSS file if simpler in Replit)
+
+•
+Database: SQLite (via SQLAlchemy or raw sqlite3) for storing audit history
+
+•
+AI Analysis: OpenAI API (gpt-4o-mini) for generating executive summaries
+
+•
+Styling: Tailwind CSS via CDN, dark theme
+
+•
+Real-time progress: Server-Sent Events (SSE) from FastAPI to the frontend
+
+Store the OpenAI API key as a Replit Secret named OPENAI_API_KEY.
+
+
+
+
+Application Structure
+
+Plain Text
+
+
+blackridge-qa-portal/
+├── main.py                  ← FastAPI app entry point
+├── qa_runner.py             ← QA agent orchestrator
+├── agents/
+│   ├── security_agent.py    ← Security tests
+│   ├── infrastructure_agent.py ← Infrastructure tests
+│   ├── api_agent.py         ← API & integration tests
+│   └── data_flow_agent.py   ← Data flow & integrity tests
+├── database.py              ← SQLite setup and queries
+├── models.py                ← Pydantic models and schemas
+├── client/
+│   └── index.html           ← Single-page React frontend
+└── requirements.txt
+
+
+
+
+
+
+Database Schema
+
+Create a SQLite database with two tables:
+
+audits table:
+
+•
+id (INTEGER PRIMARY KEY AUTOINCREMENT)
+
+•
+user_id (TEXT) — identifier for who ran the audit
+
+•
+project_name (TEXT)
+
+•
+target_url (TEXT)
+
+•
+auth_token (TEXT, nullable)
+
+•
+status (TEXT) — "pending", "running", "completed", "failed"
+
+•
+current_agent (TEXT, nullable) — which agent is currently running
+
+•
+score (REAL, nullable)
+
+•
+grade (TEXT, nullable)
+
+•
+total_tests (INTEGER, nullable)
+
+•
+passed (INTEGER, nullable)
+
+•
+failed (INTEGER, nullable)
+
+•
+critical_count (INTEGER, nullable)
+
+•
+high_count (INTEGER, nullable)
+
+•
+medium_count (INTEGER, nullable)
+
+•
+low_count (INTEGER, nullable)
+
+•
+ai_analysis (TEXT, nullable)
+
+•
+report_json (TEXT, nullable) — JSON string of full report
+
+•
+report_markdown (TEXT, nullable)
+
+•
+error_message (TEXT, nullable)
+
+•
+created_at (DATETIME DEFAULT CURRENT_TIMESTAMP)
+
+•
+completed_at (DATETIME, nullable)
+
+audit_findings table:
+
+•
+id (INTEGER PRIMARY KEY AUTOINCREMENT)
+
+•
+audit_id (INTEGER, FK to audits.id)
+
+•
+agent (TEXT)
+
+•
+test_name (TEXT)
+
+•
+status (TEXT) — "PASSED", "FAILED", "WARNING", "SKIPPED"
+
+•
+severity (TEXT) — "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"
+
+•
+title (TEXT)
+
+•
+description (TEXT)
+
+•
+evidence (TEXT, nullable)
+
+•
+remediation (TEXT, nullable)
+
+•
+endpoint (TEXT, nullable)
+
+•
+response_code (INTEGER, nullable)
+
+•
+response_time_ms (REAL, nullable)
+
+
+
+
+Backend: FastAPI Endpoints
+
+POST /api/audits/run
+
+Accepts JSON body:
+
+JSON
+
+
+{
+  "project_name": "My Project",
+  "target_url": "https://api.example.com",
+  "auth_token": "optional_jwt_token",
+  "known_endpoints": ["/api/users", "/api/orders"]
+}
+
+
+
+•
+Creates an audit record in the database with status "pending"
+
+•
+Starts the QA runner in a background thread
+
+•
+Returns { "audit_id": 123 }
+
+GET /api/audits/{audit_id}/stream
+
+Server-Sent Events endpoint. Streams real-time progress events as the audit runs. Each event is a JSON object:
+
+JSON
+
+
+{ "type": "progress", "agent": "Security", "message": "Running SQL injection tests..." }
+{ "type": "agent_complete", "agent": "Security", "passed": 6, "failed": 3 }
+{ "type": "complete", "score": 72.5, "grade": "C", "audit_id": 123 }
+{ "type": "error", "message": "Connection refused" }
+
+
+
+GET /api/audits/{audit_id}
+
+Returns the full audit record including all findings. Response:
+
+JSON
+
+
+{
+  "id": 123,
+  "project_name": "My Project",
+  "target_url": "https://api.example.com",
+  "status": "completed",
+  "score": 72.5,
+  "grade": "C",
+  "total_tests": 46,
+  "passed": 32,
+  "failed": 8,
+  "critical_count": 2,
+  "high_count": 3,
+  "medium_count": 3,
+  "low_count": 0,
+  "ai_analysis": "...",
+  "created_at": "2026-04-03T12:00:00Z",
+  "completed_at": "2026-04-03T12:02:30Z",
+  "findings": [ ... ]
+}
+
+
+
+GET /api/audits
+
+Returns paginated list of all audits (most recent first ):
+
+JSON
+
+
+{
+  "audits": [ { "id": 123, "project_name": "...", "score": 72.5, "grade": "C", "created_at": "..." } ],
+  "total": 15
+}
+
+
+
+GET /api/audits/{audit_id}/download/json
+
+Returns the full report as a downloadable JSON file.
+
+GET /api/audits/{audit_id}/download/markdown
+
+Returns the full report as a downloadable Markdown file.
+
+
+
+
+QA Agent Modules
+
+Each agent must be a Python class that accepts a target_url and optional auth_token, runs its tests, and returns a list of findings. Each finding is a dict with: agent, test_name, status, severity, title, description, evidence, remediation, endpoint, response_code, response_time_ms.
+
+Security Agent (agents/security_agent.py)
+
+Tests to implement (each as a separate method):
+
+1.
+Security Headers — Check for X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security, Content-Security-Policy, X-XSS-Protection. Mark MISSING headers as HIGH severity findings.
+
+2.
+HTTPS Enforcement — If URL is HTTP, flag as HIGH. If HTTPS, verify it doesn't redirect to HTTP.
+
+3.
+SQL Injection — Append ' OR '1'='1, ; DROP TABLE users;--, 1 OR 1=1 to query params on known endpoints. If response contains SQL error keywords (syntax error, mysql, ORA-, pg_), flag as CRITICAL.
+
+4.
+Cross-Site Scripting (XSS) — Inject <script>alert(1)</script> and "><img src=x onerror=alert(1)> into query params. If the payload is reflected unescaped in the response body, flag as HIGH.
+
+5.
+Authentication Bypass — Try accessing /api/users, /api/admin, /api/dashboard, /api/profile without any auth token. If response is 200 (not 401/403), flag as HIGH.
+
+6.
+Sensitive Data Exposure — Scan response bodies for patterns matching API keys (sk-, AKIA, Bearer ), passwords ("password":, "secret":), or private keys (-----BEGIN). Flag as CRITICAL if found.
+
+7.
+Dangerous HTTP Methods — Send OPTIONS request and check if TRACE or TRACK is listed in Allow header. Flag as MEDIUM if present.
+
+8.
+Rate Limiting — Send 15 rapid POST requests to /api/auth/login or /api/login. If all return non-429 status, flag missing rate limiting as HIGH.
+
+9.
+CORS Misconfiguration — Send request with Origin: https://evil.blackridge-qa-test.com. If Access-Control-Allow-Origin reflects back the evil origin or is * with credentials, flag as CRITICAL.
+
+Infrastructure Agent (agents/infrastructure_agent.py )
+
+Tests to implement:
+
+1.
+API Reachability — Simple GET to base URL. If connection refused or timeout, flag as CRITICAL.
+
+2.
+Response Time — Measure response time. Flag as WARNING if >2000ms, FAILED if >5000ms.
+
+3.
+HTTPS/SSL — Verify SSL certificate is valid and not expired using Python's ssl module.
+
+4.
+CORS Headers Present — Verify CORS headers exist on API responses.
+
+5.
+Error Handling — Request a non-existent endpoint like /api/this-does-not-exist-qa-test. Verify it returns 404 (not 200 or 500). Check that the error response does not contain stack traces.
+
+6.
+Large Payload Handling — Send a POST with a 10MB body. Verify server returns 413 or similar (not a crash/500).
+
+7.
+Concurrent Load — Send 10 simultaneous GET requests. Verify all return non-500 status codes.
+
+8.
+Health Endpoint — Check if /health, /api/health, or /ping exists and returns 200.
+
+9.
+HTTP to HTTPS Redirect — If target is HTTPS, verify that the HTTP version redirects to HTTPS.
+
+API Agent (agents/api_agent.py)
+
+Tests to implement:
+
+1.
+Content-Type Headers — Verify all API responses include Content-Type: application/json.
+
+2.
+HTTP Method Enforcement — Try GET on POST-only endpoints and vice versa. Verify 405 is returned.
+
+3.
+Input Validation — Empty Body — POST to known endpoints with an empty {} body. Verify 400/422 is returned, not 500.
+
+4.
+Input Validation — Invalid Email — Submit not-an-email in email fields. Verify 400/422 is returned.
+
+5.
+Input Validation — Negative Numbers — Submit -999 for price/amount fields. Verify validation rejects it.
+
+6.
+Consistent Error Format — Check that all error responses follow a consistent structure (e.g., always have error or message field).
+
+7.
+Pagination on List Endpoints — Check that list endpoints (/api/users, /api/orders) return pagination metadata (page, total, limit).
+
+8.
+Idempotency of GET — Call the same GET endpoint 3 times. Verify identical responses.
+
+9.
+API Versioning — Check if the API uses versioning (/api/v1/, /v1/, Accept: application/vnd.api+json). Flag as LOW if no versioning detected.
+
+Data Flow Agent (agents/data_flow_agent.py)
+
+Tests to implement:
+
+1.
+Create-Read Consistency — POST to create a resource, then GET it back. Verify submitted fields match retrieved fields. Clean up after test.
+
+2.
+Data Type Integrity — POST a payload with mixed types (int, float, bool, string, null). Verify types are preserved in the response.
+
+3.
+Required Field Validation — PATCH an existing resource with null values for required fields. Verify 400/422 is returned.
+
+4.
+Update Propagation — PATCH a resource, then immediately GET it. Verify the update is visible.
+
+5.
+Delete Verification — DELETE a resource, then GET it. Verify 404 is returned.
+
+6.
+Financial Calculation — POST to an order calculation endpoint with known values. Verify subtotals, taxes, and totals are mathematically correct to 2 decimal places.
+
+7.
+Data Sanitization — POST <script>alert(1)</script> as a field value. Verify it is sanitized in the response.
+
+8.
+Timestamp Format — Check that all timestamp fields in responses use ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ).
+
+9.
+Concurrent Write Safety — Send 5 simultaneous PATCH requests to the same resource. Verify no 500 errors occur.
+
+
+
+
+QA Orchestrator (qa_runner.py)
+
+The orchestrator coordinates all four agents:
+
+Python
+
+
+class QAOrchestrator:
+    def __init__(self, audit_id, target_url, auth_token, known_endpoints, db_update_callback, progress_callback):
+        # progress_callback(event_type, data) pushes SSE events
+        # db_update_callback(audit_id, updates) writes to DB
+        pass
+
+    def run(self):
+        agents = [
+            ("Security", SecurityAgent),
+            ("Infrastructure", InfrastructureAgent),
+            ("API", APIAgent),
+            ("Data Flow", DataFlowAgent),
+        ]
+        all_findings = []
+        for agent_name, AgentClass in agents:
+            self.progress_callback("progress", {"agent": agent_name, "message": f"Running {agent_name} tests..."})
+            self.db_update_callback(self.audit_id, {"status": "running", "current_agent": agent_name})
+            agent = AgentClass(self.target_url, self.auth_token, self.known_endpoints)
+            findings = agent.run()
+            all_findings.extend(findings)
+            passed = len([f for f in findings if f["status"] == "PASSED"])
+            failed = len([f for f in findings if f["status"] == "FAILED"])
+            self.progress_callback("agent_complete", {"agent": agent_name, "passed": passed, "failed": failed})
+
+        # Calculate score
+        score = self._calculate_score(all_findings)
+        grade = self._score_to_grade(score)
+
+        # Generate AI analysis using OpenAI
+        ai_analysis = self._generate_ai_analysis(all_findings, score)
+
+        # Generate markdown report
+        report_markdown = self._generate_markdown_report(all_findings, score, grade, ai_analysis)
+
+        # Save everything to DB
+        self.db_update_callback(self.audit_id, {
+            "status": "completed",
+            "score": score,
+            "grade": grade,
+            "ai_analysis": ai_analysis,
+            "report_markdown": report_markdown,
+            "completed_at": datetime.utcnow().isoformat(),
+            ...
+        })
+
+        self.progress_callback("complete", {"score": score, "grade": grade, "audit_id": self.audit_id})
+
+
+
+Score calculation:
+
+•
+Start at 100
+
+•
+Each CRITICAL finding: -25 points
+
+•
+Each HIGH finding: -10 points
+
+•
+Each MEDIUM finding: -5 points
+
+•
+Each LOW finding: -2 points
+
+•
+Minimum score: 0
+
+Grade mapping:
+
+•
+95–100 → A+
+
+•
+90–94 → A
+
+•
+85–89 → B+
+
+•
+80–84 → B
+
+•
+70–79 → C
+
+•
+60–69 → D
+
+•
+0–59 → F
+
+AI Analysis: Call OpenAI gpt-4o-mini with a prompt summarizing the top findings and asking for a 3-paragraph executive summary covering: overall risk level, top 3 most critical issues and their business impact, and recommended immediate actions.
+
+
+
+
+Frontend: Single-Page Dashboard (client/index.html)
+
+Build a single HTML file with embedded React (via CDN), Tailwind CSS (via CDN), and vanilla JavaScript. Use a dark theme with the following color palette:
+
+•
+Background: #0f1117
+
+•
+Card background: #1a1d27
+
+•
+Border: #2a2d3a
+
+•
+Accent/primary: #f59e0b (amber — BlackRidge brand color)
+
+•
+Text primary: #f1f5f9
+
+•
+Text secondary: #94a3b8
+
+•
+Success green: #22c55e
+
+•
+Warning yellow: #eab308
+
+•
+Error red: #ef4444
+
+•
+Critical red: #dc2626
+
+Layout
+
+The page has two columns on desktop (single column on mobile):
+
+•
+Left column (40%): Audit input form + audit history list
+
+•
+Right column (60%): Live results panel
+
+Left Column — Audit Form
+
+A card with:
+
+•
+Title: "BlackRidge QA Agent" with a small shield icon
+
+•
+Subtitle: "Automated quality assurance for every build"
+
+•
+Form fields:
+
+•
+Project Name (text input, required) — e.g., "BlackRidge Ops"
+
+•
+Target URL (text input, required) — e.g., "https://api.myproject.com"
+
+•
+Auth Token (text input, optional, type="password" ) — JWT for protected endpoints
+
+•
+Known API Endpoints (textarea, optional) — one per line, e.g., /api/users
+
+
+
+•
+"Run QA Audit" button — amber background, full width, shows spinner when running
+
+•
+Below the form: a small note "Tests run: Security · Infrastructure · API · Data Flow"
+
+Left Column — Audit History
+
+Below the form, a scrollable list of past audits showing:
+
+•
+Project name and URL (truncated)
+
+•
+Score badge (color-coded: green ≥80, yellow ≥60, red <60)
+
+•
+Grade badge
+
+•
+Relative timestamp (e.g., "2 hours ago")
+
+•
+Clicking a row loads that audit's report in the right panel
+
+Right Column — Results Panel
+
+State 1: Empty (no audit running or selected)
+Show a centered placeholder with a shield icon and text: "Enter a URL and click Run QA Audit to begin"
+
+State 2: Running
+Show:
+
+•
+"Audit in progress..." header with a pulsing dot
+
+•
+Four agent progress steps in a vertical list:
+
+•
+Security Agent
+
+•
+Infrastructure Agent
+
+•
+API & Integration Agent
+
+•
+Data Flow Agent
+
+
+
+•
+Each step shows: a circle indicator (gray = pending, amber spinning = active, green checkmark = done, red X = failed), the agent name, and a status message
+
+•
+A progress bar showing overall completion (0–100%)
+
+State 3: Complete — Results
+Show the following sections in order:
+
+Score Card:
+
+•
+Large score number (e.g., "72.5") with "/100" in smaller text
+
+•
+Letter grade badge (A+/A/B+/B/C/D/F) — color coded
+
+•
+Row of 4 stat chips: Total Tests | Passed | Failed | Warnings
+
+•
+Row of severity counts: 🔴 Critical: 2 | 🟠 High: 3 | 🟡 Medium: 3 | 🔵 Low: 0
+
+AI Executive Summary:
+
+•
+Card with "AI Analysis" header and a sparkle icon
+
+•
+The full AI-generated text rendered as paragraphs
+
+Agent Breakdown:
+
+•
+4 mini cards (Security, Infrastructure, API, Data Flow) each showing: tests run, passed, failed
+
+Findings List:
+
+•
+Grouped by severity: CRITICAL → HIGH → MEDIUM → LOW → INFO
+
+•
+Each severity group has a colored header badge with count
+
+•
+Each finding is an expandable card showing:
+
+•
+Title (always visible)
+
+•
+Agent badge and status badge
+
+•
+On expand: Description, Evidence (in a code block if present), Remediation (highlighted in amber)
+
+
+
+•
+Only FAILED and WARNING findings are expanded by default; PASSED findings are collapsed
+
+Download Buttons:
+
+•
+Two buttons: "Download JSON Report" and "Download Markdown Report"
+
+•
+Clicking triggers download of the respective file from the backend
+
+
+
+
+Authentication
+
+Since this is an internal tool, implement a simple password gate instead of OAuth:
+
+•
+On page load, check localStorage for a stored qa_token
+
+•
+If not present, show a login modal with a single password field
+
+•
+The correct password is stored as a Replit Secret named QA_PORTAL_PASSWORD
+
+•
+The backend has a POST /api/auth/login endpoint that accepts { "password": "..." } and returns { "token": "...", "user_id": "user_1" } (use a simple JWT or just a random token stored in memory)
+
+•
+Store the token in localStorage and include it as Authorization: Bearer <token> on all API requests
+
+•
+Show the logged-in user's identifier in the top-right corner with a logout button
+
+
+
+
+Real-Time Progress Implementation
+
+Use Server-Sent Events (SSE):
+
+Python
+
+
+# FastAPI SSE endpoint
+from fastapi.responses import StreamingResponse
+import asyncio, json
+
+@app.get("/api/audits/{audit_id}/stream")
+async def stream_audit(audit_id: int):
+    async def event_generator():
+        while True:
+            event = await get_next_event(audit_id)  # poll from a queue
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+            if event["type"] in ["complete", "error"]:
+                break
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+
+On the frontend, use the native EventSource API:
+
+JavaScript
+
+
+const es = new EventSource(`/api/audits/${auditId}/stream`);
+es.onmessage = (e) => {
+  const event = JSON.parse(e.data);
+  if (event.type === 'progress') updateAgentStatus(event.agent, 'running', event.message);
+  if (event.type === 'agent_complete') updateAgentStatus(event.agent, 'done', `${event.passed} passed, ${event.failed} failed`);
+  if (event.type === 'complete') { es.close(); loadAuditReport(event.audit_id); }
+  if (event.type === 'error') { es.close(); showError(event.message); }
+};
+
+
+
+
+
+
+Requirements File
+
+Plain Text
+
+
+fastapi==0.115.0
+uvicorn==0.30.6
+python-multipart==0.0.9
+requests==2.32.3
+openai==1.50.0
+python-jose==3.3.0
+passlib==1.7.4
+aiofiles==23.2.1
+httpx==0.27.2
+
+
+
+
+
+
+Replit Configuration
+
+Create a .replit file:
+
+Plain Text
+
+
+run = "uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+entrypoint = "main.py"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8080"]
+deploymentTarget = "cloudrun"
+
+
+
+Serve the frontend from FastAPI:
+
+Python
+
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+app.mount("/client", StaticFiles(directory="client" ), name="client")
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("client/index.html")
+
+
+
+
+
+
+Important Notes for Replit Agent
+
+1.
+All HTTP requests in the QA agents must use requests with a timeout of timeout=10 to prevent hanging.
+
+2.
+Wrap every individual test in a try/except block — if a test throws an exception, record it as a SKIPPED finding with the error message, never crash the agent.
+
+3.
+The SSE streaming must use an asyncio.Queue per audit_id stored in a global dict. The background thread puts events into the queue; the async SSE endpoint reads from it.
+
+4.
+Use threading.Thread(target=orchestrator.run, daemon=True) to run the QA orchestrator in the background without blocking FastAPI.
+
+5.
+Store the OpenAI API key as os.environ.get("OPENAI_API_KEY"). If not set, skip AI analysis and use a rule-based summary instead.
+
+6.
+The frontend must handle the case where the SSE connection drops (network error) by polling GET /api/audits/{audit_id} every 3 seconds as a fallback.
+
+7.
+Make the UI fully responsive — it must work on mobile screens (single column layout below 768px).
+
+8.
+Add a "Copy URL" button next to each finding's endpoint field for quick access.
+
+9.
+The audit history must persist across server restarts (SQLite handles this automatically).
+
+10.
+Set Access-Control-Allow-Origin: * on all API responses during development.
+

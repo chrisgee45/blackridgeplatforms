@@ -1,0 +1,93 @@
+Before we start the build, I want to tighten the plan so we don’t drift.
+
+Please revise the plan with the following structure:
+
+1) PHASE-BY-PHASE DEFINITION OF DONE
+
+For each phase, clearly list:
+- Database tables created or modified
+- API routes created
+- UI pages/components completed
+- What I can physically click and use when the phase is done
+No partial phases. Each phase must be usable on its own.
+
+Required phase order:
+
+Phase 1: 
+- Drizzle schema finalized
+- Migrations pushed
+- Seed script complete with realistic demo data
+- Admin /admin/ops layout shell (sidebar + top command bar with Cmd+K placeholder)
+- Dark elite base theme applied
+
+Phase 2:
+- Projects list page
+- Project Command Center page
+- Stage stepper UI
+- Stage gates panel
+- Tasks panel
+- Activity timeline feed
+- Time logging panel
+- Stage change enforcement (block if required gates incomplete)
+
+Phase 3:
+- Today Cockpit dashboard
+- Overdue tasks
+- Due today tasks
+- Waiting-on-client list
+- Revenue unlockers list
+- Charts (pipeline value, workload, stalled value)
+
+Phase 4:
+- CRM pipeline Kanban board (drag/drop)
+- Lead detail page
+- Stage totals shown per column
+
+Phase 5:
+- Project Templates
+- One-click create project from template
+- Automations:
+  - Proposal → follow-up task in 2 days
+  - Waiting-on-client toggle requires blocker + schedules follow-ups (24h/72h/7d)
+  - Escalation when waiting > 7 days
+- Activity logs created for all automation actions
+
+Phase 6:
+- AI provider interface
+- Project status summary
+- Next actions generator
+- Draft client update email
+- Final UI polish pass (animations, empty states, micro-interactions)
+
+2) DATA MODEL CONFIRMATION
+
+Before running migrations, paste the full Drizzle schema outline (tables + relationships) and confirm it supports:
+
+- Stage gates enforcement
+- Waiting-on-client blocker + blockerSince
+- Follow-up scheduling
+- Templates generating milestones/tasks/gates
+- Activity logging on every action
+- Time logs tied to profitability calculations
+- Global search capability (including indexing strategy)
+
+3) NON-NEGOTIABLE ACCEPTANCE CRITERIA
+
+- Stage changes return 409 with blocked gate titles if incomplete
+- Waiting-on-client requires blocker and sets blockerSince timestamp
+- Follow-ups auto-scheduled at 24h, 72h, 7d
+- Every create/update/complete/stage change writes ActivityLog
+- Project shows total hours, effective hourly rate, and scope creep meter
+- Seed script creates realistic data so /admin/ops looks like a live SaaS immediately
+
+4) UI EXPECTATION
+
+The UI must be screenshot-ready by the end of Phase 2:
+- Dark elite theme
+- Glass-style cards
+- Subtle glow accents
+- Sidebar navigation
+- Cmd+K command bar
+- Professional SaaS feel (not basic admin UI)
+
+Once you revise the plan with these details and paste the updated structured plan + schema outline, we will begin Phase 1.

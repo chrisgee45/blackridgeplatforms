@@ -1,0 +1,51 @@
+You are building an admin-only “BlackRidge Ops” system inside an existing Next.js admin portal. This is a state-of-the-art project management + CRM system with premium UI (dark elite, modern, animated, marketing-worthy). Must include:
+
+Core modules (MVP + premium):
+1) Workflow engine with stages + gates (cannot advance stages without requirements)
+2) Project templates that generate milestones/tasks/checklists instantly
+3) “Today Cockpit” dashboard (Overdue, Due Today, Waiting on Client, Revenue Unlockers)
+4) Waiting-on-Client lane with required “blocker” field + auto follow-up schedule
+5) Time tracking tied to profitability (effective hourly rate, scope creep meter)
+6) Activity timeline / audit trail for everything (stage changes, notes, tasks, time logs, files)
+7) Global search across clients, contacts, projects, tasks, notes, domains
+8) Automations (proposal follow-up, paid → create project, waiting too long → escalate)
+9) Files + credentials (safe fields; do NOT store plaintext passwords, use encrypted/secrets table if needed)
+10) AI helper that creates: project status summary + drafts client update email + flags stalled projects (use provider interface; no hard dependency)
+11) Single project “command center” page shows everything
+12) Ops dashboard: work + pipeline + revenue in flight + profit leaderboard
+
+Tech requirements:
+- Next.js App Router, TypeScript
+- Prisma + Postgres
+- Tailwind + shadcn/ui
+- Framer Motion for subtle animations
+- Recharts for dashboard charts
+- TanStack Table for data grids
+- Use server actions where possible; otherwise route handlers.
+- Implement RBAC as “admin-only for now” but structure it for future roles.
+- Seed script with sample data so UI looks impressive immediately.
+
+UI/Brand:
+- Dark elite theme, glassy cards, gradients, subtle glow, crisp typography.
+- The admin app must look like a premium SaaS (Linear/Notion-level polish).
+- Include a left sidebar nav + top command bar with global search.
+
+Deliverables:
+- Prisma schema
+- Folder structure + routes
+- Core pages implemented: /admin/ops (dashboard), /admin/crm (pipeline), /admin/leads/[id], /admin/projects, /admin/projects/[id], /admin/tasks, /admin/templates, /admin/search
+- Automations (cron / scheduled jobs) for follow-ups + escalations
+- Activity logging middleware
+- Time tracking and profitability calculations
+- Basic file upload storage hook (local or S3-ready adapter)
+- AI endpoints with provider interface and safe guards
+
+Acceptance criteria:
+- Full CRUD for Companies/Contacts/Leads/Deals/Projects/Tasks/Templates
+- Stage changes enforce gates; gates visible in UI
+- Waiting-on-client requires blocker + follow-up schedule created automatically
+- Project created from template in one click (and on deal Won)
+- “Today” view shows overdue/due today/waiting/client blockers/revenue unlockers
+- Every action writes ActivityLog and shows in timeline
+- Global search works and is fast
+- UI is beautiful and screenshot-ready

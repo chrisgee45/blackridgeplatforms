@@ -1,0 +1,178 @@
+I need you to build a fully autonomous email conversation system in the BlackRidge outreach portal. The AI agent handles every single reply from a prospect automatically — no manual input required — until the prospect agrees to receive a proposal or preview. At that point it flags me to take over.
+Here is everything that needs to be built:
+
+PART 1 — DATABASE
+Add these columns to the outreach_leads table if they do not already exist:
+sqlALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS conversation_thread jsonb DEFAULT '[]';
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS awaiting_handoff boolean DEFAULT false;
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS handoff_reason text;
+ALTER TABLE outreach_leads ADD COLUMN IF NOT EXISTS auto_reply_enabled boolean DEFAULT true;
+The conversation_thread column stores the full email history as a JSON array so the agent always has context for every reply it writes.
+
+PART 2 — CONVERSATION THREAD TRACKING
+Every time an email is sent or received, append it to the lead's conversation_thread. The format for each message is:
+typescript{
+  role: 'chris' | 'prospect',
+  subject: string,
+  body: string,
+  sentAt: string // ISO timestamp
+}
+```
+
+When a new outreach email is sent, append it to the thread as `role: 'chris'`.
+When an inbound reply is received via webhook, append it as `role: 'prospect'`.
+
+---
+
+**PART 3 — RESEND INBOUND WEBHOOK**
+
+Create a new POST route at `/api/outreach/inbound-reply`.
+
+Resend will send inbound emails to this endpoint. The payload from Resend includes:
+- `from` — the prospect's email address
+- `subject` — the reply subject
+- `text` — the plain text body of their reply
+
+When this webhook fires:
+
+1. Find the matching lead in `outreach_leads` by matching `from` email to the lead's email field
+2. If no match found, log it and return 200
+3. If `auto_reply_enabled` is false on this lead, log it and return 200 — do not reply
+4. If `awaiting_handoff` is true on this lead, send me a notification email and return 200 — do not auto reply
+5. Append their reply to `conversation_thread` as `role: 'prospect'`
+6. Call the AI reply handler (see Part 4)
+7. Send the AI reply via Resend
+8. Append the AI reply to `conversation_thread` as `role: 'chris'`
+9. Update `pipeline_status` with whatever the AI returns
+10. If the AI returns `handoff: true`, set `awaiting_handoff = true` and `auto_reply_enabled = false` on the lead, then send me a notification email at chris@blackridgeplatforms.com
+
+---
+
+**PART 4 — AI REPLY HANDLER FUNCTION**
+
+Create a function called `generateAutoReply` that takes the lead object and returns the AI response. Call Claude with this exact system prompt:
+```
+You are Chris Gee, Founder of BlackRidge Platforms in Edmond, Oklahoma.
+You handle all email replies in first person as Chris. You are not an
+assistant. You are Chris.
+
+BLACKRIDGE BUILDS: custom websites, client portals, CRM, project
+management, accounting, invoicing, AI tools — all built custom for
+that specific business. Not a template. Not WordPress. Not a platform
+someone else controls. The client owns what we build.
+
+WHAT YOU NEVER BRING UP IN EMAIL:
+- Pricing, monthly fees, retainers, or cost of any kind
+- Contracts or terms
+- Timelines or how long a build takes
+- Technical details about how it is built
+Those conversations happen in a proposal. Never in email.
+
+VOICE: Direct. Conversational. Short sentences. No em dashes. No filler
+words. Write like a real person not a marketer. First person as Chris.
+Match the energy and length of what the prospect wrote. If they wrote
+two sentences you write two or three sentences. Never write an essay.
+
+GOAL: Move the conversation toward them saying yes to receiving a
+preview or proposal. That is the only goal. Once they say yes flag
+for handoff so Chris can take over and send the actual proposal.
+
+HANDOFF TRIGGERS — set handoff to true when:
+- They say yes to seeing a preview or proposal
+- They ask to get on a call or schedule something
+- They are clearly ready to move forward
+
+HOW TO HANDLE EACH REPLY TYPE:
+
+INTERESTED — excited or clearly want to know more
+Reply with brief genuine energy. Ask one specific question about
+their business to make the proposal more targeted. End with
+confirming you will put something together for them.
+
+QUESTION — asking how it works, what it includes, process questions
+Answer directly in one or two sentences. Do not over explain.
+Redirect to the proposal as the place where they will see everything.
+"I can lay all of that out in a quick preview if you want to take a look."
+
+SOFT INTEREST — positive but not committing
+Give them one specific thing about their business you noticed.
+Ask one question to keep them talking.
+
+NOT NOW — too busy or bad timing
+Completely respect it. Zero pushback. Ask if you can follow up
+in 30 days. That is it.
+
+NOT INTERESTED — clear no
+Thank them and mean it. Something like "Appreciate you taking the
+time to respond, most people do not. If anything changes you know
+where to find me." Leave the door open permanently. No guilt.
+
+PRICE ASK — they ask what it costs
+Never give a number. Say something like "Every build is different
+so I would rather understand what you actually need first. Let me
+put something quick together and you can tell me what you think."
+
+Return ONLY valid JSON:
+{
+  "classification": "INTERESTED|QUESTION|SOFT_INTEREST|NOT_NOW|NOT_INTERESTED|PRICE_ASK",
+  "reply": "reply body with \n for line breaks",
+  "handoff": true or false,
+  "handoffReason": "why Chris needs to take over, or null",
+  "pipelineStatus": "Contacted|Reply Received|Proposal Requested|Not Interested|Paused"
+}
+Pass the full conversation thread to Claude as the user message in this format:
+typescriptconst threadSummary = lead.conversation_thread
+  .map(m => `${m.role === 'chris' ? 'CHRIS' : 'PROSPECT'} (${m.sentAt}):\n${m.body}`)
+  .join('\n\n---\n\n');
+
+const userMessage = `Here is the full conversation so far:\n\n${threadSummary}\n\nNow handle the prospect's latest reply and write the next response.`;
+```
+
+---
+
+**PART 5 — HANDOFF NOTIFICATION EMAIL**
+
+When `handoff` is true, send me a notification email via Resend:
+```
+To: chris@blackridgeplatforms.com
+From: agent@blackridgeplatforms.com
+Subject: Action Required — [Company Name] is ready for a proposal
+
+[Company Name] has agreed to receive a proposal.
+
+Here is the full conversation:
+[paste full thread]
+
+Log in to the portal to take over and send the proposal.
+```
+
+---
+
+**PART 6 — PORTAL UI UPDATES**
+
+In the outreach leads list view add:
+
+- A gold badge that says **HANDOFF NEEDED** on any lead where `awaiting_handoff` is true — make it stand out so I see it immediately when I log in
+- A toggle on each lead detail view labeled **Auto Reply** that controls the `auto_reply_enabled` field — so I can pause the agent on any lead at any time
+- A **Conversation Thread** tab on each lead detail view that shows the full email history in chronological order — showing who sent what and when
+
+---
+
+**PART 7 — RESEND INBOUND SETUP NOTE**
+
+Add a comment in the code above the webhook route that says:
+```
+// To enable inbound email replies:
+// 1. Go to resend.com and enable Inbound Email
+// 2. Set the inbound webhook URL to: https://[your-replit-url]/api/outreach/inbound-reply
+// 3. Configure your MX records as Resend instructs
+// 4. Resend will forward all replies to chris@blackridgeplatforms.com to this endpoint
+
+After all changes are made run the dev server and confirm:
+
+The webhook route exists at /api/outreach/inbound-reply
+The conversation thread column exists on outreach_leads
+The HANDOFF NEEDED badge shows in the UI on test leads where awaiting_handoff is true
+The Auto Reply toggle works
+
+Do not modify any existing campaign infrastructure, schema tables, or Resend send logic. Only add what is described above.

@@ -1,0 +1,182 @@
+TASK: Build an AI-powered Lead Intake + Email Campaign Engine inside BlackRidge Back Office (internal admin only).
+
+GOAL FLOW:
+CSV Upload / Manual Add Lead → Save to Supabase → AI analyzes (OpenAI) → store AI score/value/pitch/opening line/bullets → auto-enroll in Campaign A → Resend sends timed email sequence (0/3/6/10 days) → track email events → stop campaign if lead becomes Engaged/Won/Lost/DNC → “Convert to Project” button creates project and marks lead converted.
+
+TECH STACK:
+Next.js app (existing Back Office), Supabase DB, Resend for outbound email, OpenAI for personalization, simple jobs queue in DB + cron/interval runner.
+
+1) SUPABASE: CREATE TABLES
+Create these tables in Supabase with columns exactly:
+
+TABLE: leads
+- id uuid primary key default gen_random_uuid()
+- business_name text not null
+- website_url text not null
+- industry text
+- contact_name text
+- email text not null
+- phone text
+- location text
+- notes text
+- status text not null default 'new'  -- new, enrolled, engaged, won, lost, do_not_contact
+- ai_score int
+- value_estimate int
+- pitch_angle text
+- opening_line text
+- ai_audit_summary text
+- ai_bullets jsonb  -- array of 3 strings
+- created_at timestamptz not null default now()
+
+TABLE: campaigns
+- id uuid primary key default gen_random_uuid()
+- name text not null
+- is_active boolean not null default true
+- created_at timestamptz not null default now()
+
+TABLE: campaign_steps
+- id uuid primary key default gen_random_uuid()
+- campaign_id uuid not null references campaigns(id) on delete cascade
+- step_number int not null
+- delay_days int not null
+- template_subject text not null
+- template_body text not null
+- created_at timestamptz not null default now()
+
+TABLE: lead_campaign_enrollments
+- id uuid primary key default gen_random_uuid()
+- lead_id uuid not null references leads(id) on delete cascade
+- campaign_id uuid not null references campaigns(id) on delete cascade
+- current_step int not null default 0
+- enrolled_at timestamptz not null default now()
+- completed_at timestamptz
+- stopped_at timestamptz
+- stop_reason text
+
+TABLE: email_events
+- id uuid primary key default gen_random_uuid()
+- lead_id uuid not null references leads(id) on delete cascade
+- campaign_id uuid not null references campaigns(id) on delete cascade
+- step_number int not null
+- resend_message_id text
+- to_email text not null
+- subject text not null
+- body text not null
+- status text not null  -- queued, sent, delivered, opened, clicked, bounced, failed
+- sent_at timestamptz
+- last_event_at timestamptz
+- created_at timestamptz not null default now()
+
+TABLE: jobs
+- id uuid primary key default gen_random_uuid()
+- type text not null  -- analyze_lead, send_campaign_step
+- payload jsonb not null
+- run_at timestamptz not null
+- status text not null default 'queued'  -- queued, running, done, failed
+- error text
+- created_at timestamptz not null default now()
+
+2) SEED DATA: CAMPAIGN A + STEPS
+Create one campaign:
+name = "Campaign A - Website Audit"
+
+Create 4 steps for that campaign:
+
+STEP 1: step_number=1 delay_days=0
+subject:
+"Quick note about {{business_name}}’s website"
+body:
+"Hi {{contact_name_or_there}},\n\n{{opening_line}}\n\nI run BlackRidge Platforms here in Oklahoma. We rebuild sites for businesses that need something cleaner, faster, and built to convert.\n\nIf you want, I can record a quick 2–3 minute walkthrough of what I’d change on {{website_url}} (no charge). Want me to?\n\n– Chris\nBlackRidge Platforms"
+
+STEP 2: step_number=2 delay_days=3
+subject:
+"Example of what we improved for a client"
+body:
+"Hi {{contact_name_or_there}},\n\nJust sharing a quick example. We recently finished a rebuild + SEO cleanup for a client and it unlocked better search visibility, faster load times, and a more premium look.\n\nIf you’re open to it, I can do the same style breakdown for {{business_name}}. The big wins I see are:\n- {{ai_bullets_1}}\n- {{ai_bullets_2}}\n- {{ai_bullets_3}}\n\nWant me to send that?\n– Chris"
+
+STEP 3: step_number=3 delay_days=6
+subject:
+"Want a simple plan to upgrade {{business_name}}?"
+body:
+"Hi {{contact_name_or_there}},\n\nIf you’re thinking about upgrading {{business_name}}’s site this year, I can map out a simple 3-step plan:\n1) Fix the speed + mobile experience\n2) Tighten messaging so visitors convert\n3) Add a portal or lead system if it makes sense\n\nNo pressure. Want me to put that together for you?\n– Chris"
+
+STEP 4: step_number=4 delay_days=10
+subject:
+"Should I close this out?"
+body:
+"Hi {{contact_name_or_there}},\n\nI don’t want to bug you. If website improvements aren’t a priority right now, totally fine and I’ll close this out.\n\nIf you do want a quick audit video or quote, just reply “audit” and I’ll send it over.\n– Chris"
+
+3) OPENAI ANALYSIS JOB
+When a lead is created (manual add or CSV upload), create a jobs row:
+type="analyze_lead"
+payload={ lead_id }
+run_at=now()
+
+Implement analyzer:
+Input: business_name, website_url, industry, notes
+Call OpenAI and REQUIRE strict JSON output:
+{
+  "opening_line": "1-2 sentences referencing their website issue",
+  "ai_audit_summary": "short paragraph",
+  "pitch_angle": "one line",
+  "ai_score": 1-100,
+  "value_estimate": integer,
+  "ai_bullets": ["bullet1","bullet2","bullet3"]
+}
+Store results into leads.opening_line, leads.ai_audit_summary, leads.pitch_angle, leads.ai_score, leads.value_estimate, leads.ai_bullets
+
+If OpenAI fails, still set opening_line to a safe generic line and ai_bullets to 3 generic improvements.
+
+4) AUTO-ENROLL + SCHEDULE EMAILS
+On lead creation:
+- create lead_campaign_enrollments row for Campaign A
+- create job type="send_campaign_step" for step 1 run_at=now()
+
+Send job logic:
+- load lead + enrollment + campaign step
+- if lead.status in ('engaged','won','lost','do_not_contact') OR enrollment.stopped_at not null: do nothing, mark job done
+- render subject/body by replacing placeholders:
+  {{business_name}}, {{website_url}}
+  {{contact_name_or_there}} -> contact_name if exists else "there"
+  {{opening_line}} -> leads.opening_line
+  {{ai_bullets_1/2/3}} -> leads.ai_bullets[0/1/2]
+- send email via Resend using FROM_NAME="Chris | BlackRidge Platforms" and FROM_EMAIL env var
+- write email_events row with status sent/failed and store resend_message_id
+- update enrollment.current_step
+- schedule next step by inserting new job with run_at = enrolled_at + delay_days of next step (or now + remaining days based on enrolled_at)
+- when last step sent, set enrollment.completed_at
+
+5) JOB RUNNER
+Implement a server-side job runner that checks jobs where:
+status='queued' AND run_at <= now()
+Process in order, mark running/done/failed.
+Run this on an interval (server route triggered by cron) OR a background server action if the platform supports it.
+
+6) RESEND WEBHOOK (OPTIONAL BUT NICE)
+Create /api/resend/webhook to accept event payloads and update email_events.status for delivered/opened/clicked/bounced using resend_message_id.
+
+7) UI: LEADS PAGE IN BACK OFFICE
+Create /admin/leads page:
+- Table: business_name, website_url, industry, ai_score, value_estimate, status, current campaign step, last email event, next scheduled job time
+- Buttons: View, Stop Campaign, Mark Engaged, Mark Won, Mark Lost, Do Not Contact, Convert to Project
+- Drawer/Detail: AI audit summary, pitch angle, bullets, notes, email history timeline, manual note field.
+
+CSV Upload:
+- Accept CSV with headers: business_name, website_url, industry, contact_name, email, phone, location, notes
+- For each row: create lead then trigger analyze + enroll + schedule
+
+8) CONVERT TO PROJECT
+Add button "Convert to Project" that creates a project record in existing PM system with:
+business_name, contact info, website_url, ai_audit_summary, value_estimate, notes
+Then set lead.status='won' (or 'converted') and stop campaign.
+
+9) ENV VARS REQUIRED
+OPENAI_API_KEY
+RESEND_API_KEY
+FROM_EMAIL (example: chris@blackridgeplatforms.com)
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY (for server actions)
+FROM_NAME default: "Chris | BlackRidge Platforms"
+
+DELIVERABLE:
+Fully working leads module with AI personalization + Campaign A automated sending + UI management inside Back Office.

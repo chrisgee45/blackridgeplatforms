@@ -1,0 +1,97 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchLatestWeeklyOps, generateWeeklyOps } from "../../api/aiOps";
+
+export default function AIOpsPage() {
+  const qc = useQueryClient();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["ai-report", "weekly_ops"],
+    queryFn: fetchLatestWeeklyOps,
+  });
+
+  const gen = useMutation({
+    mutationFn: generateWeeklyOps,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-report", "weekly_ops"] }),
+  });
+
+  const report = data?.report;
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">AI Ops Dashboard</h1>
+          <p className="text-sm opacity-80">Weekly operations intelligence for internal use.</p>
+        </div>
+
+        <button
+          className="px-4 py-2 rounded-md border hover:opacity-90"
+          onClick={() => gen.mutate()}
+          disabled={gen.isPending}
+        >
+          {gen.isPending ? "Generating..." : "Generate Weekly AI Report"}
+        </button>
+      </div>
+
+      {isLoading && <div className="opacity-80">Loading latest report…</div>}
+      {error && <div className="text-red-400">Failed to load report.</div>}
+
+      {!report && !isLoading && (
+        <div className="rounded-lg border p-4 opacity-90">
+          No report yet. Click “Generate Weekly AI Report”.
+        </div>
+      )}
+
+      {report && (
+        <div className="grid gap-4">
+          <div className="rounded-lg border p-4">
+            <div className="text-sm opacity-80">Health Score</div>
+            <div className="text-3xl font-bold">{report.payload.summary.health_score}</div>
+            <div className="mt-2 opacity-90">{report.payload.summary.overview}</div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="text-lg font-semibold">Churn Risk</div>
+            <div className="mt-3 space-y-2">
+              {report.payload.churn_risk?.length ? (
+                report.payload.churn_risk.map((u: any) => (
+                  <div key={u.user_id} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{u.user_id}</div>
+                      <div className="text-sm opacity-80">{u.urgency}</div>
+                    </div>
+                    <div className="text-sm opacity-90 mt-1">{u.reason}</div>
+                    <div className="text-sm opacity-80 mt-1">
+                      Recommended: {u.recommended_action}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="opacity-80">No churn risk users flagged.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="text-lg font-semibold">Recommended Actions</div>
+            <div className="mt-3 space-y-2">
+              {report.payload.recommended_actions?.map((a: any, idx: number) => (
+                <div key={idx} className="rounded-md border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{a.title}</div>
+                    <div className="text-sm opacity-80">{a.impact}</div>
+                  </div>
+                  <div className="text-sm opacity-90 mt-1">{a.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-xs opacity-60">
+            Generated at: {new Date(report.generatedAt).toLocaleString()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

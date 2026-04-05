@@ -1,0 +1,150 @@
+
+Add an automated post-project follow-up email sequence to the BlackRidge Platforms portal that triggers when a project is marked Completed. This sequence runs over 12 months and is designed to retain clients, generate referrals, and create repeat business. It follows the same pattern as the welcome sequence — automatic trigger on status change plus a manual trigger for existing completed projects.
+
+SUPABASE TABLE — create if it doesn't exist
+followup_sequences
+
+id (uuid, primary key)
+project_id (uuid, foreign key → projects.id)
+client_name (text)
+client_email (text)
+company_name (text)
+status (text) — "running" | "completed" | "cancelled"
+email_1_sent_at (timestamp) — thank you + referral
+email_2_sent_at (timestamp) — 30 day check in
+email_3_sent_at (timestamp) — 90 day touch base
+email_4_sent_at (timestamp) — 6 month check in
+email_5_sent_at (timestamp) — 1 year anniversary
+triggered_by (text) — "auto" | "manual"
+created_at (timestamp)
+
+
+TRIGGER 1 — AUTOMATIC
+When a project's status is changed to "Completed":
+
+Check if a follow-up sequence already exists for this project — if running or completed, do nothing
+If none exists, create a row in followup_sequences and start the sequence immediately
+Toast: "Follow-up sequence started for [Client Name]"
+
+
+TRIGGER 2 — MANUAL
+Inside the project detail view, inside the existing "Sequence" tab, add a second section below the welcome sequence called "Follow-Up Sequence".
+Before sequence starts:
+
+Label: "Post-Project Follow-Up"
+Description: "Start the follow-up series to thank your client, request referrals, and stay top of mind over the next 12 months."
+Button: "Start Follow-Up Sequence" (gold)
+Confirmation modal pre-filled with client name, email, company — editable
+On confirm: fire Email 1 immediately, schedule the rest, toast: "Follow-up sequence started — thank you email sent to [email]"
+
+While running:
+
+Same timeline view as the welcome sequence
+Each email shows: subject, status (sent / scheduled / pending), sent timestamp or scheduled date
+"Cancel Sequence" button with confirmation
+"Resend" option on any sent email
+
+Completed:
+
+All five checkmarks green
+Final sent timestamp
+"Restart Sequence" option if needed
+
+
+EMAIL SEQUENCE AND TIMING
+Email 1 — Send immediately when project is marked Completed
+Subject: "It's been a pleasure."
+
+Hey [First Name],
+That's a wrap.
+I just wanted to take a second to say thank you. Not just for the work — for trusting me with your business. That's not something I take lightly.
+You brought real commitment to this project and it shows in what we built together. I'm proud of it and I hope you are too.
+Now — I have one ask.
+If working with BlackRidge has been a good experience, the best thing you can do is tell someone. I don't run ads. I don't cold call. I grow by doing great work and letting clients like you carry the word.
+If you know a business owner who could use what we built for you — a great website, a backend portal, tools that actually make running a business easier — send them my way. A simple intro email or a text with my name is all it takes.
+I take care of everyone you send me. That's a promise.
+Thank you again. Genuinely.
+Chris
+Founder, BlackRidge Platforms
+
+
+Email 2 — Send 30 days after Email 1
+Subject: "30 days in — how's everything running?"
+
+Hey [First Name],
+It's been about a month since we wrapped up. Just wanted to check in.
+How's everything running? Are you getting the traction you were hoping for? Anything feel off or need a tweak?
+Sometimes things come up after you've been living with something for a few weeks — a page you want to adjust, a feature you wish you had, something that just isn't quite right. That's normal. And it's fixable.
+Hit reply and let me know how things are going. Even if everything's great — I want to hear it.
+Chris
+BlackRidge Platforms
+
+
+Email 3 — Send 90 days after Email 1
+Subject: "Three months later — still thinking about you."
+
+Hey [First Name],
+Three months. Figured I'd check in.
+By now you've had real time with what we built. You know what's working and what's not. You've probably got a wish list forming — things you'd add, things you'd change, ideas that have come up as your business has grown.
+I'd love to hear where things stand.
+Whether it's a small update, a new page, a feature you've been thinking about, or a full phase two — I'm here when you're ready. No pressure. Just want you to know the door's always open.
+What's been the biggest win since we launched?
+Chris
+BlackRidge Platforms
+
+
+Email 4 — Send 180 days after Email 1
+Subject: "Six months — anything new on the horizon?"
+
+Hey [First Name],
+Half a year already. Time moves fast when you're building something.
+I've been keeping an eye on what you're doing and I like what I see. But I always wonder — what's next? What are you working toward that you haven't tackled yet?
+A lot changes in six months. New goals. New challenges. New things you need that you didn't need before.
+If there's anything on your radar — a new service you're launching, a part of your business that still feels clunky, something you wish your site or platform could do — let's talk about it. Even if it's just an idea right now.
+I'd rather you think of me first than figure it out alone.
+What's on your plate right now?
+Chris
+BlackRidge Platforms
+
+
+Email 5 — Send 365 days after Email 1
+Subject: "One year. Look how far you've come."
+
+Hey [First Name],
+A year ago you made a decision to invest in your business. To build something real. To stop duct-taping things together and do it right.
+I hope it's paid off the way you deserved.
+A lot can change in a year. New clients. New revenue. New confidence in how your business shows up in the world. I'd love to hear what's shifted for you since we built this thing together.
+And if you're at a place now where it's time to take the next step — a new feature, a redesign, a second location, a new vertical — I'm ready to go again whenever you are.
+Here's to year two.
+Chris
+Founder, BlackRidge Platforms
+P.S. — If you know someone who's ready to make the same move you made a year ago, send them my way. The best referral you can give someone is a shortcut to a decision they were already going to make.
+
+
+EMAIL STYLING — all five emails
+
+Black background
+BlackRidge logo centered at top
+White body text
+Gold (#C9A840) accents and any CTA buttons
+Footer: "BlackRidge Platforms | Edmond, Oklahoma"
+Clean and minimal — these feel personal, not promotional
+
+
+IMPORTANT LOGIC NOTES
+
+Scheduled emails must survive server restarts — use Supabase Edge Functions with a cron job that checks for due emails every hour and fires any that are past their scheduled time
+Store the scheduled send time for each email in the followup_sequences row so the Sequence tab can display "Scheduled for [date]" on pending emails
+If a project is reopened or reactivated after being marked complete, do NOT cancel the follow-up sequence — it should keep running
+Only one follow-up sequence per project — manual trigger shows "Restart" if one already exists
+All send attempts logged with success or failure status visible in the Sequence tab
+Existing completed projects: manual trigger only, no auto-trigger on deploy
+
+
+SEQUENCE TAB — FULL PICTURE
+The Sequence tab inside each project now shows two sections stacked:
+
+Welcome Sequence — 3 emails, same-day, fires on Active
+Follow-Up Sequence — 5 emails, 12 months, fires on Completed
+
+Both sections follow the same timeline UI. At a glance you can see exactly where every client stands in their journey with BlackRidge — from the day they commit to a full year after you deliver.

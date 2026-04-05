@@ -1,0 +1,114 @@
+BUILD TICKET: Outreach Engine Module
+
+Route / Location
+- Build an Outreach Engine module accessible at: /admin/ops/outreach
+- This is internal admin only (no client access)
+
+Core Features
+
+1) Lead Intake
+- UI supports:
+  A) Manual lead add form
+  B) Bulk CSV upload
+- Fields: business_name, website_url, industry, contact_name, email, phone, location, notes
+- On lead create/import:
+  - Save lead to DB
+  - Queue AI analysis job automatically (no user action required)
+
+2) AI-Powered Analysis (OpenAI)
+- For each new lead, run OpenAI analysis and store results on the lead:
+  - ai_score (0-100)
+  - value_estimate (integer $)
+  - pitch_angle (string)
+  - opening_line (string)
+  - improvement_recommendations (array, min 3 items)
+- Require strict JSON response from OpenAI and validate it
+- If OpenAI fails, store safe defaults and continue (do not block enrollment)
+
+3) Automated Email Campaigns (Campaign A)
+- Auto-enroll every new lead into a 4-step email campaign:
+  - Step 1 delay: 0 days (send immediately after analysis OR after a short fallback timeout)
+  - Step 2 delay: 3 days
+  - Step 3 delay: 6 days
+  - Step 4 delay: 10 days
+- Email sending uses Resend
+- Templates are hybrid: structured copy + AI personalization via merge tags
+- Merge tags supported:
+  {{business_name}}, {{website_url}}, {{industry}}, {{contact_name_or_there}},
+  {{opening_line}}, {{pitch_angle}},
+  {{improve_1}}, {{improve_2}}, {{improve_3}}
+- Store the fully rendered subject/body in email history for auditability
+
+4) Smart Status Management
+- Lead status values: new, enrolled, engaged, won, lost, do_not_contact, converted
+- Campaign must automatically STOP (no further sends) when status changes to:
+  engaged, won, lost, do_not_contact, converted
+- UI controls to set status quickly + stop/resume (resume only if not in stop statuses)
+
+5) Email Event Tracking (Resend Webhook)
+- Implement POST endpoint: /api/webhooks/resend
+- Capture and persist events:
+  delivered, opened, clicked, bounced, failed
+- Update email event rows using resend_message_id
+- Show event history in lead detail drawer and aggregate metrics for dashboard
+
+6) Convert to Project
+- Add button: “Convert to Project”
+- One click creates:
+  - Company record (if your Ops system has companies)
+  - Contact record
+  - Ops project record
+- Pre-fill project with lead + AI summary
+- Set lead.status = converted and stop campaign immediately
+
+7) Full Dashboard UI (/admin/ops/outreach)
+- Top stats cards:
+  - New leads (last 7 / 30 days)
+  - Enrolled
+  - Engaged
+  - Emails sent
+  - Open rate
+  - Click rate
+  - Bounces
+  - Estimated pipeline value (sum value_estimate for new/enrolled/engaged)
+- Main lead table:
+  - Search + filters (status, industry, score range, date range)
+  - Sort by score/value/created_at
+  - Columns: business_name, website_url, industry, ai_score, value_estimate, status, campaign_step, last_activity, next_send_at
+- Detail drawer:
+  - AI analysis (opening line, pitch angle, recommendations)
+  - Email history timeline (rendered content + events)
+  - Notes + quick actions (status buttons, stop campaign, convert)
+
+Implementation Details (Recommended Approach)
+
+A) Data Model
+- Use tables: leads, campaigns, campaign_steps, lead_campaign_enrollments, email_events, jobs
+- Jobs table drives AI analysis + email sending (queue/runner pattern)
+
+B) Job Runner
+- Create a server-side job runner that processes jobs where run_at <= now and status=queued
+- Jobs types:
+  - analyze_lead
+  - send_campaign_step
+- Ensure email jobs check lead status and enrollment stop flags before sending
+
+C) Timing Rule
+- Preferred: run Step 1 after AI analysis is completed
+- Fallback: if analysis takes too long/fails, Step 1 can send with defaults, but still save analysis when it completes
+
+D) Environment Variables
+- OPENAI_API_KEY
+- RESEND_API_KEY
+- FROM_EMAIL
+- FROM_NAME = "Chris | BlackRidge Platforms"
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+
+Optional Hardening (for later, do NOT block MVP)
+- Webhook signature validation
+- Single-instance job runner enforcement for production
+- Job failure monitoring + alerting (email/slack)
+
+Deliverable
+- A working Outreach Engine at /admin/ops/outreach with lead intake, AI analysis, automated Campaign A via Resend, webhook event tracking, status controls, conversion to Ops project, and full dashboard UI.

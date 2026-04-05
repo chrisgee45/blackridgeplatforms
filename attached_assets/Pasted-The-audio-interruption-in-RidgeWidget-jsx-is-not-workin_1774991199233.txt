@@ -1,0 +1,50 @@
+The audio interruption in RidgeWidget.jsx is not working. The current 
+approach is too passive. Replace the entire audio and mic system with 
+this more aggressive approach:
+
+1. Create a single global audio element at the top of the component 
+   using a ref:
+   const audioRef = useRef(new Audio());
+   
+   Never create new Audio() objects — always reuse this single instance 
+   by setting audioRef.current.src and calling play/pause on it directly.
+
+2. Create a stopRidge() function that does ALL of this synchronously 
+   in one call with no await:
+   - audioRef.current.pause()
+   - audioRef.current.src = ''
+   - window.speechSynthesis?.cancel()
+   - clearInterval(waveTimerRef.current)
+   - if recognitionRef.current exists call recognitionRef.current.abort()
+   - setSpeaking(false)
+   - setListening(false)
+   - setWaveH(Array(18).fill(4))
+
+3. The mic button onClick should call stopRidge() first synchronously, 
+   then immediately call recognition.start() with a 50ms setTimeout — 
+   no conditions, no checks, just stop everything then listen.
+
+4. Add a global click handler on the RIDGE panel itself — clicking 
+   anywhere on the panel while RIDGE is speaking calls stopRidge() 
+   and starts listening immediately.
+
+5. Add this to the component:
+   useEffect(() => {
+     const handleSpace = (e) => {
+       if (e.code === 'Space' && open) {
+         e.preventDefault();
+         stopRidge();
+         setTimeout(() => startListening(), 50);
+       }
+     };
+     window.addEventListener('keydown', handleSpace);
+     return () => window.removeEventListener('keydown', handleSpace);
+   }, [open]);
+
+6. Make startListening() a standalone function that creates a fresh 
+   SpeechRecognition instance, sets lang to en-US, continuous to false, 
+   interimResults to false, wires up all handlers, and calls start() — 
+   called only after stopRidge() has already run.
+
+7. Remove any code that checks if audio is playing before allowing 
+   the mic to activate — the interrupt should always win, no conditions.

@@ -1,0 +1,190 @@
+Add a Client Discovery feature inside the existing Projects section of the BlackRidge Platforms portal. This is not a standalone page — it lives within a project's detail view. When I'm working a project, I can send that client a discovery form directly from their project, and all responses come back and live on that project record.
+
+TECH STACK
+
+React + Tailwind (existing portal stack)
+Supabase for data storage
+Resend for email delivery
+Supabase Storage for file uploads
+Existing portal auth context and project data structure
+
+
+SUPABASE TABLES — create if they don't exist
+discovery_submissions
+
+id (uuid, primary key)
+project_id (uuid, foreign key → projects.id)
+client_name (text)
+client_email (text)
+company_name (text)
+industry (text)
+referral_source (text)
+token (uuid, unique)
+status (text) — "sent" | "opened" | "submitted"
+sent_at (timestamp)
+submitted_at (timestamp)
+responses (jsonb)
+uploaded_files (jsonb) — array of file metadata: name, url, size, type
+signature_acknowledged (boolean)
+notes (text)
+created_at (timestamp)
+
+
+WHERE IT LIVES IN THE UI
+Inside the existing project detail view, add a new tab called "Discovery" alongside existing tabs.
+Discovery Tab — before a form has been sent:
+
+Clean empty state: "Send your client a discovery form to capture their goals, priorities, and expectations before the project kicks off."
+Button: "Send Discovery Form" (gold)
+Opens a small modal to confirm or edit: Client Name, Client Email, Company Name (pre-filled from project data if available)
+On confirm: generate UUID token, insert row into discovery_submissions linked to this project_id, send email via Resend, show success toast: "Discovery form sent to [email]"
+
+Discovery Tab — after form is sent, not yet submitted:
+
+Status card: client name, email, status badge (gray = sent, yellow = opened), sent timestamp
+"Resend Link" button — resends the same email with the existing token
+Copy link icon to grab the form URL manually
+
+Discovery Tab — after client submits:
+
+Status badge turns green: "Submitted"
+Show submitted timestamp
+All responses displayed in clean read-only layout organized by section
+Any uploaded files shown as downloadable links with file name, type, and size
+Internal notes textarea I can type into and save
+"Start Proposal" button placeholder for future workflow connection
+
+
+PUBLIC CLIENT FORM /discovery/:token
+Accessible without auth. On load, look up the token. If invalid or already submitted, show a polite error. If valid, mark status "opened" and render the form.
+Brand styling:
+
+Background: #0A0A0A
+Card: #111111
+Header: black bar, BlackRidge logo centered, gold tagline below ("Powered by BlackRidge Platforms")
+Input focus borders: #C9A840
+CTA button: #C9A840 background, black text, bold
+Section labels: gold, uppercase, tight tracking
+Body text: white / light gray
+Mobile first — must look sharp on phone
+
+
+FORM SECTIONS:
+Section 1 — About Your Business
+
+What does your business do? (textarea)
+What industry are you in? (dropdown):
+
+Healthcare / Medical
+Fitness / Wellness
+Automotive
+Construction / Trades
+Legal / Professional Services
+Real Estate
+Retail / E-Commerce
+Restaurant / Food Service
+Nonprofit
+Technology
+Other (with text field)
+
+
+How long have you been in business? (text)
+How many employees or team members do you have? (text)
+Approximate annual revenue? (dropdown: Under $250K / $250K–$1M / $1M–$5M / $5M+)
+
+Section 2 — Your Current Setup
+
+What tools or software are you currently using? (textarea)
+What is your biggest operational headache right now? (textarea)
+Are you using a CRM to manage clients or leads? (radio: Yes / No / Something informal)
+How are you handling accounting and invoicing? (radio: Doing it myself / Outsourced / Mix of both)
+
+Section 3 — What You're Looking For
+
+What would the perfect solution look like? (textarea)
+Priorities — check all that apply (multi-checkbox):
+
+Professional website
+Client portal / customer login
+CRM and lead tracking
+Project management tools
+Invoicing and billing
+Accounting / financial dashboard
+AI-powered tools
+Automations and workflows
+
+
+Is there a specific problem you need solved immediately? (textarea)
+What does success look like 12 months from now? (textarea)
+
+Section 4 — Budget and Timeline
+
+Approximate budget? (dropdown: Under $3K / $3K–$7.5K / $7.5K–$15K / $15K–$30K / $30K+ / Not sure yet)
+When are you hoping to get started? (dropdown: ASAP / Within 30 days / 1–3 months / Just exploring)
+Anything else I should know before we connect? (textarea)
+
+Section 5 — Supporting Files
+
+File upload field — label: "Upload anything helpful — your logo, current website screenshots, inspiration, or any reference material."
+Accept: images (jpg, png, webp), PDFs, Word docs
+Max file size: 10MB per file, up to 5 files
+Show upload progress per file
+Files upload to Supabase Storage under a folder named by the token
+Display each uploaded file as a chip with filename and remove option before submit
+
+Section 6 — Final Details
+
+How did you hear about us? (dropdown):
+
+Referral from a friend or colleague
+LinkedIn
+Google Search
+Cold email
+Social media
+Existing BlackRidge client
+Other (with text field)
+
+
+Acknowledgment checkbox (required to submit):
+
+"I understand that submitting this form does not constitute a contract or guarantee of services. BlackRidge Platforms will review my responses and reach out to discuss next steps."
+
+
+Checkbox must be checked to enable the submit button — if unchecked and they try to submit, highlight it with a gold border and scroll to it
+
+
+ON SUBMIT:
+
+Save all answers to discovery_submissions.responses as JSON
+Save uploaded file metadata to uploaded_files column
+Set signature_acknowledged to true
+Set status → "submitted", set submitted_at to now()
+Send confirmation email to client via Resend
+Send notification email to my address
+Show branded thank-you screen: "You're all set. I'll review your answers and reach out within 1 business day. — Chris, BlackRidge Platforms"
+
+
+EMAIL TEMPLATES (Resend)
+To client:
+
+Subject: "A Quick Question Before We Kick Off — [Company Name]"
+Warm short intro, gold CTA button to their unique form URL
+Signed: Chris | BlackRidge Platforms
+
+Notification to me:
+
+Subject: "Discovery Submitted — [Company Name] | [Project Name]"
+Client name, company, industry, referral source, email, project name, submitted timestamp, direct link to project in portal
+
+
+GENERAL NOTES
+
+Pull client name, email, and company from the existing project record wherever possible
+Match all existing portal UI patterns exactly: sidebar, topbar, tab style, card style, buttons
+Handle all loading, error, and empty states gracefully
+Only one active discovery submission allowed per project — if one exists, show it; no second send until cleared
+In the portal response view, display uploaded files as downloadable links with file name, type icon, and file size
+Referral source and industry should be visible as summary fields at the top of the response view so I can see them at a glance without scrolling
+
+
+That's a complete, airtight brief. Every piece feeds back into your project record and you've got referral tracking, file delivery, and a signed acknowledgment baked in. Want me to also write the proposal scaffold prompt so once you review discovery responses, one click builds a pre-filled proposal draft inside that same project?

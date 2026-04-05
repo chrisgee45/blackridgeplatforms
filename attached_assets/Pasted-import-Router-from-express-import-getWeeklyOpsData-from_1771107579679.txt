@@ -1,0 +1,108 @@
+import { Router } from "express";
+import { getWeeklyOpsData } from "../services/opsDataService";
+import { openai } from "../lib/aiClient";
+import { db } from "../db";
+import { aiReports } from "../db/schema";
+import { z } from "zod";
+
+export const aiRouter = Router();
+
+// Strict schema for AI output (server-side validation)
+const WeeklyOpsReportSchema = z.object({
+  summary: z.object({
+    health_score: z.number().min(0).max(100),
+    overview: z.string().min(1),
+  }),
+  churn_risk: z.array(
+    z.object({
+      user_id: z.string().min(1),
+      reason: z.string().min(1),
+      urgency: z.enum(["low", "medium", "high"]),
+      recommended_action: z.string().min(1),
+    })
+  ),
+  recommended_actions: z.array(
+    z.object({
+      title: z.string().min(1),
+      detail: z.string().min(1),
+      impact: z.enum(["low", "medium", "high"]),
+    })
+  ),
+});
+
+aiRouter.post("/weekly-ops-report", async (req, res) => {
+  try {
+    // Optional: if you have auth middleware, use req.user?.id
+    const createdBy = (req as any)?.user?.id ?? null;
+
+    const opsData = await getWeeklyOpsData();
+
+    const system = `You are a business operations analyst. You must return valid JSON only. No commentary.`;
+
+    const user = `
+You are analyzing internal product ops metrics. Use the provided data only.
+Do NOT invent numbers.
+Return JSON matching this exact structure:
+
+{
+  "summary": {
+    "health_score": number (0-100),
+    "overview": string
+  },
+  "churn_risk": [
+    {
+      "user_id": string,
+      "reason": string,
+      "urgency": "low" | "medium" | "high",
+      "recommended_action": string
+    }
+  ],
+  "recommended_actions": [
+    {
+      "title": string,
+      "detail": string,
+      "impact": "low" | "medium" | "high"
+    }
+  ]
+}
+
+DATA:
+${JSON.stringify(opsData, null, 2)}
+`.trim();
+
+    // Use JSON-only response formatting
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4.1-mini", // agent can change; keep cost reasonable
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.2,
+      response_format: { type: "json_object" } as any,
+    });
+
+    const raw = completion.choices?.[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw);
+
+    // Validate output
+    const report = WeeklyOpsReportSchema.parse(parsed);
+
+    // Save report
+    const [saved] = await db
+      .insert(aiReports)
+      .values({
+        type: "weekly_ops",
+        payload: report,
+        createdBy,
+      })
+      .returning();
+
+    return res.json({ ok: true, report: saved });
+  } catch (err: any) {
+    console.error("weekly-ops-report error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message ?? "Unknown error",
+    });
+  }
+});

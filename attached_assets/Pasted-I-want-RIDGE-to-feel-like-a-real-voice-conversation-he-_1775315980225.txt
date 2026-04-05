@@ -1,0 +1,74 @@
+I want RIDGE to feel like a real voice conversation — he should start 
+speaking almost immediately after I finish talking, not wait for the 
+full response to generate first.
+
+Replace the current /api/ridge/chat and /api/speak routes with a single 
+new streaming route: POST /api/ridge/stream
+
+This route should:
+
+1. Accept { messages } in the request body — clean them the same way 
+   the current chat route does (role mapping, alternating check)
+
+2. Set response headers for streaming:
+   res.setHeader('Content-Type', 'audio/mpeg')
+   res.setHeader('Transfer-Encoding', 'chunked')
+   res.setHeader('Cache-Control', 'no-store')
+
+3. Call the Anthropic API with stream: true using this pattern:
+   const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+     method: 'POST',
+     headers: {
+       'Content-Type': 'application/json',
+       'x-api-key': process.env.ANTHROPIC_API_KEY,
+       'anthropic-version': '2023-06-01'
+     },
+     body: JSON.stringify({
+       model: 'claude-sonnet-4-20250514',
+       max_tokens: 1000,
+       stream: true,
+       system: RIDGE_SYSTEM,
+       messages: trimmed.slice(-14)
+     })
+   });
+
+4. Read the Anthropic stream and accumulate text chunks into a buffer. 
+   When the buffer reaches 120 characters AND ends with a sentence-ending 
+   punctuation mark (period, question mark, exclamation mark, or colon), 
+   flush that buffer to ElevenLabs immediately as a TTS chunk and reset 
+   the buffer. This way RIDGE starts speaking the first sentence while 
+   still generating the rest.
+
+5. For each text chunk ready to speak, call ElevenLabs streaming TTS:
+   POST https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream
+   with the same voice settings as before and pipe the audio bytes 
+   directly into res using audioStream.pipe(res, { end: false })
+
+6. After the full Anthropic stream finishes, flush any remaining 
+   buffer text to ElevenLabs, then call res.end()
+
+7. Wrap everything in try/catch — if ElevenLabs fails mid-stream 
+   just end the response cleanly
+
+Then in RidgeWidget.jsx replace the current speak() and askRidge() 
+functions with a single streamRidge(userText) function:
+
+1. Call POST /api/ridge/stream with the messages array
+2. Read the response as a stream using response.body.getReader()
+3. Feed chunks into a MediaSource or use this simpler approach:
+   - Collect all audio chunks into an array of Uint8Arrays
+   - As soon as the first chunk arrives (within ~1 second), 
+     create a Blob from whatever chunks exist so far, 
+     create an object URL, set audioRef.current.src to it 
+     and call audioRef.current.play()
+   - Continue collecting remaining chunks and append them
+4. Show the waveform animation as soon as the first audio chunk arrives
+5. Still display the text in the chat bubble — accumulate the text 
+   separately by also streaming a plain text version from the server 
+   via a second field or just display "RIDGE is responding..." 
+   until audio completes then show a summary
+
+Also hide or minimize the text bubble by default — show a small 
+"show transcript" toggle instead so the interface feels like a 
+voice conversation not a chat window. The primary experience 
+should be audio with text as an option.

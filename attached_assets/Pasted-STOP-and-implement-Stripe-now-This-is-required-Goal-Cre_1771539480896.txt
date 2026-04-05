@@ -1,0 +1,72 @@
+STOP and implement Stripe now. This is required.
+
+Goal:
+Create subscriptions in Stripe (prefer Stripe Checkout) from our CRM/Client view, store Stripe IDs in DB, and keep subscription/payment status in sync via webhooks.
+
+PHASE A — Environment + SDK
+1) Install Stripe SDK: npm i stripe
+2) Add env vars:
+- STRIPE_SECRET_KEY
+- STRIPE_WEBHOOK_SECRET
+- APP_URL
+
+PHASE B — Checkout-based subscription creation (preferred)
+Create endpoint:
+POST /api/clients/:clientId/subscriptions/checkout
+Body: { name, amount, interval: "month"|"year" }
+
+Server logic:
+1) Ensure Stripe Customer exists for client (create if missing, save stripeCustomerId on clients table)
+2) Create Stripe Product + Price (recurring)
+3) Create Stripe Checkout Session (mode="subscription")
+   - customer: stripeCustomerId
+   - line_items: [{ price: price.id, quantity: 1 }]
+   - success_url: `${APP_URL}/clients/${clientId}?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+   - cancel_url: `${APP_URL}/clients/${clientId}?checkout=cancel`
+4) Return { url } and redirect user to Checkout
+
+PHASE C — Webhook (raw body is mandatory)
+Create route:
+POST /api/stripe/webhook
+IMPORTANT:
+- This route must use raw body middleware (express.raw({ type: "application/json" }))
+- Do NOT use express.json() for this route
+
+Handle these events:
+1) checkout.session.completed
+   - Expand session to get subscription + customer (or retrieve from Stripe)
+   - Persist subscriptions row:
+     stripeSubscriptionId, stripeCustomerId, stripePriceId, stripeProductId, status, period start/end
+2) invoice.paid
+   - Insert payments row (type="recurring", method="stripe", amount, stripeInvoiceId, paidAt)
+   - Update subscription periods/status
+3) invoice.payment_failed
+   - Mark subscription status past_due
+4) customer.subscription.updated
+   - Update status + period dates
+5) customer.subscription.deleted
+   - Mark canceled
+
+Idempotency:
+- Create stripe_events table
+- Store event.id before processing
+- If event already exists, skip
+
+PHASE D — Recalculate MRR/ARR on webhook updates
+After any subscription status/amount/interval change:
+- Compute client MRR = sum(active monthly) + sum(active yearly/12)
+- Store clients.mrr and clients.arr
+
+PHASE E — UI Wiring
+In Client Detail → Subscriptions tab:
+- Button: “Create Subscription”
+- Inputs: name, amount, interval
+- On submit: call /subscriptions/checkout and redirect to Stripe Checkout URL
+- After return (checkout=success), refresh client + subscriptions
+
+Acceptance tests:
+- Create subscription → user lands in Stripe Checkout
+- Complete payment → subscription row is created/updated in DB via webhook
+- invoice.paid creates a payment row
+- client MRR/ARR updates
+- payment_failed marks past_due and shows a visible warning badge

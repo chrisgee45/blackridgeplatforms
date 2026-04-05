@@ -1,0 +1,247 @@
+Add a Client Kickoff Discovery feature inside the existing Projects section of the BlackRidge Platforms portal. This lives within a project's detail view. Once a client commits, I send them this form to collect everything I need before I touch a single line of code. All responses, files, and answers come back and live on that project record inside the portal.
+
+TECH STACK
+
+React + Tailwind (existing portal stack)
+Supabase for data storage
+Resend for email delivery
+Supabase Storage for file uploads
+Existing portal auth context and project data structure
+
+
+SUPABASE TABLES — create if they don't exist
+kickoff_submissions
+
+id (uuid, primary key)
+project_id (uuid, foreign key → projects.id)
+client_name (text)
+client_email (text)
+company_name (text)
+token (uuid, unique)
+status (text) — "sent" | "opened" | "submitted"
+sent_at (timestamp)
+submitted_at (timestamp)
+responses (jsonb)
+uploaded_files (jsonb) — array of file metadata: name, url, size, type
+signature_acknowledged (boolean)
+notes (text)
+created_at (timestamp)
+
+
+WHERE IT LIVES IN THE UI
+Inside the existing project detail view, add a tab called "Kickoff" alongside existing tabs.
+Kickoff Tab — before form is sent:
+
+Empty state: "Send your client the kickoff form to collect everything you need before the build starts."
+Button: "Send Kickoff Form" (gold)
+Opens a small modal to confirm or edit: Client Name, Client Email, Company Name (pre-filled from project data)
+On confirm: generate UUID token, insert row into kickoff_submissions linked to project_id, send email via Resend, toast: "Kickoff form sent to [email]"
+
+Kickoff Tab — sent, not yet submitted:
+
+Status card showing client name, email, status badge (gray = sent, yellow = opened), sent timestamp
+"Resend Link" button
+Copy link icon for manual sharing
+
+Kickoff Tab — submitted:
+
+Status badge turns green: "Submitted"
+Submitted timestamp
+All responses in clean read-only layout organized by section
+Uploaded files shown as downloadable links with file name, type icon, and size
+Internal notes textarea I can save back to the record
+"Build Proposal" placeholder button for future connection
+
+
+PUBLIC CLIENT FORM /kickoff/:token
+No auth required. On load, validate the token. Invalid or already submitted shows a polite error. Valid token marks status "opened" and renders the form.
+Brand styling:
+
+Background: #0A0A0A
+Card: #111111
+Header: black bar, BlackRidge logo centered, gold tagline ("Powered by BlackRidge Platforms")
+Input focus borders: #C9A840
+CTA button: #C9A840 background, black text, bold
+Section labels: gold, uppercase, tight tracking
+Body text: white / light gray
+Mobile first — must look sharp on phone
+
+
+FORM SECTIONS:
+Section 1 — Your Business
+
+What is your business name? (text)
+What do you do and who do you serve? (textarea — tell me about your business in your own words)
+Who is your ideal customer? (textarea — describe them like you're telling a friend)
+What makes you different from your competitors? (textarea)
+Do you have an existing website? (radio: Yes / No)
+
+If yes: What is the URL? (text field, conditional)
+If yes: What do you want to keep, change, or throw out entirely? (textarea, conditional)
+
+
+
+Section 2 — Brand Identity
+
+Do you have an existing brand? (radio: Yes — fully developed / Yes — somewhat / No — starting from scratch)
+Primary brand colors — list your hex codes or describe them (text)
+Fonts you use or love (text)
+Words that describe your brand personality — check all that apply (multi-checkbox):
+
+Professional / Corporate
+Bold / Confident
+Clean / Minimal
+Warm / Approachable
+Rugged / Industrial
+Luxury / High-End
+Friendly / Casual
+Innovative / Tech-Forward
+Other (text field)
+
+
+Upload your logo files here (file upload — accepts PNG, SVG, AI, PDF, JPG)
+Any other brand assets to share — brand guide, color swatches, existing materials (file upload)
+
+Section 3 — Website and Pages
+
+What pages do you need? (multi-checkbox):
+
+Home
+About
+Services
+Individual Service Pages
+Portfolio / Work Showcase
+Blog
+Team / Staff
+Testimonials
+FAQ
+Contact
+Booking / Scheduling
+E-Commerce / Shop
+Client Login Portal
+Custom (text field)
+
+
+Describe what you want your homepage to accomplish — what should someone feel and do when they land on it? (textarea)
+Are there any websites you love and want to draw inspiration from? (textarea — list URLs or describe what you like about them)
+Are there any websites you hate? (textarea — what do you want to avoid)
+
+Section 4 — Content and Copy
+
+Who is writing the copy for the site? (radio):
+
+I'll write it myself
+I need BlackRidge to write it
+I have some — need help finishing it
+
+
+Do you have professional photos? (radio: Yes / No / Some — need more)
+
+If yes or some: Upload them here (file upload — accepts JPG, PNG, WEBP, up to 10 files)
+
+
+Do you need stock photography? (radio: Yes / No / Not sure yet)
+Do you have video content? (radio: Yes / No / Planning to get some)
+
+If yes: Provide links or upload files (text field for URLs + file upload, conditional)
+
+
+
+Section 5 — Features and Functionality
+
+What features does your site or portal need? (multi-checkbox):
+
+Contact form
+Online booking / scheduling
+Payment processing
+E-commerce / product catalog
+Client login portal
+CRM integration
+Invoicing and billing
+Project management tools
+Live chat
+Newsletter / email capture
+Social media feeds
+Review / testimonial display
+AI-powered tools
+Custom automations
+Other (text field)
+
+
+Are there any third-party tools you need integrated? (textarea — e.g. Google Calendar, Stripe, QuickBooks, Acuity, etc.)
+Do you have any specific tools you are locked into that we need to work around? (textarea)
+
+Section 6 — Access and Accounts
+
+Do you own your domain? (radio: Yes / No / Not sure)
+
+If yes: Where is it registered? (text, conditional)
+
+
+Do you have existing hosting? (radio: Yes / No — BlackRidge will handle it)
+List any logins or platform access you'll need to share with me to complete the build (textarea — e.g. GoDaddy, Wix, WordPress, Google account — DO NOT include passwords here, we will collect those securely)
+What social media platforms are you active on? (multi-checkbox: Facebook / Instagram / LinkedIn / TikTok / YouTube / X / Other)
+
+Provide your handles or profile URLs (text)
+
+
+
+Section 7 — Communication and Timeline
+
+Who is the main point of contact for this project? (text — name and role)
+Best way to reach you during the build? (radio: Email / Text / Phone call / Portal messages)
+Best days and times to reach you if needed (text)
+Are there any hard deadlines tied to this project — launch events, grand openings, campaigns? (radio: Yes / No)
+
+If yes: Describe the deadline and why it matters (textarea, conditional)
+
+
+Is there anything you're nervous about or want to make sure we get right? (textarea)
+Anything else I should know before we start? (textarea)
+
+Section 8 — Acknowledgment
+
+Checkbox (required to submit):
+
+"I confirm that the information I've provided is accurate and complete to the best of my knowledge. I understand that missing or incomplete information may affect project timelines, and I agree to provide any additional assets or access requested by BlackRidge Platforms promptly."
+
+
+Checkbox must be checked to enable submit — if unchecked on attempt, highlight gold and scroll to it
+
+
+ON SUBMIT:
+
+Save all answers to kickoff_submissions.responses as JSON
+Save uploaded file metadata to uploaded_files
+Set signature_acknowledged to true
+Set status → "submitted", set submitted_at to now()
+Send confirmation email to client
+Send notification email to my address
+Show branded thank-you screen: "You're locked in. I'll review everything and reach out within 1 business day with next steps. Let's build something great. — Chris, BlackRidge Platforms"
+
+
+EMAIL TEMPLATES (Resend)
+To client:
+
+Subject: "Let's Get Started — Your BlackRidge Kickoff Form"
+Warm, confident tone: "You're in. Before I start building I need to get inside your world a little — this form covers everything from brand to features to timeline. Takes about 10 minutes. The more detail you give me the better this turns out."
+Gold CTA button to their unique form URL
+Signed: Chris | BlackRidge Platforms
+
+Notification to me:
+
+Subject: "Kickoff Form Submitted — [Company Name] | [Project Name]"
+Client name, company, email, project name, submitted timestamp, direct link to the project in the portal
+
+
+GENERAL NOTES
+
+Pre-fill client name, email, and company from the existing project record
+Match all existing portal UI patterns exactly — sidebar, topbar, tab style, card style, buttons
+Conditional fields show and hide smoothly based on prior answers
+All loading, error, and empty states handled gracefully
+One active kickoff submission per project — if one exists show it, no second send until cleared
+In the portal response view: uploaded files are downloadable with file name, type icon, and size
+Flag any unanswered required fields clearly in the portal view so I know what's missing at a glance
+File uploads go to Supabase Storage in a folder named by token
+

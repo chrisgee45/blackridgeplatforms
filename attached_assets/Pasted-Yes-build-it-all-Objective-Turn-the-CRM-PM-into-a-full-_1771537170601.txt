@@ -1,0 +1,76 @@
+Yes — build it all.
+
+Objective:
+Turn the CRM + PM into a full client revenue system:
+Lead (Won) → Client record → Project(s) → Subscription(s) → Webhook-driven payments + MRR dashboard.
+
+Do this in phases and don’t break existing flows.
+
+PHASE 1 — Database + Relationships
+1) Add tables:
+- clients
+- deals
+- subscriptions
+- payments (if we already have payments, extend it to support recurring + stripe ids; otherwise create new)
+- stripe_events (for idempotency)
+
+2) Update existing tables:
+- projects: add clientId (FK → clients.id)
+- leads (optional): add clientId (FK → clients.id) once converted/won
+
+3) Migration + seed: make sure existing “Won” projects get a client created (one-time backfill script).
+
+PHASE 2 — Won → Client + Project
+When a lead status changes to “Won”:
+- find or create a Client (match by company + email)
+- create the Project as it already does
+- link project.clientId
+- create a Deal record (stage=won) tied to clientId
+
+PHASE 3 — Stripe Integration
+1) Server:
+- Add Stripe SDK and env vars: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, APP_URL.
+- Implement ensureStripeCustomer(clientId): create Stripe customer if missing, store stripeCustomerId.
+
+2) Subscription creation endpoint:
+POST /api/clients/:clientId/subscriptions
+Body: { name, amount, interval: "month"|"year" }
+- create Stripe product + price
+- create subscription
+- save stripe ids + period dates in subscriptions table
+
+3) Stripe webhook endpoint (raw body):
+POST /api/stripe/webhook
+Handle:
+- invoice.paid → insert payment row, update subscription periods/status
+- invoice.payment_failed → mark subscription past_due
+- customer.subscription.updated → update status/periods
+- customer.subscription.deleted → mark canceled
+Use stripe_events table to prevent double-processing.
+
+4) After webhook updates:
+- Recalculate client MRR/ARR and store on clients table.
+
+PHASE 4 — UI
+Add a new “Clients” section in nav.
+Client Detail page tabs:
+- Overview (MRR, ARR, LTV, health, next invoice)
+- Projects (list, link to PM)
+- Subscriptions (create/cancel, status badges, next renewal)
+- Deals (new opportunities for upsells)
+- Payments (one-time + recurring)
+- Activity
+
+Also:
+- In existing Project view: add “Create Subscription” quick action if none exists.
+- In CRM leads list/detail: show “Converted to Client” and link to client.
+
+Acceptance Criteria
+- Existing CRM works unchanged.
+- Existing project management works unchanged.
+- Marking a lead Won creates/links a Client and keeps project creation.
+- I can create a Stripe subscription from the Client/Project UI.
+- Webhooks update subscription status and log payments.
+- Dashboard shows Active MRR / ARR and flags Past Due clients.
+
+Do it clean: types, validation, and error handling. Commit in small steps.

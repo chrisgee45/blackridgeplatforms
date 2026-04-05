@@ -1,0 +1,44 @@
+Rewrite all 5 campaign email step templates with the following content exactly. Replace the existing step templates in the database:
+Step 1 — Day 1
+Subject options (pick randomly): “{{business_domain}}” or “your contact form” or “noticed this”
+Body:
+“Hey {{first_name}},
+{{opening_line}}
+I run BlackRidge Platforms out of Edmond — we rebuild sites for local businesses that need something cleaner and built to actually convert. If you want, I can record a quick 2–3 minute walkthrough of what I’d change on your site. No charge.
+Want me to put that together?
+— Chris
+BlackRidge Platforms”
+Step 2 — Day 3
+Subject options (pick randomly): “re: quick question” or “following up” or “{{business_domain}}”
+Body:
+“Hey {{first_name}},
+Sent you a note a couple days ago — just wanted to make sure it didn’t get buried.
+We rebuilt a gym site in Tulsa last month. They went from 3 contact form submissions a week to 14 in the first 30 days. Main change was moving their phone number and booking button above the fold.
+Worth a 10 minute conversation to see if something similar applies to {{business_name}}?
+— Chris
+BlackRidge Platforms”
+Step 3 — Day 7
+Subject options (pick randomly): “what changed for them” or “3 weeks later” or “quick win”
+Body:
+“Hey {{first_name}},
+Worked with a law firm in Edmond recently — they went from 1–2 contact form submissions a week to 11 in the first three weeks. Simple stuff. Phone number visible, consultation button above the fold, Google reviews on the homepage.
+I think we could do some great things for {{business_name}}. Want me to mock up what that could look like?
+— Chris
+BlackRidge Platforms”
+Step 4 — Day 14
+Subject options (pick randomly): “not a $10k project” or “what it actually costs” or “honest question”
+Body:
+“Hey {{first_name}},
+Most business owners I talk to assume a site rebuild is going to cost a fortune. For most of our clients it’s been between $1,500 and $3,500 depending on what’s needed — and most of them made that back on one or two new customers.
+Is cost the main thing holding this back or is the timing just not right?
+— Chris
+BlackRidge Platforms”
+Step 5 — Day 21
+Subject options (pick randomly): “closing the loop” or “last note” or “stepping back”
+Body:
+“Hey {{first_name}},
+I’ve reached out a few times and haven’t heard back so I’ll assume the timing isn’t right. I won’t follow up again after this.
+If you ever want a second set of eyes on {{business_name}}’s site you know where to find me. Wishing you a strong rest of the year.
+— Chris
+BlackRidge Platforms”
+Update all 5 steps in the database and make sure {{first_name}}, {{business_name}}, {{business_domain}}, and {{opening_line}} variables are all properly mapped to the lead data fields.

@@ -1,0 +1,184 @@
+1. Deal Pipeline With Dollar Weighting
+
+Not just status.
+
+Each lead should show:
+
+Projected value
+
+Probability of closing (manual or auto score)
+
+Weighted revenue
+
+Example:
+
+$3,000 project at 70% = $2,100 weighted
+$8,000 portal build at 30% = $2,400 weighted
+
+Now you see real projected income.
+
+That changes how you think.
+
+2. Time Tracking → Auto Profit Calculation
+
+Every time you log hours:
+
+System calculates:
+
+Revenue
+
+Effective hourly rate
+
+Profit margin
+
+Recurring vs one-time
+
+You’ll instantly know:
+
+“This project is worth it.”
+“This one isn’t.”
+
+Right now you’re estimating in your head.
+
+That won’t scale.
+
+3. “Scope Creep Counter”
+
+For every project:
+
+Original deliverables
+
+Add-ons requested
+
+Extra time logged beyond scope
+
+Once it crosses a threshold:
+
+⚠ Suggest Change Order
+
+This protects your margin emotionally.
+
+You won’t feel awkward charging more.
+The system tells you.
+
+4. Automated Follow-Up Logic
+
+Since this is internal:
+
+Make it aggressive.
+
+If:
+
+Lead untouched in 24 hrs → Red highlight
+
+Proposal sent, no response in 48 hrs → Task auto-generated
+
+Invoice unpaid 5 days → Escalation task
+
+You don’t want reminders.
+You want accountability.
+
+5. Revenue Heat Map
+
+Show:
+
+Total earned this month
+
+Projects in build
+
+Recurring revenue
+
+Pending revenue
+
+Target revenue
+
+Add a monthly goal bar at the top.
+
+You’re competitive.
+This will push you.
+
+6. “Energy Drain” Tagging
+
+This sounds weird, but it’s powerful.
+
+Let yourself tag projects:
+
+High energy
+
+Neutral
+
+Draining
+
+Over time, you’ll see patterns.
+
+Maybe small SEO clients are easy money.
+Maybe certain industries are exhausting.
+
+That’s business intelligence most people never gather.
+
+7. Quick Proposal Generator (Internal Only)
+
+Button:
+
+Generate Proposal
+→ Choose package
+→ Choose add-ons
+→ Auto calculates price
+
+Even if you still customize later, this saves brain energy.
+
+8. Lead Source ROI Tracker
+
+Track:
+
+Referral
+
+Cold DM
+
+Church
+
+Facebook
+
+SEO
+
+Word of mouth
+
+Then:
+
+Show revenue by source.
+
+You’ll know where to double down.
+
+9. “At Risk” Alerts
+
+Project overdue
+Client slow to respond
+Too many revisions
+Hours > budget
+
+Flag it early.
+
+You run law enforcement.
+You already think in threat detection.
+
+Build the same mindset into business.
+
+10. Weekly CEO Report (Auto Generated)
+
+Every Sunday night:
+
+System generates:
+
+New leads
+
+Closed deals
+
+Revenue
+
+Hours worked
+
+Effective hourly rate
+
+Projects lagging
+
+You review it in 5 minutes.

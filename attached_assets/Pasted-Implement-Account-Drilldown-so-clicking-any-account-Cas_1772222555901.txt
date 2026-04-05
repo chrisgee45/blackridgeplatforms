@@ -1,0 +1,97 @@
+Implement “Account Drilldown” so clicking any account (Cash, Credit Card Payable, Revenue, etc.) can show its ledger lines.
+
+REQUIREMENTS:
+- Add endpoint: GET /api/accounting/account/:accountId?start=YYYY-MM-DD&end=YYYY-MM-DD&limit=200&offset=0
+- Returns journal lines for that account, newest first, with:
+  occurredAt, transactionId, transactionMemo, referenceType, referenceId, lineMemo, debit, credit,
+  runningBalance (optional but preferred), and counterparty summary (optional)
+- Use indexes we already created (account_id, transaction_id, occurred_at) for performance.
+- IMPORTANT: numeric values may come back as strings: convert to numbers in API response.
+
+IMPLEMENTATION:
+
+1) Create file: src/server/accounting/drilldown.ts
+
+```ts
+import { db } from "../../db/db";
+import { accounts, transactionLines, transactions } from "../../db/schema/accounting";
+import { and, eq, gte, lte, desc, sql } from "drizzle-orm";
+
+function toNum(v: any): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export async function getAccountDrilldown(params: {
+  accountId: string;
+  start?: Date;
+  end?: Date;
+  limit?: number;
+  offset?: number;
+}) {
+  const limit = Math.min(Math.max(params.limit ?? 200, 1), 500);
+  const offset = Math.max(params.offset ?? 0, 0);
+
+  const whereParts: any[] = [eq(transactionLines.accountId, params.accountId)];
+  if (params.start) whereParts.push(gte(transactions.occurredAt, params.start));
+  if (params.end) whereParts.push(lte(transactions.occurredAt, params.end));
+
+  // Pull lines for this account with tx metadata
+  const rows = await db
+    .select({
+      occurredAt: transactions.occurredAt,
+      transactionId: transactions.id,
+      transactionMemo: transactions.memo,
+      referenceType: transactions.referenceType,
+      referenceId: transactions.referenceId,
+      lineMemo: transactionLines.lineMemo,
+      debit: transactionLines.debit,
+      credit: transactionLines.credit,
+    })
+    .from(transactionLines)
+    .innerJoin(transactions, eq(transactionLines.transactionId, transactions.id))
+    .where(and(...whereParts))
+    .orderBy(desc(transactions.occurredAt), desc(transactions.id))
+    .limit(limit)
+    .offset(offset);
+
+  // Determine account type to compute normal-balance running total
+  const acct = await db.query.accounts.findFirst({
+    where: (a, { eq }) => eq(a.id, params.accountId),
+  });
+  if (!acct) throw new Error("Account not found");
+
+  const isNormalDebit = acct.type === "asset" || acct.type === "expense";
+
+  // Running balance (newest first is awkward for running totals).
+  // We’ll compute running going backwards over the returned set only.
+  let running = 0;
+
+  const items = rows.map((r) => {
+    const debit = toNum(r.debit);
+    const credit = toNum(r.credit);
+
+    const delta = isNormalDebit ? (debit - credit) : (credit - debit);
+    running = Math.round((running + delta) * 100) / 100;
+
+    return {
+      occurredAt: r.occurredAt,
+      transactionId: r.transactionId,
+      transactionMemo: r.transactionMemo,
+      referenceType: r.referenceType,
+      referenceId: r.referenceId,
+      lineMemo: r.lineMemo,
+      debit,
+      credit,
+      delta,
+      runningBalance: running,
+    };
+  });
+
+  return {
+    account: { id: acct.id, name: acct.name, type: acct.type },
+    limit,
+    offset,
+    items,
+  };
+}

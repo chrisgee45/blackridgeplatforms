@@ -1,0 +1,88 @@
+import { postJournal, getAccountIdByName } from "./journal";
+
+type PaymentMethod = "cash" | "credit_card" | "stripe" | "ach" | "check";
+
+export async function recordRevenue(input: {
+  tenantId: string;
+  amount: number;              // total collected (can include tax)
+  revenueAccountId: string;    // e.g. Website Build Income
+  occurredAt?: Date;
+  memo?: string;
+
+  paymentMethod: PaymentMethod;
+
+  salesTaxAmount?: number;     // if included in the amount
+  isDeposit?: boolean;         // if true, credit Unearned Revenue instead of Revenue
+}) {
+  const amt = input.amount;
+  const tax = input.salesTaxAmount ?? 0;
+  const net = amt - tax;
+
+  if (amt <= 0) throw new Error("Revenue amount must be > 0");
+  if (tax < 0) throw new Error("Sales tax cannot be negative");
+  if (net < 0) throw new Error("Sales tax cannot exceed total amount");
+
+  // Debit side: where the money went (Cash / Stripe Clearing / etc.)
+  const cashId = await getAccountIdByName(input.tenantId, "Cash");
+  const stripeClearingId = await getAccountIdByName(input.tenantId, "Stripe Clearing");
+
+  // Credit side: Revenue OR Unearned Revenue + Sales Tax Payable
+  const salesTaxPayableId = await getAccountIdByName(input.tenantId, "Sales Tax Payable");
+  const unearnedRevenueId = await getAccountIdByName(input.tenantId, "Unearned Revenue");
+
+  const debitAccount =
+    input.paymentMethod === "stripe" ? stripeClearingId : cashId;
+
+  const creditRevenueAccount =
+    input.isDeposit ? unearnedRevenueId : input.revenueAccountId;
+
+  const lines: { accountId: string; debit?: number; credit?: number; memo?: string }[] = [];
+
+  // Debit: cash/clearing total collected
+  lines.push({ accountId: debitAccount, debit: amt, memo: `Payment (${input.paymentMethod})` });
+
+  // Credit: net revenue or unearned revenue
+  if (net > 0) {
+    lines.push({ accountId: creditRevenueAccount, credit: net, memo: input.isDeposit ? "Deposit (unearned)" : "Revenue" });
+  }
+
+  // Credit: sales tax payable
+  if (tax > 0) {
+    lines.push({ accountId: salesTaxPayableId, credit: tax, memo: "Sales tax collected" });
+  }
+
+  return postJournal({
+    tenantId: input.tenantId,
+    occurredAt: input.occurredAt,
+    memo: input.memo ?? "Revenue",
+    referenceType: "revenue",
+    lines,
+  });
+}
+
+export async function recordExpense(input: {
+  tenantId: string;
+  amount: number;
+  expenseAccountId: string;   // e.g. Hosting Expense
+  occurredAt?: Date;
+  memo?: string;
+  paymentMethod: "cash" | "credit_card";
+}) {
+  if (input.amount <= 0) throw new Error("Expense amount must be > 0");
+
+  const cashId = await getAccountIdByName(input.tenantId, "Cash");
+  const ccPayableId = await getAccountIdByName(input.tenantId, "Credit Card Payable");
+
+  const creditAccount = input.paymentMethod === "credit_card" ? ccPayableId : cashId;
+
+  return postJournal({
+    tenantId: input.tenantId,
+    occurredAt: input.occurredAt,
+    memo: input.memo ?? "Expense",
+    referenceType: "expense",
+    lines: [
+      { accountId: input.expenseAccountId, debit: input.amount, memo: "Expense" },
+      { accountId: creditAccount, credit: input.amount, memo: `Paid via ${input.paymentMethod}` },
+    ],
+  });
+}
