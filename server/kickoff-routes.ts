@@ -3,48 +3,17 @@ import { db } from "./db";
 import { kickoffSubmissions, projects, contacts, companies } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { Resend } from "resend";
 import crypto from "crypto";
-
-async function getResendClient() {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-      ? "depl " + process.env.WEB_REPL_RENEWAL
-      : null;
-    if (!xReplitToken || !hostname) return null;
-    const connectionSettings = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
-      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-    ).then((res) => res.json()).then((data) => data.items?.[0]);
-    if (!connectionSettings || !connectionSettings.settings?.api_key) return null;
-    return {
-      client: new Resend(connectionSettings.settings.api_key),
-      fromEmail: connectionSettings.settings.from_email,
-    };
-  } catch {
-    return null;
-  }
-}
+import { getResendClient } from "./email";
+import { getAppUrl } from "./app-url";
 
 function getBaseUrl(req: any): string {
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
   const host = req.headers["x-forwarded-host"] || req.headers["host"];
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
-    const resolvedUrl = `${proto}://${host}`;
-    console.log(`[kickoff] Resolved base URL from request headers: ${resolvedUrl}`);
-    return resolvedUrl;
+    return `${proto}://${host}`;
   }
-  if (process.env.REPLIT_DEPLOYMENT_URL) return `https://${process.env.REPLIT_DEPLOYMENT_URL}`;
-  const domains = process.env.REPLIT_DOMAINS;
-  if (domains) {
-    const first = domains.split(",")[0].trim();
-    if (first) return `https://${first}`;
-  }
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  return "https://blackridgeplatforms.com";
+  return getAppUrl();
 }
 
 export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHandler) {
@@ -93,7 +62,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
       }).returning();
 
       let emailSent = false;
-      const resend = await getResendClient();
+      const resend = getResendClient();
       if (resend) {
         try {
           await resend.client.emails.send({
@@ -146,7 +115,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
       const baseUrl = getBaseUrl(req);
       const formUrl = `${baseUrl}/kickoff/${submission.token}`;
 
-      const resend = await getResendClient();
+      const resend = getResendClient();
       if (resend) {
         await resend.client.emails.send({
           from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",
@@ -256,7 +225,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
       const proj = await db.select().from(projects).where(eq(projects.id, submission.projectId));
       const projectName = proj[0]?.name || "Unknown Project";
 
-      const resend = await getResendClient();
+      const resend = getResendClient();
       if (resend) {
         await resend.client.emails.send({
           from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",

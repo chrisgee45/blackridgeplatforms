@@ -3,8 +3,9 @@ import { db } from "./db";
 import { welcomeSequences, kickoffSubmissions, projects, contacts, companies } from "@shared/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { Resend } from "resend";
 import crypto from "crypto";
+import { getResendClient } from "./email";
+import { getAppUrl } from "./app-url";
 
 const startSequenceSchema = z.object({
   clientName: z.string().min(1).trim(),
@@ -12,38 +13,8 @@ const startSequenceSchema = z.object({
   companyName: z.string().optional(),
 });
 
-async function getResendClient() {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-      ? "depl " + process.env.WEB_REPL_RENEWAL
-      : null;
-    if (!xReplitToken || !hostname) return null;
-    const connectionSettings = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
-      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-    ).then((res) => res.json()).then((data) => data.items?.[0]);
-    if (!connectionSettings || !connectionSettings.settings?.api_key) return null;
-    return {
-      client: new Resend(connectionSettings.settings.api_key),
-      fromEmail: connectionSettings.settings.from_email,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function getBaseUrl() {
-  if (process.env.REPLIT_DEPLOYMENT_URL) return `https://${process.env.REPLIT_DEPLOYMENT_URL}`;
-  const domains = process.env.REPLIT_DOMAINS;
-  if (domains) {
-    const first = domains.split(",")[0].trim();
-    if (first) return `https://${first}`;
-  }
-  if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  return "https://blackridgeplatforms.com";
+  return getAppUrl();
 }
 
 function emailWrapper(bodyHtml: string) {
@@ -184,7 +155,7 @@ async function _sendSequenceEmail(sequenceId: string, emailNum: 1 | 2 | 3, force
     emailData = buildEmail1(firstName);
   }
 
-  const resend = await getResendClient();
+  const resend = getResendClient();
   if (!resend) {
     await db.update(welcomeSequences).set({ [errorField]: "Resend client unavailable" }).where(eq(welcomeSequences.id, sequenceId));
     return;

@@ -20,7 +20,7 @@ function param(req: any, key: string): string {
   if (Array.isArray(v)) return v[0];
   return String(v ?? "");
 }
-import { ObjectStorageService, objectStorageClient } from "./replit_integrations/object_storage/objectStorage";
+import { ObjectStorageService, objectStorageClient } from "./object-storage";
 import { randomUUID } from "crypto";
 
 export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler) {

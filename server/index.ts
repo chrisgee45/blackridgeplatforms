@@ -45,9 +45,11 @@ const allowedOrigins: string[] = [
   "https://blackridgeplatforms.com",
   "https://www.blackridgeplatforms.com",
 ];
-if (process.env.REPLIT_DOMAINS) {
-  for (const domain of process.env.REPLIT_DOMAINS.split(",")) {
-    allowedOrigins.push(`https://${domain.trim()}`);
+// Extra comma-separated origins for staging/custom domains
+if (process.env.ALLOWED_ORIGINS) {
+  for (const origin of process.env.ALLOWED_ORIGINS.split(",")) {
+    const trimmed = origin.trim();
+    if (trimmed) allowedOrigins.push(trimmed);
   }
 }
 if (isDev) {
@@ -211,14 +213,8 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  // reusePort is not supported on Windows — omit it and let the OS manage.
+  httpServer.listen(port, "0.0.0.0", () => {
+    log(`serving on port ${port}`);
+  });
 })();

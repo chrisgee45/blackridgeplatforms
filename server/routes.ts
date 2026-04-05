@@ -6,11 +6,11 @@ import { db } from "./db";
 import { eq, desc, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
-import { Resend } from "resend";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { registerOpsRoutes } from "./ops-routes";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { registerObjectStorageRoutes } from "./object-storage";
+import { getResendClient } from "./email";
 import { createAiRouter } from "./routes/ai";
 import { registerOutreachRoutes } from "./outreach-routes";
 import PDFDocument from "pdfkit";
@@ -1303,7 +1303,7 @@ ${snapshot}`;
             doc.end();
           });
 
-          const resend = await getResendClient();
+          const resend = getResendClient();
           if (resend) {
             await resend.client.emails.send({
               from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",
@@ -1599,7 +1599,7 @@ ${snapshot}`;
             doc.font("Helvetica").fontSize(8).fillColor("#AAAAAA").text("BlackRidge Platforms | Confidential", 60, footerY, { align: "center", width: doc.page.width - 120 });
             doc.end();
           });
-          const resend = await getResendClient();
+          const resend = getResendClient();
           if (resend) {
             await resend.client.emails.send({
               from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",
@@ -1678,7 +1678,7 @@ ${snapshot}`;
         doc.end();
       });
 
-      const resend = await getResendClient();
+      const resend = getResendClient();
       if (!resend) {
         return res.status(500).json({ error: "Email service not configured" });
       }
@@ -1712,46 +1712,8 @@ ${snapshot}`;
   return httpServer;
 }
 
-async function getResendClient() {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-      ? "depl " + process.env.WEB_REPL_RENEWAL
-      : null;
-
-    if (!xReplitToken || !hostname) {
-      return null;
-    }
-
-    const connectionSettings = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
-      {
-        headers: {
-          Accept: "application/json",
-          X_REPLIT_TOKEN: xReplitToken,
-        },
-      }
-    ).then((res) => res.json()).then((data) => data.items?.[0]);
-
-    if (!connectionSettings || !connectionSettings.settings?.api_key) {
-      console.log("Resend connection not found or missing API key");
-      return null;
-    }
-
-    return {
-      client: new Resend(connectionSettings.settings.api_key),
-      fromEmail: connectionSettings.settings.from_email,
-    };
-  } catch (error) {
-    console.log("Failed to initialize Resend client:", error);
-    return null;
-  }
-}
-
 async function sendNotificationEmail(data: { name: string; email: string; company?: string | null; projectType?: string | null; budget?: string | null; message: string }) {
-  const resend = await getResendClient();
+  const resend = getResendClient();
   if (!resend) {
     console.log("Resend not configured - skipping email notification");
     console.log("New lead received:", data.name, data.email);

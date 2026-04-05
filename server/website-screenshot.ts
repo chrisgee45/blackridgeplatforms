@@ -1,4 +1,4 @@
-import { objectStorageClient } from "./replit_integrations/object_storage";
+import { objectStorageClient } from "./object-storage";
 import { randomUUID } from "crypto";
 
 function parseObjectPath(fullPath: string): { bucketName: string; objectName: string } {

@@ -1,8 +1,0 @@
-uploads = []
-generated = []
-
-[[outputs]]
-id = "Vq2YR3v1rvOUwB74o0U3h"
-uri = "file://exports/blackridge-accounting-system.txt"
-type = "text"
-title = "BlackRidge Accounting System — Complete Source Code (25 files, 13,375 lines)"

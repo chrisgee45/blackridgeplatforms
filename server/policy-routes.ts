@@ -2,8 +2,8 @@ import type { Express, RequestHandler } from "express";
 import { db } from "./db";
 import { policies } from "@shared/schema";
 import { eq, desc, ilike, or } from "drizzle-orm";
-import { Resend } from "resend";
 import { z } from "zod";
+import { getResendClient } from "./email";
 
 const VALID_STATUSES = ["draft", "published", "archived"] as const;
 const VALID_CATEGORIES = ["general", "hr", "security", "operations", "compliance", "safety", "finance"] as const;
@@ -32,29 +32,6 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-}
-
-async function getResendClient() {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-      ? "depl " + process.env.WEB_REPL_RENEWAL
-      : null;
-    if (!xReplitToken || !hostname) return null;
-    const connectionSettings = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
-      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-    ).then((res) => res.json()).then((data) => data.items?.[0]);
-    if (!connectionSettings || !connectionSettings.settings?.api_key) return null;
-    return {
-      client: new Resend(connectionSettings.settings.api_key),
-      fromEmail: connectionSettings.settings.from_email,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandler) {
@@ -224,7 +201,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
         </div>
       `;
 
-      const resendClient = await getResendClient();
+      const resendClient = getResendClient();
       if (!resendClient) {
         return res.status(500).json({ message: "Email service not configured" });
       }

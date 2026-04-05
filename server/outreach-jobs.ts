@@ -54,42 +54,15 @@ function renderTemplate(template: string, lead: any): string {
     .replace(/\{\{ai_bullets_3\}\}/g, lead.aiBullets?.[2] || "");
 }
 
-// Resend integration via Replit connector (tokens expire — never cache)
+// Resend integration via RESEND_API_KEY env var.
+// Kept async + locally-named so existing dynamic imports continue to work.
 export async function getResendClientForOutreach(): Promise<{ client: Resend; fromEmail: string } | null> {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-        ? "depl " + process.env.WEB_REPL_RENEWAL
-        : null;
-
-    if (!hostname || !xReplitToken) {
-      // Fallback to env var for local/manual config
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey) return null;
-      return {
-        client: new Resend(apiKey),
-        fromEmail: process.env.RESEND_FROM_EMAIL || "chris@blackridgeplatforms.com",
-      };
-    }
-
-    const connRes = await fetch(
-      `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=resend`,
-      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-    );
-    const connData = await connRes.json();
-    const settings = connData.items?.[0]?.settings;
-    if (!settings?.api_key) return null;
-
-    return {
-      client: new Resend(settings.api_key),
-      fromEmail: settings.from_email || "chris@blackridgeplatforms.com",
-    };
-  } catch (err) {
-    console.error("Failed to get Resend client:", err);
-    return null;
-  }
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return null;
+  return {
+    client: new Resend(apiKey),
+    fromEmail: process.env.RESEND_FROM_EMAIL || "chris@blackridgeplatforms.com",
+  };
 }
 
 function isWithinSendWindow(settings: { sendWindowStart: string; sendWindowEnd: string; timezone: string }): boolean {

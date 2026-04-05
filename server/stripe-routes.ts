@@ -1,9 +1,9 @@
 import type { Express, RequestHandler } from "express";
 import Stripe from "stripe";
-import { Resend } from "resend";
 import { opsStorage } from "./ops-storage";
 import { bookkeepingStorage } from "./bookkeeping-storage";
 import { recordRevenue, getAccountIdByCode } from "./accounting-v2";
+import { getResendClient } from "./email";
 
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -11,35 +11,8 @@ function getStripe(): Stripe | null {
   return new Stripe(key);
 }
 
-async function getResendClientForThankYou() {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-      ? "depl " + process.env.WEB_REPL_RENEWAL
-      : null;
-
-    if (!xReplitToken || !hostname) return null;
-
-    const connectionSettings = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=resend",
-      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-    ).then((r) => r.json()).then((d) => d.items?.[0]);
-
-    if (!connectionSettings?.settings?.api_key) return null;
-
-    return {
-      client: new Resend(connectionSettings.settings.api_key),
-      fromEmail: connectionSettings.settings.from_email || "chris@blackridgeplatforms.com",
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function sendThankYouEmail(clientName: string, clientEmail: string, description: string | null) {
-  const resend = await getResendClientForThankYou();
+  const resend = getResendClient();
   if (!resend || !clientEmail) return;
 
   const firstName = clientName?.split(" ")[0] || clientName || "there";
