@@ -45,6 +45,10 @@ const allowedOrigins: string[] = [
   "https://blackridgeplatforms.com",
   "https://www.blackridgeplatforms.com",
 ];
+// APP_URL is always allowed (covers Railway/Render/Vercel/etc.)
+if (process.env.APP_URL) {
+  allowedOrigins.push(process.env.APP_URL.replace(/\/$/, ""));
+}
 // Extra comma-separated origins for staging/custom domains
 if (process.env.ALLOWED_ORIGINS) {
   for (const origin of process.env.ALLOWED_ORIGINS.split(",")) {
