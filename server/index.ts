@@ -62,8 +62,12 @@ if (isDev) {
 
 app.use(cors({
   origin: (origin, callback) => {
+    // No origin header (server-to-server, curl, same-origin nav) — allow
     if (!origin) return callback(null, true);
+    // Explicitly allowed origins
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any *.railway.app origin (covers deploy previews + production)
+    if (origin.endsWith(".railway.app")) return callback(null, true);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
