@@ -658,46 +658,23 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       const url = URL.createObjectURL(blob);
       const audio = audioRef.current;
       audio.src = url;
-      startPassiveListening();
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        if (statusRef.current === "speaking") {
-          if (recognitionRef.current) {
-            try { recognitionRef.current.abort(); } catch {}
-            recognitionRef.current = null;
-          }
-          listeningWhileSpeakingRef.current = false;
-          setStatus("online");
-          statusRef.current = "online";
-          if (!mutedRef.current) setTimeout(() => startListening(), 30);
-        }
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        if (statusRef.current === "speaking") {
-          setStatus("online");
-          statusRef.current = "online";
-        }
-      };
-      await audio.play();
-    } catch {
-      try {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.pitch = 0.8;
-        utterance.rate = 0.95;
-        utterance.onend = () => {
-          if (statusRef.current === "speaking") {
-            setStatus("online");
-            statusRef.current = "online";
-            if (!mutedRef.current) setTimeout(() => startListening(), 30);
-          }
-        };
-        utterance.onerror = () => { setStatus("online"); statusRef.current = "online"; };
-        speechSynthesis.speak(utterance);
-      } catch {
         setStatus("online");
         statusRef.current = "online";
-      }
+        if (!mutedRef.current) setTimeout(() => startListening(), 300);
+      };
+      audio.onerror = (e) => {
+        console.error("[Ridge] Audio playback error:", e);
+        URL.revokeObjectURL(url);
+        setStatus("online");
+        statusRef.current = "online";
+      };
+      await audio.play();
+    } catch (e) {
+      console.error("[Ridge] speak() failed:", e);
+      setStatus("online");
+      statusRef.current = "online";
     }
   }, [startListening, startPassiveListening]);
 
