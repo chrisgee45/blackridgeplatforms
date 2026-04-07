@@ -471,18 +471,21 @@ export async function registerRoutes(
         return res.status(500).json({ error: "Text-to-speech failed", detail: errBody });
       }
 
-      res.set("Content-Type", "audio/mpeg");
+      // Buffer the full audio before sending so Content-Length is set correctly.
+      // Streaming chunks without Content-Length breaks audio playback behind CDNs.
       const reader = response.body?.getReader();
       if (!reader) return res.status(500).json({ error: "No response stream" });
-      let bytesWritten = 0;
+      const chunks: Uint8Array[] = [];
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        bytesWritten += value.length;
-        res.write(value);
+        chunks.push(value);
       }
-      console.log("[/api/speak] Streamed", bytesWritten, "bytes to client");
-      res.end();
+      const audioBuffer = Buffer.concat(chunks);
+      console.log("[/api/speak] Buffered", audioBuffer.length, "bytes");
+      res.set("Content-Type", "audio/mpeg");
+      res.set("Content-Length", String(audioBuffer.length));
+      res.send(audioBuffer);
     } catch (error: any) {
       console.error("[/api/speak] Full error:", error);
       res.status(500).json({ error: "Text-to-speech failed", detail: error.message });
