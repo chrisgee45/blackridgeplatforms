@@ -497,7 +497,9 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             audioPlaying = true;
             setStatus("speaking");
             statusRef.current = "speaking";
-            startPassiveListening();
+            // Don't start passive listening here — mic picks up Ridge's own
+            // voice and kills audio playback. Listening starts after all
+            // audio finishes in the cleanup below.
           }
 
           await new Promise<void>((resolve) => {
@@ -667,9 +669,9 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       const url = URL.createObjectURL(blob);
       const audio = audioRef.current;
       audio.src = url;
-      // Delay passive listening so the mic doesn't pick up Ridge's own
-      // speaker output and immediately interrupt playback.
-      setTimeout(() => startPassiveListening(), 2000);
+      // Don't start passive listening until audio finishes — the mic picks up
+      // Ridge's own speaker output and kills playback via src="" in the
+      // recognition callback.
       audio.onended = () => {
         console.log("[Ridge] audio.onended fired");
         URL.revokeObjectURL(url);
