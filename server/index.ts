@@ -26,6 +26,7 @@ const cspDirectives: Record<string, string[]> = {
   fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
   imgSrc: ["'self'", "data:", "https:", "blob:"],
   connectSrc: ["'self'", "https:", "wss:"],
+  mediaSrc: ["'self'", "blob:"],
   frameSrc: ["https://js.stripe.com", "https://cdn.plaid.com"],
   objectSrc: ["'none'"],
 };
