@@ -731,15 +731,15 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
   const ridgeGreet = useCallback(() => {
     if (greetedRef.current) return;
     greetedRef.current = true;
-    setIsOpen(true);
-    setHasNotification(false);
+    setHasNotification(true);
     const hour = new Date().getHours();
     const timeOfDay = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
     const greeting = `${timeOfDay}, Chris — RIDGE online and monitoring. Financials are syncing. Ask me anything or I will flag you when something needs your attention.`;
     const greetMsg: Message = { role: "assistant", content: greeting, timestamp: new Date() };
     setMessages([greetMsg]);
-    speak(greeting);
-  }, [speak]);
+    // Don't auto-speak — Chrome blocks audio.play() without user interaction.
+    // Show notification dot; Ridge will speak when user clicks the widget.
+  }, []);
 
   const ridgeAlert = useCallback((text: string) => {
     setIsOpen(true);
@@ -822,13 +822,23 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
     if (statusRef.current === "speaking") interruptAndListen();
   };
 
+  // Track whether we've spoken the greeting yet (deferred until user clicks)
+  const spokenGreetRef = useRef(false);
+
   const toggleOpen = () => {
     if (isOpen) {
       stopRidge();
       setShowHistory(false);
     }
     setIsOpen((prev) => !prev);
-    if (!isOpen) setHasNotification(false);
+    if (!isOpen) {
+      setHasNotification(false);
+      // Speak the greeting on first open (user click = Chrome allows audio)
+      if (!spokenGreetRef.current && messages.length > 0 && messages[0]?.role === "assistant") {
+        spokenGreetRef.current = true;
+        speak(messages[0].content);
+      }
+    }
   };
 
   const handleEmailReport = (content: string, index: number) => sendReport(content, index);
