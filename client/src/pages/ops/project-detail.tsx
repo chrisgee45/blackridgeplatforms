@@ -35,6 +35,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import type { Project, ProjectTemplate, Task, TimeEntry, Milestone, StageGate, ActivityLog, Company, ScheduledFollowup, ProjectPayment, ProjectDocument, QaChecklist, QaAuditLog, WelcomeSequence } from "@shared/schema";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { generateQaReport, generateQaCertificate, exportQaCsv } from "@/lib/qa-pdf";
+import { generateKickoffPdf } from "@/lib/kickoff-pdf";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 const STAGES = ["discovery", "proposal", "contract", "kickoff", "in_progress", "review", "completed", "archived"] as const;
 
@@ -2381,6 +2384,66 @@ export default function ProjectDetail() {
                         <p className="text-xs text-muted-foreground">
                           Submitted {kickoff.submittedAt ? new Date(kickoff.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
                         </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            generateKickoffPdf(project?.name || "Project", {
+                              clientName: kickoff.clientName,
+                              clientEmail: kickoff.clientEmail,
+                              companyName: kickoff.companyName,
+                              submittedAt: kickoff.submittedAt,
+                              sentAt: kickoff.sentAt,
+                              signatureAcknowledged: kickoff.signatureAcknowledged,
+                              responses: (kickoff.responses || {}) as Record<string, any>,
+                              uploadedFiles: (kickoff.uploadedFiles || []) as any[],
+                            });
+                            toast({ title: "PDF downloaded" });
+                          }}
+                          data-testid="button-download-kickoff-pdf"
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1" />
+                          Download PDF
+                        </Button>
+                        {kickoff.uploadedFiles && (kickoff.uploadedFiles as any[]).length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              const files = kickoff.uploadedFiles as { name: string; url: string; size?: number; type?: string }[];
+                              toast({ title: "Preparing download...", description: `Packaging ${files.length} files` });
+                              try {
+                                const zip = new JSZip();
+                                const folder = zip.folder(
+                                  `${(kickoff.companyName || project?.name || "Kickoff").replace(/[^a-zA-Z0-9 _-]/g, "_")}_Files`
+                                )!;
+                                for (const f of files) {
+                                  try {
+                                    const resp = await fetch(f.url);
+                                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                                    const blob = await resp.blob();
+                                    folder.file(f.name, blob);
+                                  } catch (err) {
+                                    console.warn(`Failed to fetch ${f.name}:`, err);
+                                  }
+                                }
+                                const content = await zip.generateAsync({ type: "blob" });
+                                const zipName = `${(kickoff.companyName || project?.name || "Kickoff").replace(/[^a-zA-Z0-9 _-]/g, "_")}_Files.zip`;
+                                saveAs(content, zipName);
+                                toast({ title: "Download ready", description: `${files.length} files saved as ${zipName}` });
+                              } catch (err) {
+                                console.error("Zip download failed:", err);
+                                toast({ title: "Download failed", variant: "destructive" });
+                              }
+                            }}
+                            data-testid="button-download-all-files"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5 mr-1" />
+                            Download All Files
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
