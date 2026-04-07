@@ -557,7 +557,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             audioAccumulator.push(payload);
             const totalSize = audioAccumulator.reduce((s, c) => s + c.length, 0);
             const timeSinceFlush = Date.now() - lastAudioFlush;
-            if (totalSize > 8000 || timeSinceFlush > 500) {
+            if (totalSize > 48000 || timeSinceFlush > 2000) {
               const blob = new Blob(audioAccumulator, { type: "audio/mpeg" });
               audioAccumulator = [];
               lastAudioFlush = Date.now();

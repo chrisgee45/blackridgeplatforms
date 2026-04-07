@@ -1523,7 +1523,7 @@ ${snapshot}`;
       let sseBuffer = "";
       let fullReply = "";
       let chunkBuffer = "";
-      const FLUSH_THRESHOLD = 120;
+      const FLUSH_THRESHOLD = 400;
 
       while (true) {
         const { done, value } = await reader.read();
