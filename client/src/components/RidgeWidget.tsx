@@ -661,13 +661,15 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
         credentials: "include",
         body: JSON.stringify({ text }),
       });
-      if (!resp.ok) throw new Error("TTS failed");
+      if (!resp.ok) throw new Error("TTS failed: " + resp.status);
       const blob = await resp.blob();
+      console.log("[Ridge] speak() got blob:", blob.size, "bytes, type:", blob.type);
       const url = URL.createObjectURL(blob);
       const audio = audioRef.current;
       audio.src = url;
       startPassiveListening();
       audio.onended = () => {
+        console.log("[Ridge] audio.onended fired");
         URL.revokeObjectURL(url);
         if (statusRef.current === "speaking") {
           if (recognitionRef.current) {
@@ -680,15 +682,19 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
           if (!mutedRef.current) setTimeout(() => startListening(), 30);
         }
       };
-      audio.onerror = () => {
+      audio.onerror = (e) => {
+        console.error("[Ridge] audio.onerror fired:", e, "audio.error:", audio.error);
         URL.revokeObjectURL(url);
         if (statusRef.current === "speaking") {
           setStatus("online");
           statusRef.current = "online";
         }
       };
+      console.log("[Ridge] calling audio.play()...");
       await audio.play();
-    } catch {
+      console.log("[Ridge] audio.play() succeeded");
+    } catch (err) {
+      console.error("[Ridge] speak() caught error:", err);
       try {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.pitch = 0.8;
