@@ -475,51 +475,10 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
 
       let fullText = "";
       let reportSent = false;
-      let audioPlaying = false;
-      let pendingAudioQueue: Blob[] = [];
-      let isProcessingQueue = false;
-      let currentObjUrl: string | null = null;
-
-      async function playNextAudio() {
-        if (isProcessingQueue || pendingAudioQueue.length === 0) return;
-        if (statusRef.current !== "speaking" && statusRef.current !== "thinking") return;
-        isProcessingQueue = true;
-
-        while (pendingAudioQueue.length > 0) {
-          if (statusRef.current !== "speaking" && statusRef.current !== "thinking") break;
-          const blob = pendingAudioQueue.shift()!;
-          const url = URL.createObjectURL(blob);
-          currentObjUrl = url;
-          const audio = audioRef.current;
-          audio.src = url;
-
-          if (!audioPlaying) {
-            audioPlaying = true;
-            setStatus("speaking");
-            statusRef.current = "speaking";
-            // Don't start passive listening here — mic picks up Ridge's own
-            // voice and kills audio playback. Listening starts after all
-            // audio finishes in the cleanup below.
-          }
-
-          await new Promise<void>((resolve) => {
-            audio.onended = () => { URL.revokeObjectURL(url); currentObjUrl = null; resolve(); };
-            audio.onerror = () => { URL.revokeObjectURL(url); currentObjUrl = null; resolve(); };
-            audio.play().catch(() => { URL.revokeObjectURL(url); currentObjUrl = null; resolve(); });
-          });
-
-          if (statusRef.current !== "speaking") {
-            if (currentObjUrl) { URL.revokeObjectURL(currentObjUrl); currentObjUrl = null; }
-            break;
-          }
-        }
-
-        isProcessingQueue = false;
-      }
+      // Collect ALL audio for the entire response, then play as one seamless blob.
+      let allAudioChunks: Uint8Array[] = [];
 
       let buffer = new Uint8Array(0);
-      let audioAccumulator: Uint8Array[] = [];
-      let lastAudioFlush = Date.now();
 
       function appendBuffer(chunk: Uint8Array) {
         const newBuf = new Uint8Array(buffer.length + chunk.length);
@@ -554,18 +513,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
               return [...prev, { role: "assistant" as const, content: fullText, timestamp: new Date() }];
             });
           } else if (frameType === FRAME_AUDIO) {
-            audioAccumulator.push(payload);
-            const totalSize = audioAccumulator.reduce((s, c) => s + c.length, 0);
-            const timeSinceFlush = Date.now() - lastAudioFlush;
-            if (totalSize > 48000 || timeSinceFlush > 2000) {
-              const blob = new Blob(audioAccumulator, { type: "audio/mpeg" });
-              audioAccumulator = [];
-              lastAudioFlush = Date.now();
-              if (!mutedRef.current) {
-                pendingAudioQueue.push(blob);
-                playNextAudio();
-              }
-            }
+            allAudioChunks.push(payload);
           } else if (frameType === FRAME_DONE) {
             try {
               const meta = JSON.parse(new TextDecoder().decode(payload));
@@ -593,31 +541,23 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       }
 
       processBuffer();
-      if (audioAccumulator.length > 0) {
-        const blob = new Blob(audioAccumulator, { type: "audio/mpeg" });
-        audioAccumulator = [];
-        if (!mutedRef.current) {
-          pendingAudioQueue.push(blob);
-          playNextAudio();
-        }
+
+      // Play all collected audio as one seamless blob
+      if (allAudioChunks.length > 0 && !mutedRef.current) {
+        const fullBlob = new Blob(allAudioChunks, { type: "audio/mpeg" });
+        allAudioChunks = [];
+        const url = URL.createObjectURL(fullBlob);
+        const audio = audioRef.current;
+        audio.src = url;
+        setStatus("speaking");
+        statusRef.current = "speaking";
+
+        await new Promise<void>((resolve) => {
+          audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+        });
       }
-
-      const waitForAudio = () => new Promise<void>((resolve) => {
-        const check = () => {
-          if (pendingAudioQueue.length === 0 && !isProcessingQueue) {
-            resolve();
-          } else {
-            setTimeout(check, 100);
-          }
-        };
-        check();
-      });
-
-      if (!mutedRef.current && pendingAudioQueue.length > 0) {
-        await waitForAudio();
-      }
-
-      if (currentObjUrl) { URL.revokeObjectURL(currentObjUrl); currentObjUrl = null; }
 
       if (!fullText) fullText = "No response.";
 
