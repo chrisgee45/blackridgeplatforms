@@ -482,9 +482,11 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
 
       async function playNextAudio() {
         if (isProcessingQueue || pendingAudioQueue.length === 0) return;
+        if (statusRef.current !== "speaking" && statusRef.current !== "thinking") return;
         isProcessingQueue = true;
 
         while (pendingAudioQueue.length > 0) {
+          if (statusRef.current !== "speaking" && statusRef.current !== "thinking") break;
           const blob = pendingAudioQueue.shift()!;
           const url = URL.createObjectURL(blob);
           currentObjUrl = url;
@@ -495,6 +497,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             audioPlaying = true;
             setStatus("speaking");
             statusRef.current = "speaking";
+            startPassiveListening();
           }
 
           await new Promise<void>((resolve) => {
@@ -502,6 +505,11 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             audio.onerror = () => { URL.revokeObjectURL(url); currentObjUrl = null; resolve(); };
             audio.play().catch(() => { URL.revokeObjectURL(url); currentObjUrl = null; resolve(); });
           });
+
+          if (statusRef.current !== "speaking") {
+            if (currentObjUrl) { URL.revokeObjectURL(currentObjUrl); currentObjUrl = null; }
+            break;
+          }
         }
 
         isProcessingQueue = false;
@@ -547,7 +555,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             audioAccumulator.push(payload);
             const totalSize = audioAccumulator.reduce((s, c) => s + c.length, 0);
             const timeSinceFlush = Date.now() - lastAudioFlush;
-            if (totalSize > 32000 || timeSinceFlush > 1500) {
+            if (totalSize > 8000 || timeSinceFlush > 500) {
               const blob = new Blob(audioAccumulator, { type: "audio/mpeg" });
               audioAccumulator = [];
               lastAudioFlush = Date.now();
@@ -658,23 +666,46 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       const url = URL.createObjectURL(blob);
       const audio = audioRef.current;
       audio.src = url;
+      startPassiveListening();
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        setStatus("online");
-        statusRef.current = "online";
-        if (!mutedRef.current) setTimeout(() => startListening(), 300);
+        if (statusRef.current === "speaking") {
+          if (recognitionRef.current) {
+            try { recognitionRef.current.abort(); } catch {}
+            recognitionRef.current = null;
+          }
+          listeningWhileSpeakingRef.current = false;
+          setStatus("online");
+          statusRef.current = "online";
+          if (!mutedRef.current) setTimeout(() => startListening(), 30);
+        }
       };
-      audio.onerror = (e) => {
-        console.error("[Ridge] Audio playback error:", e);
+      audio.onerror = () => {
         URL.revokeObjectURL(url);
-        setStatus("online");
-        statusRef.current = "online";
+        if (statusRef.current === "speaking") {
+          setStatus("online");
+          statusRef.current = "online";
+        }
       };
       await audio.play();
-    } catch (e) {
-      console.error("[Ridge] speak() failed:", e);
-      setStatus("online");
-      statusRef.current = "online";
+    } catch {
+      try {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.pitch = 0.8;
+        utterance.rate = 0.95;
+        utterance.onend = () => {
+          if (statusRef.current === "speaking") {
+            setStatus("online");
+            statusRef.current = "online";
+            if (!mutedRef.current) setTimeout(() => startListening(), 30);
+          }
+        };
+        utterance.onerror = () => { setStatus("online"); statusRef.current = "online"; };
+        speechSynthesis.speak(utterance);
+      } catch {
+        setStatus("online");
+        statusRef.current = "online";
+      }
     }
   }, [startListening, startPassiveListening]);
 
