@@ -1522,9 +1522,9 @@ ${snapshot}`;
       const decoder = new TextDecoder();
       let sseBuffer = "";
       let fullReply = "";
-      let chunkBuffer = "";
-      const FLUSH_THRESHOLD = 400;
-
+      // Collect the full AI response first, then make ONE TTS call.
+      // Multiple TTS calls produce separate MP3 streams that can't be
+      // concatenated smoothly.
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1540,27 +1540,20 @@ ${snapshot}`;
           try {
             const event = JSON.parse(jsonStr);
             if (event.type === "content_block_delta" && event.delta?.text) {
-              const chunk = event.delta.text;
-              fullReply += chunk;
-              chunkBuffer += chunk;
-
-              if (chunkBuffer.length >= FLUSH_THRESHOLD && /[.!?:]/.test(chunkBuffer)) {
-                const match = chunkBuffer.match(/^([\s\S]*[.!?:])\s*/);
-                if (match) {
-                  const toSpeak = match[1];
-                  chunkBuffer = chunkBuffer.slice(match[0].length);
-                  sendTextFrame(toSpeak);
-                  await flushToTTS(toSpeak);
-                }
-              }
+              fullReply += event.delta.text;
             }
           } catch {}
         }
       }
 
-      if (chunkBuffer.trim()) {
-        sendTextFrame(chunkBuffer.trim());
-        await flushToTTS(chunkBuffer.trim());
+      // Send the full text to the client
+      if (fullReply.trim()) {
+        sendTextFrame(fullReply.trim());
+      }
+
+      // Single TTS call for the entire response — one seamless MP3
+      if (fullReply.trim()) {
+        await flushToTTS(fullReply.trim());
       }
 
       if (conversationId) {
