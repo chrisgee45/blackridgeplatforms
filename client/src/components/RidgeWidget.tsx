@@ -667,7 +667,9 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       const url = URL.createObjectURL(blob);
       const audio = audioRef.current;
       audio.src = url;
-      startPassiveListening();
+      // Delay passive listening so the mic doesn't pick up Ridge's own
+      // speaker output and immediately interrupt playback.
+      setTimeout(() => startPassiveListening(), 2000);
       audio.onended = () => {
         console.log("[Ridge] audio.onended fired");
         URL.revokeObjectURL(url);
