@@ -420,13 +420,19 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
       const amount = Math.abs(parseFloat(txn.amount));
       const memo = description || txn.merchantName || txn.name;
 
+      // Defensive: if txn.date isn't a valid date string, fall back to created_at
+      const parsedDate = txn.date ? new Date(txn.date) : null;
+      const txnDate = parsedDate && !isNaN(parsedDate.getTime())
+        ? parsedDate
+        : (txn.createdAt || new Date());
+
       if (type === "owner_contribution") {
         const { bookkeepingStorage } = await import("./bookkeeping-storage");
         const ownerContribAccount = await bookkeepingStorage.getAccountByNumber("3200");
         if (!ownerContribAccount) throw new Error("Owner Contribution account (3200) not found");
         await bookkeepingStorage.createJournalEntryWithLines(
           {
-            date: new Date(txn.date),
+            date: txnDate,
             memo: `Owner contribution: ${memo}`,
             sourceType: "owner_contribution",
             createdBy: "admin",
@@ -450,7 +456,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
         const tx = await recordRevenue({
           amount,
           revenueAccountId: String(accountId),
-          occurredAt: new Date(txn.date),
+          occurredAt: txnDate,
           memo: type === "refund" ? `Refund: ${memo}` : memo,
           paymentMethod: paymentMethod || "card",
           isDeposit: type === "income",
@@ -472,7 +478,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
         if (!cashAccount) throw new Error("Cash account (1000) not found");
         await bookkeepingStorage.createJournalEntryWithLines(
           {
-            date: new Date(txn.date),
+            date: txnDate,
             memo: `Transfer: ${memo}`,
             sourceType: "bank_sync",
             createdBy: "admin",
@@ -497,7 +503,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
           accountId: String(accountId),
           description: memo,
           amount: String(amount),
-          date: new Date(txn.date),
+          date: txnDate,
           vendorId: vendorId || null,
           paymentMethod: paymentMethod || "card",
           taxDeductible: taxDeductible !== false,
