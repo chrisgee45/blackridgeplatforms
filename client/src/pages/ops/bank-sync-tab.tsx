@@ -274,8 +274,10 @@ function CategorizeDialog({
       setPaymentMethod("card");
       onClose();
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to categorize", variant: "destructive" });
+    onError: (err: any) => {
+      console.error("Categorize failed:", err);
+      const msg = err?.message || err?.error || "Failed to categorize";
+      toast({ title: "Error", description: String(msg).slice(0, 300), variant: "destructive" });
     },
   });
 

@@ -517,9 +517,13 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
         res.json({ transaction: txn, expense });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Categorize error:", error);
-      res.status(500).json({ message: "Failed to categorize transaction" });
+      res.status(500).json({
+        message: "Failed to categorize transaction",
+        error: error?.message || String(error),
+        detail: error?.detail || error?.stack?.split("\n")[0] || undefined,
+      });
     }
   });
 }
