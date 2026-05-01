@@ -676,6 +676,131 @@ export function registerStripeRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
+  // Pause / resume / cancel a subscription. For Stripe-linked subscriptions
+  // this propagates the change to Stripe; for manual subscriptions it just
+  // updates the local status.
+  // body: { action: "pause" | "resume" | "cancel" | "cancel_at_period_end" }
+  app.post("/api/ops/subscriptions/:id/billing-action", isAuthenticated, async (req, res) => {
+    try {
+      const subId = (req.params as any).id;
+      const action = (req.body?.action || "") as string;
+      if (!["pause", "resume", "cancel", "cancel_at_period_end"].includes(action)) {
+        return res.status(400).json({ message: "Invalid action" });
+      }
+
+      const sub = await opsStorage.getSubscription(subId);
+      if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+      const stripe = getStripe();
+
+      // If linked to Stripe, propagate to Stripe first
+      if (sub.stripeSubscriptionId && stripe) {
+        try {
+          if (action === "pause") {
+            await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+              pause_collection: { behavior: "void" },
+            } as any);
+          } else if (action === "resume") {
+            await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+              pause_collection: "" as any, // null clears it
+            } as any);
+          } else if (action === "cancel") {
+            await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+          } else if (action === "cancel_at_period_end") {
+            await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+          }
+        } catch (err: any) {
+          console.error("Stripe billing-action error:", err);
+          return res.status(502).json({ message: "Stripe call failed", error: err?.message || String(err) });
+        }
+      }
+
+      const newStatus =
+        action === "pause" ? "paused" :
+        action === "resume" ? "active" :
+        action === "cancel" ? "canceled" :
+        sub.status; // cancel_at_period_end keeps current status until period ends
+
+      const updates: any = { status: newStatus };
+      if (action === "cancel") {
+        updates.canceledAt = new Date();
+      }
+
+      const updated = await opsStorage.updateSubscription(sub.id, updates);
+      await opsStorage.recalculateClientMrr(sub.clientId);
+
+      await opsStorage.createActivityLog({
+        entityType: "subscription",
+        entityId: sub.id,
+        action: `billing_${action}`,
+        details: { stripeSubscriptionId: sub.stripeSubscriptionId, clientId: sub.clientId },
+        createdBy: "admin",
+      });
+
+      res.json({ subscription: updated });
+    } catch (error: any) {
+      console.error("Billing action error:", error);
+      res.status(500).json({ message: "Failed to update billing", error: error?.message || String(error) });
+    }
+  });
+
+  // Reschedule the next billing date. Uses Stripe's trial_end to advance or
+  // delay the upcoming charge without prorating.
+  // body: { nextBillingDate: "YYYY-MM-DD" }
+  app.post("/api/ops/subscriptions/:id/reschedule", isAuthenticated, async (req, res) => {
+    try {
+      const subId = (req.params as any).id;
+      const dateStr = (req.body?.nextBillingDate || "") as string;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ message: "nextBillingDate must be YYYY-MM-DD" });
+      }
+      const date = new Date(`${dateStr}T00:00:00Z`);
+      if (isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Invalid date" });
+      }
+      // Stripe requires trial_end to be in the future
+      if (date.getTime() <= Date.now() + 60 * 1000) {
+        return res.status(400).json({ message: "Next billing date must be in the future" });
+      }
+
+      const sub = await opsStorage.getSubscription(subId);
+      if (!sub) return res.status(404).json({ message: "Subscription not found" });
+
+      const stripe = getStripe();
+
+      if (sub.stripeSubscriptionId && stripe) {
+        try {
+          await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+            trial_end: Math.floor(date.getTime() / 1000),
+            proration_behavior: "none",
+          } as any);
+        } catch (err: any) {
+          console.error("Stripe reschedule error:", err);
+          return res.status(502).json({ message: "Stripe call failed", error: err?.message || String(err) });
+        }
+      }
+
+      const updated = await opsStorage.updateSubscription(sub.id, {
+        currentPeriodEnd: date,
+      });
+
+      await opsStorage.createActivityLog({
+        entityType: "subscription",
+        entityId: sub.id,
+        action: "rescheduled",
+        details: { nextBillingDate: dateStr, stripeSubscriptionId: sub.stripeSubscriptionId },
+        createdBy: "admin",
+      });
+
+      res.json({ subscription: updated });
+    } catch (error: any) {
+      console.error("Reschedule error:", error);
+      res.status(500).json({ message: "Failed to reschedule", error: error?.message || String(error) });
+    }
+  });
+
   app.post("/api/stripe/webhook", async (req, res) => {
     const stripe = getStripe();
     if (!stripe) return res.status(500).json({ message: "Stripe not configured" });

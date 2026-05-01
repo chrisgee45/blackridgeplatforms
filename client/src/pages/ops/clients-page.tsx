@@ -21,6 +21,7 @@ import {
   ArrowRight, Mail, Phone, Globe, Building2, FileText, Clock,
   ChevronRight, ChevronDown, ChevronUp, CreditCard, BarChart3, Edit, Trash2, X, AlertTriangle,
   Loader2, Lock, CheckCircle, Link2, Copy, ExternalLink, Receipt, Calendar, Hash, RefreshCw,
+  PauseCircle, PlayCircle,
 } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
@@ -371,7 +372,7 @@ export default function ClientsPage() {
   const [showEditSub, setShowEditSub] = useState(false);
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
-  const [editSubForm, setEditSubForm] = useState({ name: "", amount: "", interval: "monthly", status: "active", notes: "" });
+  const [editSubForm, setEditSubForm] = useState({ name: "", amount: "", interval: "monthly", status: "active", notes: "", nextBillingDate: "" });
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", website: "", status: "active", notes: "" });
   const [dealForm, setDealForm] = useState({ name: "", value: "", stage: "qualification", probability: "50", notes: "" });
   const [subForm, setSubForm] = useState({ name: "", amount: "", interval: "monthly", notes: "", startDate: "" });
@@ -603,6 +604,43 @@ export default function ClientsPage() {
       toast({ title: "Subscription deleted" });
     },
     onError: () => { toast({ title: "Failed to delete subscription", variant: "destructive" }); },
+  });
+
+  const billingActionMutation = useMutation({
+    mutationFn: async (vars: { id: string; action: "pause" | "resume" | "cancel" | "cancel_at_period_end" }) => {
+      const res = await apiRequest("POST", `/api/ops/subscriptions/${vars.id}/billing-action`, { action: vars.action });
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", selectedClientId, "subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/revenue/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients"] });
+      const labels: Record<string, string> = {
+        pause: "Billing paused",
+        resume: "Billing resumed",
+        cancel: "Subscription canceled",
+        cancel_at_period_end: "Will cancel at period end",
+      };
+      toast({ title: labels[vars.action] || "Updated" });
+      setShowEditSub(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Action failed", description: err?.message || "Try again", variant: "destructive" });
+    },
+  });
+
+  const rescheduleSubMutation = useMutation({
+    mutationFn: async (vars: { id: string; nextBillingDate: string }) => {
+      const res = await apiRequest("POST", `/api/ops/subscriptions/${vars.id}/reschedule`, { nextBillingDate: vars.nextBillingDate });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", selectedClientId, "subscriptions"] });
+      toast({ title: "Next billing date updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to reschedule", description: err?.message || "Try again", variant: "destructive" });
+    },
   });
 
   const refreshSubMutation = useMutation({
@@ -905,7 +943,14 @@ export default function ClientsPage() {
                           )}
                           <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`btn-edit-sub-${sub.id}`} onClick={() => {
                             setEditingSub(sub);
-                            setEditSubForm({ name: sub.name, amount: String(sub.amount), interval: sub.interval, status: sub.status, notes: sub.notes || "" });
+                            setEditSubForm({
+                              name: sub.name,
+                              amount: String(sub.amount),
+                              interval: sub.interval,
+                              status: sub.status,
+                              notes: sub.notes || "",
+                              nextBillingDate: isRealDate(sub.currentPeriodEnd) ? new Date(sub.currentPeriodEnd!).toISOString().slice(0, 10) : "",
+                            });
                             setShowEditSub(true);
                           }}>
                             <Edit className="h-3.5 w-3.5" />
@@ -1033,34 +1078,141 @@ export default function ClientsPage() {
               })
             )}
             <Dialog open={showEditSub} onOpenChange={(open) => { setShowEditSub(open); if (!open) setEditingSub(null); }}>
-              <DialogContent>
+              <DialogContent className="max-w-md">
                 <DialogHeader><DialogTitle>Edit Subscription</DialogTitle></DialogHeader>
-                <div className="space-y-3">
-                  <Input placeholder="Subscription name" value={editSubForm.name} onChange={e => setEditSubForm(p => ({ ...p, name: e.target.value }))} data-testid="input-edit-sub-name" />
-                  <Input placeholder="Amount ($)" type="number" value={editSubForm.amount} onChange={e => setEditSubForm(p => ({ ...p, amount: e.target.value }))} data-testid="input-edit-sub-amount" />
-                  <Select value={editSubForm.interval} onValueChange={v => setEditSubForm(p => ({ ...p, interval: v }))}>
-                    <SelectTrigger data-testid="select-edit-sub-interval"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="annual">Annual</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={editSubForm.status} onValueChange={v => setEditSubForm(p => ({ ...p, status: v }))}>
-                    <SelectTrigger data-testid="select-edit-sub-status"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="trialing">Trialing</SelectItem>
-                      <SelectItem value="past_due">Past Due</SelectItem>
-                      <SelectItem value="paused">Paused</SelectItem>
-                      <SelectItem value="canceled">Canceled</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-4">
+                  {/* Basic details */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Subscription Name</label>
+                    <Input placeholder="Subscription name" value={editSubForm.name} onChange={e => setEditSubForm(p => ({ ...p, name: e.target.value }))} data-testid="input-edit-sub-name" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Amount</label>
+                      <Input placeholder="0.00" type="number" value={editSubForm.amount} onChange={e => setEditSubForm(p => ({ ...p, amount: e.target.value }))} data-testid="input-edit-sub-amount" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Interval</label>
+                      <Select value={editSubForm.interval} onValueChange={v => setEditSubForm(p => ({ ...p, interval: v }))}>
+                        <SelectTrigger data-testid="select-edit-sub-interval"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="quarterly">Quarterly</SelectItem>
+                          <SelectItem value="annual">Annual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Next billing date */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <Calendar className="h-3 w-3" /> Next Billing Date
+                      {editingSub?.stripeSubscriptionId && <span className="ml-1 opacity-60">· syncs to Stripe</span>}
+                    </label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="date"
+                        value={editSubForm.nextBillingDate}
+                        onChange={e => setEditSubForm(p => ({ ...p, nextBillingDate: e.target.value }))}
+                        data-testid="input-edit-sub-billing-date"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (editingSub && editSubForm.nextBillingDate) {
+                            rescheduleSubMutation.mutate({ id: editingSub.id, nextBillingDate: editSubForm.nextBillingDate });
+                          }
+                        }}
+                        disabled={!editSubForm.nextBillingDate || rescheduleSubMutation.isPending}
+                        data-testid="btn-reschedule-sub"
+                      >
+                        {rescheduleSubMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Update"}
+                      </Button>
+                    </div>
+                  </div>
+
                   <Textarea placeholder="Notes" value={editSubForm.notes} onChange={e => setEditSubForm(p => ({ ...p, notes: e.target.value }))} data-testid="input-edit-sub-notes" />
+
+                  {/* Billing controls */}
+                  <div className="pt-3 border-t border-border/30 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing Controls</div>
+                    <div className="flex flex-wrap gap-2">
+                      {editingSub?.status === "paused" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                          onClick={() => { if (editingSub) billingActionMutation.mutate({ id: editingSub.id, action: "resume" }); }}
+                          disabled={billingActionMutation.isPending}
+                          data-testid="btn-resume-billing"
+                        >
+                          <PlayCircle className="h-3.5 w-3.5 mr-1" /> Resume Billing
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                          onClick={() => {
+                            if (!editingSub) return;
+                            if (confirm("Pause billing for this subscription? No charges will be made until you resume.")) {
+                              billingActionMutation.mutate({ id: editingSub.id, action: "pause" });
+                            }
+                          }}
+                          disabled={billingActionMutation.isPending || editingSub?.status === "canceled"}
+                          data-testid="btn-pause-billing"
+                        >
+                          <PauseCircle className="h-3.5 w-3.5 mr-1" /> Pause Billing
+                        </Button>
+                      )}
+
+                      {editingSub?.status !== "canceled" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+                            onClick={() => {
+                              if (!editingSub) return;
+                              if (confirm("Cancel at the end of the current billing period? Client will keep access until then.")) {
+                                billingActionMutation.mutate({ id: editingSub.id, action: "cancel_at_period_end" });
+                              }
+                            }}
+                            disabled={billingActionMutation.isPending}
+                            data-testid="btn-cancel-period-end"
+                          >
+                            <Clock className="h-3.5 w-3.5 mr-1" /> Cancel at Period End
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-400 border-red-500/30 hover:bg-red-500/10"
+                            onClick={() => {
+                              if (!editingSub) return;
+                              if (confirm("STOP this subscription immediately? This cannot be undone — client loses access right away.")) {
+                                billingActionMutation.mutate({ id: editingSub.id, action: "cancel" });
+                              }
+                            }}
+                            disabled={billingActionMutation.isPending}
+                            data-testid="btn-cancel-billing"
+                          >
+                            <X className="h-3.5 w-3.5 mr-1" /> Stop Billing Now
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {editingSub?.stripeSubscriptionId && (
+                      <p className="text-xs text-muted-foreground">
+                        Changes propagate to Stripe automatically.
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <DialogFooter>
-                  <Button onClick={() => { if (editingSub) updateSubMutation.mutate({ id: editingSub.id, updates: { name: editSubForm.name, amount: editSubForm.amount, interval: editSubForm.interval, status: editSubForm.status, notes: editSubForm.notes || undefined } }); }} disabled={!editSubForm.name || !editSubForm.amount || updateSubMutation.isPending} data-testid="btn-submit-edit-sub">
-                    {updateSubMutation.isPending ? "Saving..." : "Save Changes"}
+                <DialogFooter className="border-t border-border/30 pt-3">
+                  <Button onClick={() => { if (editingSub) updateSubMutation.mutate({ id: editingSub.id, updates: { name: editSubForm.name, amount: editSubForm.amount, interval: editSubForm.interval, notes: editSubForm.notes || undefined } }); }} disabled={!editSubForm.name || !editSubForm.amount || updateSubMutation.isPending} data-testid="btn-submit-edit-sub">
+                    {updateSubMutation.isPending ? "Saving..." : "Save Details"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
