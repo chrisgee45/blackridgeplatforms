@@ -542,6 +542,140 @@ export function registerStripeRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
+  // Refresh a subscription's period dates and payment history from Stripe.
+  // Useful when webhooks were missed or period dates got stored as epoch zero.
+  app.post("/api/ops/subscriptions/:id/refresh-from-stripe", isAuthenticated, async (req, res) => {
+    try {
+      const stripe = getStripe();
+      if (!stripe) return res.status(500).json({ message: "Stripe not configured" });
+
+      const subId = (req.params as any).id;
+      const sub = await opsStorage.getSubscription(subId);
+      if (!sub) return res.status(404).json({ message: "Subscription not found" });
+      if (!sub.stripeSubscriptionId) {
+        return res.status(400).json({ message: "Subscription is not linked to Stripe" });
+      }
+
+      const stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+      const subData = stripeSub as any;
+
+      // Newer Stripe API returns current_period_* on items, not the subscription
+      const item0 = subData.items?.data?.[0] as any;
+      const periodStartSec = item0?.current_period_start || subData.current_period_start || 0;
+      const periodEndSec = item0?.current_period_end || subData.current_period_end || 0;
+      const periodStart = periodStartSec > 0 ? new Date(periodStartSec * 1000) : null;
+      const periodEnd = periodEndSec > 0 ? new Date(periodEndSec * 1000) : null;
+      const canceledAt = subData.canceled_at ? new Date(subData.canceled_at * 1000) : null;
+
+      const statusMap: Record<string, string> = {
+        active: "active",
+        past_due: "past_due",
+        canceled: "canceled",
+        trialing: "trialing",
+        paused: "paused",
+        incomplete: "past_due",
+        incomplete_expired: "canceled",
+        unpaid: "past_due",
+      };
+      const newStatus = (statusMap[subData.status] || sub.status) as any;
+      const amountCents = item0?.price?.unit_amount || 0;
+      const amount = amountCents > 0 ? (amountCents / 100).toFixed(2) : sub.amount;
+      const stripeInterval = item0?.price?.recurring?.interval;
+      const dbInterval = stripeInterval === "year" ? "annual" : stripeInterval === "month" ? "monthly" : sub.interval;
+
+      await opsStorage.updateSubscription(sub.id, {
+        status: newStatus,
+        amount,
+        interval: dbInterval as any,
+        ...(periodStart ? { currentPeriodStart: periodStart } : {}),
+        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+        ...(canceledAt ? { canceledAt } : {}),
+        stripePriceId: item0?.price?.id || sub.stripePriceId,
+        stripeProductId: (typeof item0?.price?.product === "string" ? item0.price.product : undefined) || sub.stripeProductId,
+      });
+
+      // Pull invoices for this subscription and upsert as stripe_payments
+      const invoices: Stripe.Invoice[] = [];
+      let starting_after: string | undefined;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const page = await stripe.invoices.list({
+          subscription: sub.stripeSubscriptionId,
+          limit: 100,
+          ...(starting_after ? { starting_after } : {}),
+        });
+        invoices.push(...page.data);
+        if (!page.has_more || page.data.length === 0) break;
+        starting_after = page.data[page.data.length - 1].id;
+      }
+
+      const existing = await opsStorage.getStripePayments(sub.clientId);
+      const byInvoiceId = new Map(existing.filter(p => p.stripeInvoiceId).map(p => [p.stripeInvoiceId!, p]));
+
+      let inserted = 0;
+      let updated = 0;
+      for (const inv of invoices) {
+        const invAny = inv as any;
+        const amountPaid = ((invAny.amount_paid || 0) / 100).toFixed(2);
+        const status = inv.status === "paid" ? "succeeded"
+          : inv.status === "open" ? "pending"
+          : inv.status === "void" ? "failed"
+          : inv.status === "uncollectible" ? "failed"
+          : "pending";
+        const paidAt = invAny.status_transitions?.paid_at
+          ? new Date(invAny.status_transitions.paid_at * 1000)
+          : null;
+        const description = `Invoice ${inv.number || inv.id}`;
+        const piId = typeof invAny.payment_intent === "string"
+          ? invAny.payment_intent
+          : invAny.payment_intent?.id || null;
+
+        const existingPayment = byInvoiceId.get(inv.id!);
+        if (existingPayment) {
+          await opsStorage.updateStripePayment(existingPayment.id, {
+            subscriptionId: sub.id,
+            amount: amountPaid,
+            status,
+            paidAt,
+            description,
+            stripePaymentIntentId: piId,
+            paymentType: "recurring",
+          } as any);
+          updated++;
+        } else {
+          await opsStorage.createStripePayment({
+            clientId: sub.clientId,
+            subscriptionId: sub.id,
+            stripePaymentIntentId: piId,
+            stripeInvoiceId: inv.id,
+            amount: amountPaid,
+            currency: inv.currency || "usd",
+            status,
+            paymentType: "recurring",
+            paymentMethod: "stripe",
+            description,
+            paidAt,
+          } as any);
+          inserted++;
+        }
+      }
+
+      const refreshed = await opsStorage.getSubscription(sub.id);
+      res.json({
+        subscription: refreshed,
+        invoicesProcessed: invoices.length,
+        paymentsInserted: inserted,
+        paymentsUpdated: updated,
+      });
+    } catch (error: any) {
+      console.error("Refresh subscription from Stripe error:", error);
+      res.status(500).json({
+        message: "Failed to refresh from Stripe",
+        error: error?.message || String(error),
+      });
+    }
+  });
+
   app.post("/api/stripe/webhook", async (req, res) => {
     const stripe = getStripe();
     if (!stripe) return res.status(500).json({ message: "Stripe not configured" });

@@ -508,6 +508,11 @@ export class OpsStorage {
     return payment;
   }
 
+  async updateStripePayment(id: string, data: Partial<InsertStripePayment>): Promise<StripePayment | undefined> {
+    const [payment] = await db.update(stripePayments).set(data).where(eq(stripePayments.id, id)).returning();
+    return payment;
+  }
+
   async getStripeEvents(clientId?: string): Promise<StripeEvent[]> {
     if (clientId) {
       return db.select().from(stripeEvents).where(eq(stripeEvents.clientId, clientId)).orderBy(desc(stripeEvents.processedAt));
