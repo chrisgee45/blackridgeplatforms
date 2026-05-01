@@ -557,6 +557,52 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
           audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
           audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
         });
+      } else if (fullText && !mutedRef.current) {
+        // No audio came back from /api/ridge/stream (TTS likely failed
+        // server-side). Try /api/speak as a fallback, then browser
+        // SpeechSynthesis as a last resort.
+        console.warn("[Ridge] no audio from stream, falling back to /api/speak");
+        try {
+          const speakResp = await fetch("/api/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ text: fullText }),
+          });
+          if (speakResp.ok) {
+            const blob = await speakResp.blob();
+            if (blob.size > 0) {
+              const url = URL.createObjectURL(blob);
+              const audio = audioRef.current;
+              audio.src = url;
+              setStatus("speaking");
+              statusRef.current = "speaking";
+              await new Promise<void>((resolve) => {
+                audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+                audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+                audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+              });
+            } else {
+              throw new Error("empty speak blob");
+            }
+          } else {
+            throw new Error("speak failed: " + speakResp.status);
+          }
+        } catch (err) {
+          console.warn("[Ridge] /api/speak failed, using browser TTS:", err);
+          try {
+            const utter = new SpeechSynthesisUtterance(fullText);
+            utter.pitch = 0.8;
+            utter.rate = 0.95;
+            setStatus("speaking");
+            statusRef.current = "speaking";
+            await new Promise<void>((resolve) => {
+              utter.onend = () => resolve();
+              utter.onerror = () => resolve();
+              speechSynthesis.speak(utter);
+            });
+          } catch {}
+        }
       }
 
       if (!fullText) fullText = "No response.";

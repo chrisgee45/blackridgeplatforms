@@ -19,8 +19,8 @@ import {
 import {
   UserCircle, Plus, DollarSign, TrendingUp, Users, Briefcase,
   ArrowRight, Mail, Phone, Globe, Building2, FileText, Clock,
-  ChevronRight, CreditCard, BarChart3, Edit, Trash2, X, AlertTriangle,
-  Loader2, Lock, CheckCircle, Link2, Copy, ExternalLink,
+  ChevronRight, ChevronDown, ChevronUp, CreditCard, BarChart3, Edit, Trash2, X, AlertTriangle,
+  Loader2, Lock, CheckCircle, Link2, Copy, ExternalLink, Receipt, Calendar, Hash,
 } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
@@ -363,6 +363,7 @@ export default function ClientsPage() {
   const [showCreateSub, setShowCreateSub] = useState(false);
   const [showEditSub, setShowEditSub] = useState(false);
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
+  const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
   const [editSubForm, setEditSubForm] = useState({ name: "", amount: "", interval: "monthly", status: "active", notes: "" });
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", website: "", status: "active", notes: "" });
   const [dealForm, setDealForm] = useState({ name: "", value: "", stage: "qualification", probability: "50", notes: "" });
@@ -794,40 +795,181 @@ export default function ClientsPage() {
             {(clientSubs ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">No subscriptions yet</p>
             ) : (
-              (clientSubs ?? []).map(sub => (
-                <Card key={sub.id} className={`bg-card/40 border-border/30 ${sub.status === "past_due" ? "border-red-500/50" : ""}`} data-testid={`card-sub-${sub.id}`}>
-                  <CardContent className="py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {sub.status === "past_due" && <AlertTriangle className="h-4 w-4 text-red-400" data-testid={`icon-past-due-${sub.id}`} />}
-                      <div>
-                        <div className="font-medium">{sub.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {sub.interval}
-                          {sub.stripeSubscriptionId && <span className="ml-2 text-xs opacity-60">Stripe</span>}
+              (clientSubs ?? []).map(sub => {
+                const isExpanded = expandedSubs.has(sub.id);
+                const subPayments = (clientPayments ?? []).filter(p => p.subscriptionId === sub.id);
+                const succeededPayments = subPayments.filter(p => p.status === "succeeded");
+                const totalPaid = succeededPayments.reduce((sum, p) => sum + parseFloat(String(p.amount || 0)), 0);
+                const lastPayment = succeededPayments.sort((a, b) => {
+                  const ad = new Date(a.paidAt || a.createdAt || 0).getTime();
+                  const bd = new Date(b.paidAt || b.createdAt || 0).getTime();
+                  return bd - ad;
+                })[0];
+                const intervalSuffix = sub.interval === "monthly" ? "mo" : sub.interval === "quarterly" ? "qtr" : "yr";
+                return (
+                  <Card key={sub.id} className={`bg-card/40 border-border/30 ${sub.status === "past_due" ? "border-red-500/50" : ""}`} data-testid={`card-sub-${sub.id}`}>
+                    <CardContent className="py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {sub.status === "past_due" && <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" data-testid={`icon-past-due-${sub.id}`} />}
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{sub.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {sub.currentPeriodEnd
+                                ? <>Next bill <span className="text-foreground/80">{formatDate(sub.currentPeriodEnd)}</span></>
+                                : <>Started {formatDate(sub.createdAt)}</>
+                              }
+                              {sub.stripeSubscriptionId && <span className="ml-2 opacity-60">· Stripe</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-mono font-medium">{formatCurrency(sub.amount)}/{intervalSuffix}</span>
+                          <Badge className={SUB_STATUS_COLORS[sub.status]} data-testid={`badge-sub-status-${sub.id}`}>
+                            {sub.status === "past_due" ? "Payment Failed" : sub.status}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => setExpandedSubs(prev => {
+                              const next = new Set(prev);
+                              if (next.has(sub.id)) next.delete(sub.id); else next.add(sub.id);
+                              return next;
+                            })}
+                            data-testid={`btn-toggle-sub-${sub.id}`}
+                            title={isExpanded ? "Hide details" : "Show billing details"}
+                          >
+                            {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`btn-edit-sub-${sub.id}`} onClick={() => {
+                            setEditingSub(sub);
+                            setEditSubForm({ name: sub.name, amount: String(sub.amount), interval: sub.interval, status: sub.status, notes: sub.notes || "" });
+                            setShowEditSub(true);
+                          }}>
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-300" data-testid={`btn-delete-sub-${sub.id}`} onClick={() => {
+                            if (confirm("Delete this subscription? This cannot be undone.")) deleteSubMutation.mutate(sub.id);
+                          }}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-mono font-medium">{formatCurrency(sub.amount)}/{sub.interval === "monthly" ? "mo" : sub.interval === "quarterly" ? "qtr" : "yr"}</span>
-                      <Badge className={SUB_STATUS_COLORS[sub.status]} data-testid={`badge-sub-status-${sub.id}`}>
-                        {sub.status === "past_due" ? "Payment Failed" : sub.status}
-                      </Badge>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`btn-edit-sub-${sub.id}`} onClick={() => {
-                        setEditingSub(sub);
-                        setEditSubForm({ name: sub.name, amount: String(sub.amount), interval: sub.interval, status: sub.status, notes: sub.notes || "" });
-                        setShowEditSub(true);
-                      }}>
-                        <Edit className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400 hover:text-red-300" data-testid={`btn-delete-sub-${sub.id}`} onClick={() => {
-                        if (confirm("Delete this subscription? This cannot be undone.")) deleteSubMutation.mutate(sub.id);
-                      }}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+
+                      {isExpanded && (
+                        <div className="mt-3 pt-3 border-t border-border/30 space-y-3" data-testid={`details-sub-${sub.id}`}>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                            <div>
+                              <div className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Started</div>
+                              <div className="mt-0.5 font-medium">{formatDate(sub.createdAt)}</div>
+                            </div>
+                            <div>
+                              <div className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Current Period</div>
+                              <div className="mt-0.5 font-medium">
+                                {sub.currentPeriodStart || sub.currentPeriodEnd
+                                  ? `${formatDate(sub.currentPeriodStart) || "—"} → ${formatDate(sub.currentPeriodEnd) || "—"}`
+                                  : <span className="text-muted-foreground">Not set</span>}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-muted-foreground flex items-center gap-1"><DollarSign className="h-3 w-3" /> Total Paid</div>
+                              <div className="mt-0.5 font-medium font-mono text-emerald-400">{formatCurrency(totalPaid)}</div>
+                            </div>
+                            <div>
+                              <div className="text-muted-foreground flex items-center gap-1"><Receipt className="h-3 w-3" /> Last Payment</div>
+                              <div className="mt-0.5 font-medium">{lastPayment ? formatDate(lastPayment.paidAt || lastPayment.createdAt) : <span className="text-muted-foreground">None yet</span>}</div>
+                            </div>
+                            {sub.canceledAt && (
+                              <div className="col-span-2 md:col-span-4">
+                                <div className="text-muted-foreground flex items-center gap-1"><X className="h-3 w-3" /> Canceled</div>
+                                <div className="mt-0.5 font-medium text-red-400">{formatDate(sub.canceledAt)}</div>
+                              </div>
+                            )}
+                          </div>
+
+                          {(sub.stripeSubscriptionId || sub.stripePriceId) && (
+                            <div className="text-xs space-y-1">
+                              {sub.stripeSubscriptionId && (
+                                <div className="flex items-center gap-2">
+                                  <Hash className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-muted-foreground">Subscription ID:</span>
+                                  <code className="font-mono text-xs opacity-80">{sub.stripeSubscriptionId}</code>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(sub.stripeSubscriptionId!);
+                                      toast({ title: "Copied" });
+                                    }}
+                                    data-testid={`btn-copy-stripe-id-${sub.id}`}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
+                              {sub.stripePriceId && (
+                                <div className="flex items-center gap-2">
+                                  <Hash className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-muted-foreground">Price ID:</span>
+                                  <code className="font-mono text-xs opacity-80">{sub.stripePriceId}</code>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {sub.notes && (
+                            <div className="text-xs">
+                              <div className="text-muted-foreground mb-0.5">Notes</div>
+                              <div className="whitespace-pre-wrap">{sub.notes}</div>
+                            </div>
+                          )}
+
+                          <div>
+                            <div className="text-xs font-semibold mb-2 flex items-center gap-1">
+                              <Receipt className="h-3 w-3" /> Payment History ({subPayments.length})
+                            </div>
+                            {subPayments.length === 0 ? (
+                              <div className="text-xs text-muted-foreground italic">No payments recorded for this subscription yet.</div>
+                            ) : (
+                              <div className="space-y-1">
+                                {subPayments
+                                  .slice()
+                                  .sort((a, b) => {
+                                    const ad = new Date(a.paidAt || a.createdAt || 0).getTime();
+                                    const bd = new Date(b.paidAt || b.createdAt || 0).getTime();
+                                    return bd - ad;
+                                  })
+                                  .map(p => (
+                                    <div key={p.id} className="flex items-center justify-between gap-3 text-xs py-1.5 px-2 rounded bg-card/60 border border-border/20" data-testid={`payment-${p.id}`}>
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <Calendar className="h-3 w-3 text-muted-foreground shrink-0" />
+                                        <span className="font-medium">{formatDate(p.paidAt || p.createdAt)}</span>
+                                        {p.description && <span className="text-muted-foreground truncate">· {p.description}</span>}
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="font-mono font-medium">{formatCurrency(p.amount)}</span>
+                                        <Badge className={
+                                          p.status === "succeeded" ? "bg-emerald-500/15 text-emerald-400 border-0" :
+                                          p.status === "failed" ? "bg-red-500/15 text-red-400 border-0" :
+                                          p.status === "refunded" ? "bg-amber-500/15 text-amber-400 border-0" :
+                                          "bg-blue-500/15 text-blue-400 border-0"
+                                        }>
+                                          {p.status}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
             <Dialog open={showEditSub} onOpenChange={(open) => { setShowEditSub(open); if (!open) setEditingSub(null); }}>
               <DialogContent>
