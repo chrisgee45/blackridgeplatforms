@@ -67,50 +67,77 @@ interface SearchResults {
   templates: ProjectTemplate[];
 }
 
-const NAV_ITEMS = [
-  { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
-  { title: "Projects", href: "/admin/ops/projects", icon: FolderKanban },
-  { title: "Tasks", href: "/admin/ops/tasks", icon: CheckSquare },
-  { title: "Project Flow", href: "/admin/ops/pipeline", icon: Zap },
-  { title: "Companies", href: "/admin/ops/companies", icon: Building2 },
-  { title: "Contacts", href: "/admin/ops/contacts", icon: Users },
-  { title: "Templates", href: "/admin/ops/templates", icon: FileCog },
-  { title: "Reports", href: "/admin/ops/reports", icon: FileBarChart },
-  { title: "Clients", href: "/admin/ops/clients", icon: UserCircle },
-  { title: "AI Ops", href: "/admin/ops/ai", icon: Brain },
-  { title: "Outreach", href: "/admin/ops/outreach", icon: Megaphone },
-  { title: "Expenses", href: "/admin/ops/expenses", icon: Receipt },
-  { title: "Financials", href: "/admin/ops/financials", icon: LineChart },
-  { title: "Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
-  { title: "Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
-  { title: "QA Checklist", href: "/admin/ops/qa", icon: ClipboardCheck },
-  { title: "Policies", href: "/admin/ops/policies", icon: BookOpen },
-  { title: "Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
-  { title: "Backups", href: "/admin/ops/backups", icon: Database },
-  { title: "QA Audit Portal", href: "/admin/ops/qa-audit", icon: Scan },
+const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon: typeof LayoutDashboard }[] }[] = [
+  {
+    label: "Overview",
+    items: [
+      { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Work",
+    items: [
+      { title: "Project Flow", href: "/admin/ops/pipeline", icon: Zap },
+      { title: "Projects", href: "/admin/ops/projects", icon: FolderKanban },
+      { title: "Tasks", href: "/admin/ops/tasks", icon: CheckSquare },
+      { title: "Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "CRM",
+    items: [
+      { title: "Clients", href: "/admin/ops/clients", icon: UserCircle },
+      { title: "Companies", href: "/admin/ops/companies", icon: Building2 },
+      { title: "Contacts", href: "/admin/ops/contacts", icon: Users },
+      { title: "Outreach", href: "/admin/ops/outreach", icon: Megaphone },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
+      { title: "Accounting", href: "/admin/ops/accounting", icon: LineChart },
+    ],
+  },
+  {
+    label: "Quality",
+    items: [
+      { title: "Quality", href: "/admin/ops/quality", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { title: "Templates", href: "/admin/ops/templates", icon: FileCog },
+      { title: "Policies", href: "/admin/ops/policies", icon: BookOpen },
+      { title: "Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
+      { title: "Backups", href: "/admin/ops/backups", icon: Database },
+    ],
+  },
 ];
 
 const quickActions = [
   { label: "Go to Dashboard", href: "/admin/ops", icon: LayoutDashboard },
+  { label: "Go to AI Insights", href: "/admin/ops?tab=ai", icon: Brain },
+  { label: "Go to Reports", href: "/admin/ops?tab=reports", icon: FileBarChart },
   { label: "Go to Projects", href: "/admin/ops/projects", icon: FolderKanban },
   { label: "Go to Tasks", href: "/admin/ops/tasks", icon: CheckSquare },
   { label: "Go to Project Flow", href: "/admin/ops/pipeline", icon: Zap },
   { label: "Go to Companies", href: "/admin/ops/companies", icon: Building2 },
   { label: "Go to Contacts", href: "/admin/ops/contacts", icon: Users },
   { label: "Go to Templates", href: "/admin/ops/templates", icon: FileCog },
-  { label: "Go to Reports", href: "/admin/ops/reports", icon: FileBarChart },
   { label: "Go to Clients", href: "/admin/ops/clients", icon: UserCircle },
-  { label: "Go to AI Ops", href: "/admin/ops/ai", icon: Brain },
   { label: "Go to Outreach", href: "/admin/ops/outreach", icon: Megaphone },
-  { label: "Go to Expenses", href: "/admin/ops/expenses", icon: Receipt },
-  { label: "Go to Financials", href: "/admin/ops/financials", icon: LineChart },
-  { label: "Go to Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
+  { label: "Go to Accounting", href: "/admin/ops/accounting", icon: LineChart },
+  { label: "Go to Financials", href: "/admin/ops/accounting?tab=financials", icon: LineChart },
+  { label: "Go to Expenses", href: "/admin/ops/accounting?tab=expenses", icon: Receipt },
+  { label: "Go to Tax Center", href: "/admin/ops/accounting?tab=tax", icon: Calculator },
   { label: "Go to Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
-  { label: "Go to QA Checklist", href: "/admin/ops/qa", icon: ClipboardCheck },
+  { label: "Go to Quality", href: "/admin/ops/quality", icon: ClipboardCheck },
+  { label: "Go to QA Checklists", href: "/admin/ops/quality?tab=checklists", icon: ClipboardCheck },
+  { label: "Go to Security Audits", href: "/admin/ops/quality?tab=audits", icon: Scan },
   { label: "Go to Policies", href: "/admin/ops/policies", icon: BookOpen },
   { label: "Go to Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
   { label: "Go to Backups", href: "/admin/ops/backups", icon: Database },
-  { label: "Go to QA Audit Portal", href: "/admin/ops/qa-audit", icon: Scan },
   { label: "Back to CRM", href: "/admin", icon: ArrowLeft },
 ];
 
@@ -316,27 +343,29 @@ function OpsSidebar({ setMfaOpen }: { setMfaOpen: (open: boolean) => void }) {
         </Link>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] tracking-widest uppercase text-muted-foreground/60">Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV_ITEMS.map((item) => {
-                const isActive = location === item.href || 
-                  (item.href !== "/admin/ops" && location.startsWith(item.href));
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild data-active={isActive}>
-                      <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {NAV_SECTIONS.map((section) => (
+          <SidebarGroup key={section.label}>
+            <SidebarGroupLabel className="text-[10px] tracking-widest uppercase text-muted-foreground/60">{section.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.items.map((item) => {
+                  const isActive = location === item.href ||
+                    (item.href !== "/admin/ops" && location.startsWith(item.href));
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild data-active={isActive}>
+                        <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <item.icon className="w-4 h-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter className="p-3">
         <SidebarMenu>

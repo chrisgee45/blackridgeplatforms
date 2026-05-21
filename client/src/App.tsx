@@ -11,7 +11,7 @@ import Home from "@/pages/home";
 const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminPortal = lazy(() => import("@/pages/admin"));
 const OpsLayout = lazy(() => import("@/pages/ops/ops-layout"));
-const OpsDashboard = lazy(() => import("@/pages/ops/dashboard"));
+const OverviewPage = lazy(() => import("@/pages/ops/overview-page"));
 const ProjectDetail = lazy(() => import("@/pages/ops/project-detail"));
 const ProjectsList = lazy(() => import("@/pages/ops/projects-list"));
 const TasksPage = lazy(() => import("@/pages/ops/tasks-page"));
@@ -19,20 +19,17 @@ const ContactsPage = lazy(() => import("@/pages/ops/contacts-page"));
 const PipelinePage = lazy(() => import("@/pages/ops/pipeline-page"));
 const CompaniesPage = lazy(() => import("@/pages/ops/companies-page"));
 const TemplatesPage = lazy(() => import("@/pages/ops/templates-page"));
-const ReportsPage = lazy(() => import("@/pages/ops/reports-page"));
-const AIOpsPage = lazy(() => import("@/pages/ops/ai-ops-page"));
 const OutreachPage = lazy(() => import("@/pages/ops/outreach-page"));
 const ClientsPage = lazy(() => import("@/pages/ops/clients-page"));
-const ExpensesPage = lazy(() => import("@/pages/ops/expenses-page"));
+const AccountingPage = lazy(() => import("@/pages/ops/accounting-page"));
 const CalendarPage = lazy(() => import("@/pages/ops/calendar-page"));
-const FinancialsPage = lazy(() => import("@/pages/ops/financials-page"));
-const TaxCenterPage = lazy(() => import("@/pages/ops/tax-center-page"));
 const QaTemplatesPage = lazy(() => import("@/pages/ops/qa-templates-page"));
 const AuditTestPage = lazy(() => import("@/pages/ops/audit-test-page"));
 const AuditsListPage = lazy(() => import("@/pages/ops/audits-list-page"));
 const AuditTrailPage = lazy(() => import("@/pages/ops/audit-trail-page"));
 const BackupsPage = lazy(() => import("@/pages/ops/backups-page"));
 const QaAuditPortalPage = lazy(() => import("@/pages/ops/qa-audit-portal-page"));
+const QualityPage = lazy(() => import("@/pages/ops/quality-page"));
 const PoliciesPage = lazy(() => import("@/pages/ops/policies-page"));
 const PayPage = lazy(() => import("@/pages/pay-page"));
 const KickoffForm = lazy(() => import("@/pages/kickoff-form"));
@@ -73,7 +70,7 @@ function Router() {
         <Route path="/oauth-callback" component={OAuthCallback} />
         <Route path="/admin" component={AdminPortal} />
         <Route path="/admin/ops">
-          {() => <OpsPage component={OpsDashboard} />}
+          {() => <OpsPage component={OverviewPage} />}
         </Route>
         <Route path="/admin/ops/projects">
           {() => <OpsPage component={ProjectsList} />}
@@ -97,10 +94,10 @@ function Router() {
           {() => <OpsPage component={TemplatesPage} />}
         </Route>
         <Route path="/admin/ops/reports">
-          {() => <OpsPage component={ReportsPage} />}
+          {() => <OpsPage component={OverviewPage} />}
         </Route>
         <Route path="/admin/ops/ai">
-          {() => <OpsPage component={AIOpsPage} />}
+          {() => <OpsPage component={OverviewPage} />}
         </Route>
         <Route path="/admin/ops/outreach/audits/test">
           {() => <OpsPage component={AuditTestPage} />}
@@ -115,19 +112,25 @@ function Router() {
           {() => <OpsPage component={ClientsPage} />}
         </Route>
         <Route path="/admin/ops/expenses">
-          {() => <OpsPage component={ExpensesPage} />}
+          {() => <OpsPage component={AccountingPage} />}
         </Route>
         <Route path="/admin/ops/calendar">
           {() => <OpsPage component={CalendarPage} />}
         </Route>
         <Route path="/admin/ops/financials">
-          {() => <OpsPage component={FinancialsPage} />}
+          {() => <OpsPage component={AccountingPage} />}
         </Route>
         <Route path="/admin/ops/tax-center">
-          {() => <OpsPage component={TaxCenterPage} />}
+          {() => <OpsPage component={AccountingPage} />}
+        </Route>
+        <Route path="/admin/ops/accounting">
+          {() => <OpsPage component={AccountingPage} />}
+        </Route>
+        <Route path="/admin/ops/quality">
+          {() => <OpsPage component={QualityPage} />}
         </Route>
         <Route path="/admin/ops/qa">
-          {() => <OpsPage component={QaTemplatesPage} />}
+          {() => <OpsPage component={QualityPage} />}
         </Route>
         <Route path="/admin/ops/policies">
           {() => <OpsPage component={PoliciesPage} />}
@@ -139,7 +142,7 @@ function Router() {
           {() => <OpsPage component={BackupsPage} />}
         </Route>
         <Route path="/admin/ops/qa-audit">
-          {() => <OpsPage component={QaAuditPortalPage} />}
+          {() => <OpsPage component={QualityPage} />}
         </Route>
         <Route path="/pay/:token" component={PayPage} />
         <Route path="/kickoff/:token" component={KickoffForm} />
