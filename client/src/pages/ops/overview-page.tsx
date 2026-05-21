@@ -1,4 +1,4 @@
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Dashboard from "./dashboard";
 import AiOpsPage from "./ai-ops-page";
@@ -6,29 +6,30 @@ import ReportsPage from "./reports-page";
 
 type TabValue = "dashboard" | "ai" | "reports";
 
+function initialTab(): TabValue {
+  if (typeof window === "undefined") return "dashboard";
+  const search = new URLSearchParams(window.location.search);
+  const q = search.get("tab");
+  if (q === "ai" || q === "reports" || q === "dashboard") return q;
+  const path = window.location.pathname;
+  if (path.endsWith("/ai")) return "ai";
+  if (path.endsWith("/reports")) return "reports";
+  return "dashboard";
+}
+
 export default function OverviewPage() {
-  const [location, navigate] = useLocation();
-  const [pathname, search] = location.split("?");
-  const params = new URLSearchParams(search ?? "");
-  const queryTab = params.get("tab");
+  const [tab, setTab] = useState<TabValue>(initialTab);
 
-  const defaultFromPath: TabValue =
-    pathname.endsWith("/ai") ? "ai" :
-    pathname.endsWith("/reports") ? "reports" :
-    "dashboard";
-
-  const tab: TabValue =
-    queryTab === "ai" || queryTab === "reports" || queryTab === "dashboard"
-      ? queryTab
-      : defaultFromPath;
-
-  const setTab = (value: string) => {
-    const next = value === "dashboard" ? "" : `?tab=${value}`;
-    navigate(`/admin/ops${next}`, { replace: true });
-  };
+  useEffect(() => {
+    const next = tab === "dashboard" ? "" : `?tab=${tab}`;
+    const url = `/admin/ops${next}`;
+    if (window.location.pathname + window.location.search !== url) {
+      window.history.replaceState(null, "", url);
+    }
+  }, [tab]);
 
   return (
-    <Tabs value={tab} onValueChange={setTab}>
+    <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)}>
       <div className="px-6 pt-6">
         <TabsList>
           <TabsTrigger value="dashboard" data-testid="tab-overview-dashboard">Dashboard</TabsTrigger>
