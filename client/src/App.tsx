@@ -21,10 +21,8 @@ const CompaniesPage = lazy(() => import("@/pages/ops/companies-page"));
 const TemplatesPage = lazy(() => import("@/pages/ops/templates-page"));
 const OutreachPage = lazy(() => import("@/pages/ops/outreach-page"));
 const ClientsPage = lazy(() => import("@/pages/ops/clients-page"));
-const ExpensesPage = lazy(() => import("@/pages/ops/expenses-page"));
+const AccountingPage = lazy(() => import("@/pages/ops/accounting-page"));
 const CalendarPage = lazy(() => import("@/pages/ops/calendar-page"));
-const FinancialsPage = lazy(() => import("@/pages/ops/financials-page"));
-const TaxCenterPage = lazy(() => import("@/pages/ops/tax-center-page"));
 const QaTemplatesPage = lazy(() => import("@/pages/ops/qa-templates-page"));
 const AuditTestPage = lazy(() => import("@/pages/ops/audit-test-page"));
 const AuditsListPage = lazy(() => import("@/pages/ops/audits-list-page"));
@@ -114,16 +112,19 @@ function Router() {
           {() => <OpsPage component={ClientsPage} />}
         </Route>
         <Route path="/admin/ops/expenses">
-          {() => <OpsPage component={ExpensesPage} />}
+          {() => <OpsPage component={AccountingPage} />}
         </Route>
         <Route path="/admin/ops/calendar">
           {() => <OpsPage component={CalendarPage} />}
         </Route>
         <Route path="/admin/ops/financials">
-          {() => <OpsPage component={FinancialsPage} />}
+          {() => <OpsPage component={AccountingPage} />}
         </Route>
         <Route path="/admin/ops/tax-center">
-          {() => <OpsPage component={TaxCenterPage} />}
+          {() => <OpsPage component={AccountingPage} />}
+        </Route>
+        <Route path="/admin/ops/accounting">
+          {() => <OpsPage component={AccountingPage} />}
         </Route>
         <Route path="/admin/ops/quality">
           {() => <OpsPage component={QualityPage} />}

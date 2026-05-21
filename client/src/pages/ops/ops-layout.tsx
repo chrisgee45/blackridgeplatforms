@@ -95,9 +95,7 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
   {
     label: "Money",
     items: [
-      { title: "Financials", href: "/admin/ops/financials", icon: LineChart },
-      { title: "Expenses", href: "/admin/ops/expenses", icon: Receipt },
-      { title: "Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
+      { title: "Accounting", href: "/admin/ops/accounting", icon: LineChart },
     ],
   },
   {
@@ -129,9 +127,10 @@ const quickActions = [
   { label: "Go to Templates", href: "/admin/ops/templates", icon: FileCog },
   { label: "Go to Clients", href: "/admin/ops/clients", icon: UserCircle },
   { label: "Go to Outreach", href: "/admin/ops/outreach", icon: Megaphone },
-  { label: "Go to Expenses", href: "/admin/ops/expenses", icon: Receipt },
-  { label: "Go to Financials", href: "/admin/ops/financials", icon: LineChart },
-  { label: "Go to Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
+  { label: "Go to Accounting", href: "/admin/ops/accounting", icon: LineChart },
+  { label: "Go to Financials", href: "/admin/ops/accounting?tab=financials", icon: LineChart },
+  { label: "Go to Expenses", href: "/admin/ops/accounting?tab=expenses", icon: Receipt },
+  { label: "Go to Tax Center", href: "/admin/ops/accounting?tab=tax", icon: Calculator },
   { label: "Go to Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
   { label: "Go to Quality", href: "/admin/ops/quality", icon: ClipboardCheck },
   { label: "Go to QA Checklists", href: "/admin/ops/quality?tab=checklists", icon: ClipboardCheck },
