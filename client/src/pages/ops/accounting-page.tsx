@@ -1,4 +1,4 @@
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import FinancialsPage from "./financials-page";
 import ExpensesPage from "./expenses-page";
@@ -6,29 +6,30 @@ import TaxCenterPage from "./tax-center-page";
 
 type TabValue = "financials" | "expenses" | "tax";
 
+function initialTab(): TabValue {
+  if (typeof window === "undefined") return "financials";
+  const search = new URLSearchParams(window.location.search);
+  const q = search.get("tab");
+  if (q === "expenses" || q === "tax" || q === "financials") return q;
+  const path = window.location.pathname;
+  if (path.includes("/expenses")) return "expenses";
+  if (path.includes("/tax")) return "tax";
+  return "financials";
+}
+
 export default function AccountingPage() {
-  const [location, navigate] = useLocation();
-  const [pathname, search] = location.split("?");
-  const params = new URLSearchParams(search ?? "");
-  const queryTab = params.get("tab");
+  const [tab, setTab] = useState<TabValue>(initialTab);
 
-  const defaultFromPath: TabValue =
-    pathname.includes("/expenses") ? "expenses" :
-    pathname.includes("/tax") ? "tax" :
-    "financials";
-
-  const tab: TabValue =
-    queryTab === "expenses" || queryTab === "tax" || queryTab === "financials"
-      ? queryTab
-      : defaultFromPath;
-
-  const setTab = (value: string) => {
-    const next = value === "financials" ? "" : `?tab=${value}`;
-    navigate(`/admin/ops/accounting${next}`, { replace: true });
-  };
+  useEffect(() => {
+    const next = tab === "financials" ? "" : `?tab=${tab}`;
+    const url = `/admin/ops/accounting${next}`;
+    if (window.location.pathname + window.location.search !== url) {
+      window.history.replaceState(null, "", url);
+    }
+  }, [tab]);
 
   return (
-    <Tabs value={tab} onValueChange={setTab}>
+    <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)}>
       <div className="px-6 pt-6">
         <TabsList>
           <TabsTrigger value="financials" data-testid="tab-accounting-financials">Financials</TabsTrigger>

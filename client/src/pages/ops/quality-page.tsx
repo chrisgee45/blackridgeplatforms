@@ -1,23 +1,32 @@
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import QaTemplatesPage from "./qa-templates-page";
 import QaAuditPortalPage from "./qa-audit-portal-page";
 
-export default function QualityPage() {
-  const [location, navigate] = useLocation();
-  const [pathname, search] = location.split("?");
-  const params = new URLSearchParams(search ?? "");
-  const queryTab = params.get("tab");
-  const defaultFromPath = pathname.includes("qa-audit") ? "audits" : "checklists";
-  const tab = queryTab === "audits" || queryTab === "checklists" ? queryTab : defaultFromPath;
+type TabValue = "checklists" | "audits";
 
-  const setTab = (value: string) => {
-    const next = value === "audits" ? "?tab=audits" : "";
-    navigate(`/admin/ops/quality${next}`, { replace: true });
-  };
+function initialTab(): TabValue {
+  if (typeof window === "undefined") return "checklists";
+  const search = new URLSearchParams(window.location.search);
+  const q = search.get("tab");
+  if (q === "audits" || q === "checklists") return q;
+  if (window.location.pathname.includes("qa-audit")) return "audits";
+  return "checklists";
+}
+
+export default function QualityPage() {
+  const [tab, setTab] = useState<TabValue>(initialTab);
+
+  useEffect(() => {
+    const next = tab === "audits" ? "?tab=audits" : "";
+    const url = `/admin/ops/quality${next}`;
+    if (window.location.pathname + window.location.search !== url) {
+      window.history.replaceState(null, "", url);
+    }
+  }, [tab]);
 
   return (
-    <Tabs value={tab} onValueChange={setTab}>
+    <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)}>
       <div className="px-6 pt-6">
         <TabsList>
           <TabsTrigger value="checklists" data-testid="tab-quality-checklists">Checklists</TabsTrigger>
