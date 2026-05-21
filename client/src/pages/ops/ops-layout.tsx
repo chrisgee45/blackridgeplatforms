@@ -67,27 +67,57 @@ interface SearchResults {
   templates: ProjectTemplate[];
 }
 
-const NAV_ITEMS = [
-  { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
-  { title: "Projects", href: "/admin/ops/projects", icon: FolderKanban },
-  { title: "Tasks", href: "/admin/ops/tasks", icon: CheckSquare },
-  { title: "Project Flow", href: "/admin/ops/pipeline", icon: Zap },
-  { title: "Companies", href: "/admin/ops/companies", icon: Building2 },
-  { title: "Contacts", href: "/admin/ops/contacts", icon: Users },
-  { title: "Templates", href: "/admin/ops/templates", icon: FileCog },
-  { title: "Reports", href: "/admin/ops/reports", icon: FileBarChart },
-  { title: "Clients", href: "/admin/ops/clients", icon: UserCircle },
-  { title: "AI Ops", href: "/admin/ops/ai", icon: Brain },
-  { title: "Outreach", href: "/admin/ops/outreach", icon: Megaphone },
-  { title: "Expenses", href: "/admin/ops/expenses", icon: Receipt },
-  { title: "Financials", href: "/admin/ops/financials", icon: LineChart },
-  { title: "Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
-  { title: "Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
-  { title: "QA Checklist", href: "/admin/ops/qa", icon: ClipboardCheck },
-  { title: "Policies", href: "/admin/ops/policies", icon: BookOpen },
-  { title: "Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
-  { title: "Backups", href: "/admin/ops/backups", icon: Database },
-  { title: "QA Audit Portal", href: "/admin/ops/qa-audit", icon: Scan },
+const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon: typeof LayoutDashboard }[] }[] = [
+  {
+    label: "Overview",
+    items: [
+      { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
+      { title: "Reports", href: "/admin/ops/reports", icon: FileBarChart },
+      { title: "AI Ops", href: "/admin/ops/ai", icon: Brain },
+    ],
+  },
+  {
+    label: "Work",
+    items: [
+      { title: "Project Flow", href: "/admin/ops/pipeline", icon: Zap },
+      { title: "Projects", href: "/admin/ops/projects", icon: FolderKanban },
+      { title: "Tasks", href: "/admin/ops/tasks", icon: CheckSquare },
+      { title: "Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "CRM",
+    items: [
+      { title: "Clients", href: "/admin/ops/clients", icon: UserCircle },
+      { title: "Companies", href: "/admin/ops/companies", icon: Building2 },
+      { title: "Contacts", href: "/admin/ops/contacts", icon: Users },
+      { title: "Outreach", href: "/admin/ops/outreach", icon: Megaphone },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
+      { title: "Financials", href: "/admin/ops/financials", icon: LineChart },
+      { title: "Expenses", href: "/admin/ops/expenses", icon: Receipt },
+      { title: "Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
+    ],
+  },
+  {
+    label: "Quality",
+    items: [
+      { title: "QA Checklist", href: "/admin/ops/qa", icon: ClipboardCheck },
+      { title: "QA Audit Portal", href: "/admin/ops/qa-audit", icon: Scan },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { title: "Templates", href: "/admin/ops/templates", icon: FileCog },
+      { title: "Policies", href: "/admin/ops/policies", icon: BookOpen },
+      { title: "Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
+      { title: "Backups", href: "/admin/ops/backups", icon: Database },
+    ],
+  },
 ];
 
 const quickActions = [
@@ -316,27 +346,29 @@ function OpsSidebar({ setMfaOpen }: { setMfaOpen: (open: boolean) => void }) {
         </Link>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-[10px] tracking-widest uppercase text-muted-foreground/60">Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV_ITEMS.map((item) => {
-                const isActive = location === item.href || 
-                  (item.href !== "/admin/ops" && location.startsWith(item.href));
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild data-active={isActive}>
-                      <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {NAV_SECTIONS.map((section) => (
+          <SidebarGroup key={section.label}>
+            <SidebarGroupLabel className="text-[10px] tracking-widest uppercase text-muted-foreground/60">{section.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.items.map((item) => {
+                  const isActive = location === item.href ||
+                    (item.href !== "/admin/ops" && location.startsWith(item.href));
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild data-active={isActive}>
+                        <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <item.icon className="w-4 h-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter className="p-3">
         <SidebarMenu>
