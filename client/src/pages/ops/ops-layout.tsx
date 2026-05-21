@@ -105,8 +105,7 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
   {
     label: "Quality",
     items: [
-      { title: "QA Checklist", href: "/admin/ops/qa", icon: ClipboardCheck },
-      { title: "QA Audit Portal", href: "/admin/ops/qa-audit", icon: Scan },
+      { title: "Quality", href: "/admin/ops/quality", icon: ClipboardCheck },
     ],
   },
   {
@@ -136,11 +135,12 @@ const quickActions = [
   { label: "Go to Financials", href: "/admin/ops/financials", icon: LineChart },
   { label: "Go to Tax Center", href: "/admin/ops/tax-center", icon: Calculator },
   { label: "Go to Calendar", href: "/admin/ops/calendar", icon: CalendarDays },
-  { label: "Go to QA Checklist", href: "/admin/ops/qa", icon: ClipboardCheck },
+  { label: "Go to Quality", href: "/admin/ops/quality", icon: ClipboardCheck },
+  { label: "Go to QA Checklists", href: "/admin/ops/quality?tab=checklists", icon: ClipboardCheck },
+  { label: "Go to Security Audits", href: "/admin/ops/quality?tab=audits", icon: Scan },
   { label: "Go to Policies", href: "/admin/ops/policies", icon: BookOpen },
   { label: "Go to Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
   { label: "Go to Backups", href: "/admin/ops/backups", icon: Database },
-  { label: "Go to QA Audit Portal", href: "/admin/ops/qa-audit", icon: Scan },
   { label: "Back to CRM", href: "/admin", icon: ArrowLeft },
 ];
 
