@@ -72,8 +72,6 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
     label: "Overview",
     items: [
       { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
-      { title: "Reports", href: "/admin/ops/reports", icon: FileBarChart },
-      { title: "AI Ops", href: "/admin/ops/ai", icon: Brain },
     ],
   },
   {
@@ -121,15 +119,15 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
 
 const quickActions = [
   { label: "Go to Dashboard", href: "/admin/ops", icon: LayoutDashboard },
+  { label: "Go to AI Insights", href: "/admin/ops?tab=ai", icon: Brain },
+  { label: "Go to Reports", href: "/admin/ops?tab=reports", icon: FileBarChart },
   { label: "Go to Projects", href: "/admin/ops/projects", icon: FolderKanban },
   { label: "Go to Tasks", href: "/admin/ops/tasks", icon: CheckSquare },
   { label: "Go to Project Flow", href: "/admin/ops/pipeline", icon: Zap },
   { label: "Go to Companies", href: "/admin/ops/companies", icon: Building2 },
   { label: "Go to Contacts", href: "/admin/ops/contacts", icon: Users },
   { label: "Go to Templates", href: "/admin/ops/templates", icon: FileCog },
-  { label: "Go to Reports", href: "/admin/ops/reports", icon: FileBarChart },
   { label: "Go to Clients", href: "/admin/ops/clients", icon: UserCircle },
-  { label: "Go to AI Ops", href: "/admin/ops/ai", icon: Brain },
   { label: "Go to Outreach", href: "/admin/ops/outreach", icon: Megaphone },
   { label: "Go to Expenses", href: "/admin/ops/expenses", icon: Receipt },
   { label: "Go to Financials", href: "/admin/ops/financials", icon: LineChart },
