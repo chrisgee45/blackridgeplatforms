@@ -42,16 +42,28 @@ function sanitizeErrorMessage(msg: string): string {
 function runPgDump(): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
     const child = exec(
-      `pg_dump "$DATABASE_URL" --no-owner --no-privileges --clean --if-exists | gzip`,
-      { maxBuffer: 100 * 1024 * 1024, timeout: 120000, env: process.env as NodeJS.ProcessEnv },
+      `set -o pipefail; pg_dump "$DATABASE_URL" --no-owner --no-privileges --clean --if-exists | gzip`,
+      { maxBuffer: 100 * 1024 * 1024, timeout: 120000, env: process.env as NodeJS.ProcessEnv, shell: "/bin/bash" },
     );
     child.stdout?.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
     child.on("close", (code) => {
-      if (code === 0) resolve(Buffer.concat(chunks));
-      else reject(new Error("Database dump failed"));
+      if (code === 0) {
+        const buf = Buffer.concat(chunks);
+        if (buf.length === 0) {
+          reject(new Error("pg_dump produced empty output"));
+          return;
+        }
+        resolve(buf);
+      } else {
+        const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+        const detail = stderr ? `: ${stderr.slice(0, 400)}` : "";
+        reject(new Error(`pg_dump exited ${code}${detail}`));
+      }
     });
-    child.on("error", () => reject(new Error("Database dump process error")));
+    child.on("error", (err) => reject(new Error(`pg_dump process error: ${err.message}`)));
   });
 }
 
