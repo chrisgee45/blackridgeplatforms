@@ -41,11 +41,22 @@ function sanitizeErrorMessage(msg: string): string {
 
 function runPgDump(): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    const rawUrl = process.env.DATABASE_URL || "";
+    const dbUrl = rawUrl.trim();
+    if (!dbUrl) {
+      reject(new Error("DATABASE_URL is not set"));
+      return;
+    }
     const chunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     const child = exec(
       `set -o pipefail; pg_dump "$DATABASE_URL" --no-owner --no-privileges --clean --if-exists | gzip`,
-      { maxBuffer: 100 * 1024 * 1024, timeout: 120000, env: process.env as NodeJS.ProcessEnv, shell: "/bin/bash" },
+      {
+        maxBuffer: 100 * 1024 * 1024,
+        timeout: 120000,
+        env: { ...process.env, DATABASE_URL: dbUrl } as NodeJS.ProcessEnv,
+        shell: "/bin/bash",
+      },
     );
     child.stdout?.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
     child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
