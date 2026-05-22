@@ -443,6 +443,9 @@ export function EventDialog({
   const [location, setLocation] = useState(event?.location ?? "");
   const [notes, setNotes] = useState(event?.notes ?? "");
   const [status, setStatus] = useState(event?.status ?? "scheduled");
+  const [reminder, setReminder] = useState(
+    event ? (event.reminderMinutes ? String(event.reminderMinutes) : "none") : "60",
+  );
 
   const onDone = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/crm/events"] });
@@ -463,6 +466,7 @@ export function EventDialog({
         title, type, startAt, endAt,
         leadId: leadId === "none" ? null : leadId,
         location, notes, status,
+        reminderMinutes: reminder === "none" ? null : Number(reminder),
       };
       if (isEdit) {
         await apiRequest("PATCH", `/api/crm/events/${event!.id}`, payload);
@@ -550,6 +554,20 @@ export function EventDialog({
           <div>
             <Label className="text-xs">Notes <span className="text-muted-foreground">(optional)</span></Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} data-testid="input-event-notes" />
+          </div>
+          <div>
+            <Label className="text-xs">Text reminder</Label>
+            <Select value={reminder} onValueChange={setReminder}>
+              <SelectTrigger data-testid="select-event-reminder"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No reminder</SelectItem>
+                <SelectItem value="15">15 minutes before</SelectItem>
+                <SelectItem value="30">30 minutes before</SelectItem>
+                <SelectItem value="60">1 hour before</SelectItem>
+                <SelectItem value="120">2 hours before</SelectItem>
+                <SelectItem value="1440">1 day before</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           {isEdit && (
             <div>
