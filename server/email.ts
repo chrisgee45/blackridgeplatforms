@@ -52,7 +52,7 @@ export function buildEmailSignatureHtml(): string {
 /** Plain-text email signature, for the text/* part of the message. */
 export function buildEmailSignatureText(): string {
   return [
-    "—",
+    "--",
     "Chris Gee",
     "Founder & CEO | BlackRidge Platforms",
     "(405) 201-5869",

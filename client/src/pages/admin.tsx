@@ -1026,34 +1026,34 @@ const ACTIVITY_COLORS: Record<string, string> = {
 
 const EMAIL_TEMPLATES: { label: string; subject: string; body: string }[] = [
   {
-    label: "Cold intro — site observation",
+    label: "Cold intro (site observation)",
     subject: "an idea for {{company}}'s site",
-    body: "Hi {{name}},\n\nI was looking at {{company}}'s website and a couple of things stood out — small changes that could turn more of your visitors into actual calls and customers.\n\nBuilding sites that sell (not just sit there) is what I do, and I'd be glad to walk you through what I'd change. No charge, no pitch.\n\nWorth 15 minutes? I'll show you exactly what I mean.\n\nBest,",
+    body: "Hi {{name}},\n\nI was looking at {{company}}'s website and a couple of things stood out. Small changes that could turn more of your visitors into actual calls and customers.\n\nBuilding sites that sell (not just sit there) is what I do, and I'd be glad to walk you through what I'd change. No charge, no pitch.\n\nWorth 15 minutes? I'll show you exactly what I mean.\n\nBest,",
   },
   {
     label: "Gentle bump",
     subject: "bad timing, {{name}}?",
-    body: "Hi {{name}},\n\nI know inboxes are brutal — mine too.\n\nQuick yes/no: is improving {{company}}'s website something you'd want to look at this quarter, or should I reach back out later in the year?\n\nEither answer is completely fine — I just don't want to chase if the timing's off.\n\nBest,",
+    body: "Hi {{name}},\n\nI know inboxes are brutal, so I'll keep this short.\n\nQuick yes or no: is improving {{company}}'s website something you'd want to look at this quarter, or should I reach back out later in the year?\n\nEither answer is completely fine. I just don't want to chase if the timing's off.\n\nBest,",
   },
   {
     label: "Value-first idea",
     subject: "a 5-minute fix for {{company}}",
-    body: "Hi {{name}},\n\nNo pitch here — just one idea.\n\nMost small-business sites lose visitors in the first five seconds because it isn't instantly clear what to do next. The fix is usually one strong headline and one obvious button.\n\nIf you'd like, I'll record a quick 3-minute video showing exactly how I'd do that for {{company}} — free, and yours to keep whether we ever work together or not.\n\nWant me to send it over?\n\nBest,",
+    body: "Hi {{name}},\n\nNo pitch here, just one idea.\n\nMost small-business sites lose visitors in the first five seconds because it isn't instantly clear what to do next. The fix is usually one strong headline and one obvious button.\n\nIf you'd like, I'll record a quick 3-minute video showing exactly how I'd do that for {{company}}. It's free, and yours to keep whether we ever work together or not.\n\nWant me to send it over?\n\nBest,",
   },
   {
     label: "After a call",
-    subject: "great talking, {{name}} — here's the plan",
-    body: "Hi {{name}},\n\nReally enjoyed our conversation — thanks for the time.\n\nWhat I heard: you want a site that looks sharp and actually brings in business, without a months-long process. That's exactly what I do.\n\nI'll put together a clear scope and price for {{company}} and send it your way. Anything specific you want me to be sure to include?\n\nBest,",
+    subject: "great talking today, {{name}}",
+    body: "Hi {{name}},\n\nReally enjoyed our conversation, and thanks for the time.\n\nWhat I heard: you want a site that looks sharp and actually brings in business, without a months-long process. That's exactly what I do.\n\nI'll put together a clear scope and price for {{company}} and send it your way. Anything specific you want me to be sure to include?\n\nBest,",
   },
   {
     label: "Proposal sent",
     subject: "your plan for {{company}}'s new site",
-    body: "Hi {{name}},\n\nHere's the plan for {{company}}'s new website — what we'll build, the timeline, and the investment, all in one place.\n\nI kept it straightforward: no jargon, no surprises. If anything looks off or you'd adjust the scope, just say the word.\n\nHappy to hop on a quick call and walk through it together — when works for you?\n\nBest,",
+    body: "Hi {{name}},\n\nHere's the plan for {{company}}'s new website. Everything we'll build, the timeline, and the investment, all in one place.\n\nI kept it straightforward: no jargon, no surprises. If anything looks off or you'd adjust the scope, just say the word.\n\nHappy to hop on a quick call and walk through it together. When works for you?\n\nBest,",
   },
   {
     label: "Re-engage (breakup)",
     subject: "should I close your file, {{name}}?",
-    body: "Hi {{name}},\n\nI've reached out a few times about {{company}}'s website and haven't heard back — which usually means one of two things: it's not a priority right now, or my timing's just been off.\n\nNo hard feelings either way. If it isn't the right time, I'll close this out and stop landing in your inbox.\n\nBut if a website that actually pulls in customers is still on your list, just reply \"still interested\" and I'll take it from there.\n\nBest,",
+    body: "Hi {{name}},\n\nI've reached out a few times about {{company}}'s website and haven't heard back, which usually means one of two things: it's not a priority right now, or my timing has been off.\n\nNo hard feelings either way. If it isn't the right time, I'll close this out and stop landing in your inbox.\n\nBut if a website that actually pulls in customers is still on your list, just reply \"still interested\" and I'll take it from there.\n\nBest,",
   },
 ];
 
@@ -1143,7 +1143,7 @@ function LeadEmailComposer({ lead }: { lead: ContactSubmission }) {
           />
           <div className="rounded-lg border border-border/50 bg-muted/30 p-3" data-testid="email-signature-preview">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-              Signature — added automatically
+              Signature (added automatically)
             </p>
             <div className="flex items-center gap-3">
               <div className="bg-neutral-950 rounded-md px-3 py-2 flex items-center shrink-0">
