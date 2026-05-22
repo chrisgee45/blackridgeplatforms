@@ -27,17 +27,17 @@ const GOLD = "#bd8b22";
 
 /** HTML email signature for Chris / BlackRidge Platforms. */
 export function buildEmailSignatureHtml(): string {
-  const logoCell = SIGNATURE_LOGO_URL
-    ? `<td style="vertical-align:middle;padding-right:18px;border-right:1px solid #e5e7eb;">
-         <img src="${SIGNATURE_LOGO_URL}" alt="BlackRidge Platforms" width="130" style="display:block;border:0;" />
-       </td>`
+  const logoCells = SIGNATURE_LOGO_URL
+    ? `<td bgcolor="#0d0d0d" style="background-color:#0d0d0d;padding:14px 18px;vertical-align:middle;">
+         <img src="${SIGNATURE_LOGO_URL}" alt="BlackRidge Platforms" width="118" style="display:block;border:0;" />
+       </td>
+       <td style="width:20px;font-size:0;line-height:0;">&nbsp;</td>`
     : "";
-  const detailPad = SIGNATURE_LOGO_URL ? "padding-left:18px;" : "";
   return `
   <table cellpadding="0" cellspacing="0" border="0" style="margin-top:26px;border-top:2px solid ${GOLD};padding-top:16px;font-family:Arial,Helvetica,sans-serif;">
     <tr>
-      ${logoCell}
-      <td style="vertical-align:middle;${detailPad}">
+      ${logoCells}
+      <td style="vertical-align:middle;">
         <div style="font-size:16px;font-weight:bold;color:#1a1a1a;">Chris Gee</div>
         <div style="font-size:12px;font-weight:bold;color:${GOLD};margin-top:3px;">Founder &amp; CEO &nbsp;|&nbsp; BlackRidge Platforms</div>
         <div style="font-size:12px;color:#555555;margin-top:9px;">(405) 201-5869</div>

@@ -190,8 +190,10 @@ function LoginForm() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <Card className="w-full max-w-sm border-border/50 bg-card/80">
         <CardHeader className="text-center pb-4">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-12 w-auto" />
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="bg-neutral-950 rounded-lg px-4 py-3 flex items-center">
+              <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-12 w-auto" />
+            </div>
             <span className="font-semibold text-xs tracking-[0.2em] uppercase text-primary">CRM</span>
           </div>
           <CardTitle className="text-lg">{mfaStep ? "Two-Factor Authentication" : "Admin Login"}</CardTitle>
@@ -1124,6 +1126,23 @@ function LeadEmailComposer({ lead }: { lead: ContactSubmission }) {
             rows={8}
             data-testid="input-email-body"
           />
+          <div className="rounded-lg border border-border/50 bg-muted/30 p-3" data-testid="email-signature-preview">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+              Signature — added automatically
+            </p>
+            <div className="flex items-center gap-3">
+              <div className="bg-neutral-950 rounded-md px-3 py-2 flex items-center shrink-0">
+                <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
+              </div>
+              <div className="border-l-2 border-primary/70 pl-3">
+                <div className="text-sm font-bold leading-tight">Chris Gee</div>
+                <div className="text-xs font-semibold text-primary leading-tight">Founder &amp; CEO | BlackRidge Platforms</div>
+                <div className="text-xs text-muted-foreground mt-1 leading-tight">(405) 201-5869</div>
+                <div className="text-xs text-muted-foreground leading-tight">blackridgeplatforms.com</div>
+                <div className="text-xs text-muted-foreground leading-tight">chris@blackridgeplatforms.com</div>
+              </div>
+            </div>
+          </div>
           <div className="flex justify-end gap-2">
             <Button
               size="sm"
@@ -1564,7 +1583,9 @@ export default function AdminPortal() {
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between gap-4 h-16">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
+              <div className="bg-neutral-950 rounded-md px-2.5 py-1.5 flex items-center">
+                <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-7 w-auto" />
+              </div>
               <span className="font-semibold text-[10px] tracking-[0.2em] uppercase text-primary border-l border-border/40 pl-2">CRM</span>
             </div>
             <div className="hidden sm:flex items-center rounded-md border border-border/60 p-0.5">
