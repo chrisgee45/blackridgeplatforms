@@ -1026,19 +1026,34 @@ const ACTIVITY_COLORS: Record<string, string> = {
 
 const EMAIL_TEMPLATES: { label: string; subject: string; body: string }[] = [
   {
-    label: "Intro — quick question",
-    subject: "Quick question about {{company}}'s website",
-    body: "Hi {{name}},\n\nI came across {{company}} and noticed a few quick wins that could help your website turn more visitors into customers.\n\nWould you be open to a short call this week so I can walk you through them? No pressure — just a few ideas.\n\nBest,",
+    label: "Cold intro — site observation",
+    subject: "an idea for {{company}}'s site",
+    body: "Hi {{name}},\n\nI was looking at {{company}}'s website and a couple of things stood out — small changes that could turn more of your visitors into actual calls and customers.\n\nBuilding sites that sell (not just sit there) is what I do, and I'd be glad to walk you through what I'd change. No charge, no pitch.\n\nWorth 15 minutes? I'll show you exactly what I mean.\n\nBest,",
   },
   {
-    label: "Follow-up",
-    subject: "Following up — {{company}} website",
-    body: "Hi {{name}},\n\nJust circling back on my earlier note about your website. I'd love to show you what a refreshed site could do for {{company}}.\n\nAre you free for 15 minutes this week?\n\nBest,",
+    label: "Gentle bump",
+    subject: "bad timing, {{name}}?",
+    body: "Hi {{name}},\n\nI know inboxes are brutal — mine too.\n\nQuick yes/no: is improving {{company}}'s website something you'd want to look at this quarter, or should I reach back out later in the year?\n\nEither answer is completely fine — I just don't want to chase if the timing's off.\n\nBest,",
   },
   {
-    label: "Proposal ready",
-    subject: "Your website proposal — {{company}}",
-    body: "Hi {{name}},\n\nThanks for the great conversation. I've put together a proposal for your new website and would love to walk you through it.\n\nLet me know what time works and I'll send the details over.\n\nBest,",
+    label: "Value-first idea",
+    subject: "a 5-minute fix for {{company}}",
+    body: "Hi {{name}},\n\nNo pitch here — just one idea.\n\nMost small-business sites lose visitors in the first five seconds because it isn't instantly clear what to do next. The fix is usually one strong headline and one obvious button.\n\nIf you'd like, I'll record a quick 3-minute video showing exactly how I'd do that for {{company}} — free, and yours to keep whether we ever work together or not.\n\nWant me to send it over?\n\nBest,",
+  },
+  {
+    label: "After a call",
+    subject: "great talking, {{name}} — here's the plan",
+    body: "Hi {{name}},\n\nReally enjoyed our conversation — thanks for the time.\n\nWhat I heard: you want a site that looks sharp and actually brings in business, without a months-long process. That's exactly what I do.\n\nI'll put together a clear scope and price for {{company}} and send it your way. Anything specific you want me to be sure to include?\n\nBest,",
+  },
+  {
+    label: "Proposal sent",
+    subject: "your plan for {{company}}'s new site",
+    body: "Hi {{name}},\n\nHere's the plan for {{company}}'s new website — what we'll build, the timeline, and the investment, all in one place.\n\nI kept it straightforward: no jargon, no surprises. If anything looks off or you'd adjust the scope, just say the word.\n\nHappy to hop on a quick call and walk through it together — when works for you?\n\nBest,",
+  },
+  {
+    label: "Re-engage (breakup)",
+    subject: "should I close your file, {{name}}?",
+    body: "Hi {{name}},\n\nI've reached out a few times about {{company}}'s website and haven't heard back — which usually means one of two things: it's not a priority right now, or my timing's just been off.\n\nNo hard feelings either way. If it isn't the right time, I'll close this out and stop landing in your inbox.\n\nBut if a website that actually pulls in customers is still on your list, just reply \"still interested\" and I'll take it from there.\n\nBest,",
   },
 ];
 
