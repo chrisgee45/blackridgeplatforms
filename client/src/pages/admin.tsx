@@ -581,6 +581,94 @@ function LeadDetailDialog({
   );
 }
 
+type ScriptItem = { label?: string; say?: string; note?: string };
+const CALL_SCRIPTS: { section: string; items: ScriptItem[] }[] = [
+  {
+    section: "Get past the gatekeeper",
+    items: [
+      { label: "If you have the owner's name", say: "Hi, this is Chris with BlackRidge Platforms. Is [Owner] in today?" },
+      { label: "If they ask what it's about", say: "I looked at [Business]'s website and had two specific ideas for them. Two minutes, tops. Are they around?" },
+      { label: "If you don't have a name", say: "Quick question, who's the best person to talk to about the company website? ... And are they in right now?" },
+      { note: "Always get the gatekeeper's name and thank them by it. They decide if you get through." },
+    ],
+  },
+  {
+    section: "Opener (decision maker)",
+    items: [
+      { label: "Lead with honesty, it disarms them", say: "Hi [Name], this is Chris with BlackRidge Platforms. I'll be straight with you, this is a cold call. You can hang up, or give me 30 seconds and then decide. Fair enough?" },
+      { label: "Then", say: "I build websites for businesses in [area]. Before I called I looked at [Business]'s site, and the reason I'm calling you specifically is [specific observation]. I won't pitch you over the phone. I'd just show you what I'd change on a quick 15-minute call. Worst case you get free ideas. Worth a look?" },
+      { note: "Observations that work: hard to use on a phone / no clear way to call or book from the homepage / loads slow enough that visitors leave." },
+    ],
+  },
+  {
+    section: "Objections",
+    items: [
+      { label: "We already have a website", say: "Most businesses do. The question isn't whether you have one, it's whether it turns visitors into phone calls. That's exactly what I'd look at with you." },
+      { label: "Not interested", say: "Totally fair. Quick question so I don't bug you again, is the timing just off, or is the website not really a priority right now?" },
+      { label: "Just send me an email", say: "Happy to. So I send something useful, what's the one thing you'd want a new site to do, more calls, more bookings, or look more credible? ... Best email for you?" },
+      { label: "How much does it cost", say: "Fair question. Honestly it depends what you need, and any number now would be a guess. That's why I do a short call first, so I give you a real number, not a sales number. Most projects land between [range]. Can we grab 15 minutes?" },
+      { label: "We're too busy right now", say: "I hear you, and that's the point. You're busy running the business. The website should be working for you in the background. Let's just put 15 minutes on the calendar for next week." },
+    ],
+  },
+  {
+    section: "Close (book the call)",
+    items: [
+      { say: "Great. I make it easy, I'll text you a link to grab a time, takes ten seconds. Or I pencil you in now, mornings or afternoons generally? ... Tuesday or Thursday?" },
+      { note: "Then send your booking link. They pick a slot and it lands on your calendar automatically." },
+    ],
+  },
+  {
+    section: "Voicemail (keep it under 20 seconds)",
+    items: [
+      { say: "Hi [Name], this is Chris with BlackRidge Platforms, my number is [number]. I looked at [Business]'s website and noticed one quick thing that's probably costing you customers. Nothing to buy, I just want to point it out. Call me back at [number], or I'll try you again. Thanks [Name]." },
+    ],
+  },
+  {
+    section: "Tips",
+    items: [
+      { note: "Best call windows: 8 to 9 am and 4 to 5:30 pm." },
+      { note: "Tone: calm and unhurried. Confidence pulls, desperation repels." },
+      { note: "Stand up and smile when you dial. It changes your voice." },
+      { note: "Log every call here as an activity and set a follow-up date before you hang up." },
+      { note: "The goal of the call is the booking, not the sale. If they book, the call worked." },
+    ],
+  },
+];
+
+function CallScriptsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-call-scripts">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Phone className="h-5 w-5 text-primary" /> Cold Call Playbook
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5">
+          {CALL_SCRIPTS.map((sec) => (
+            <div key={sec.section}>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">{sec.section}</h3>
+              <div className="space-y-2.5">
+                {sec.items.map((item, i) => (
+                  <div key={i}>
+                    {item.label && <p className="text-xs text-muted-foreground mb-1">{item.label}</p>}
+                    {item.say && (
+                      <p className="text-sm bg-muted/50 border-l-2 border-primary/60 rounded-r px-3 py-2 leading-relaxed">
+                        {item.say}
+                      </p>
+                    )}
+                    {item.note && <p className="text-xs text-muted-foreground leading-relaxed">{item.note}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function LeadDetailContent({
   lead,
   onOpenChange,
@@ -593,6 +681,7 @@ function LeadDetailContent({
   const { toast } = useToast();
   const [editNotes, setEditNotes] = useState(lead.notes ?? "");
   const [isEditing, setIsEditing] = useState(false);
+  const [scriptsOpen, setScriptsOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     name: lead.name,
     email: lead.email,
@@ -678,6 +767,9 @@ function LeadDetailContent({
             ) : lead.name}
           </DialogTitle>
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setScriptsOpen(true)} data-testid="button-call-scripts">
+              <Phone className="h-4 w-4 mr-1" /> Call Script
+            </Button>
             {!isEditing ? (
               <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)} data-testid="button-edit-lead">
                 <Pencil className="h-4 w-4 mr-1" /> Edit
@@ -1013,6 +1105,7 @@ function LeadDetailContent({
           </Button>
         </div>
       </div>
+      <CallScriptsDialog open={scriptsOpen} onOpenChange={setScriptsOpen} />
     </DialogContent>
   );
 }
