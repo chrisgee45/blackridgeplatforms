@@ -995,17 +995,17 @@ const EMAIL_TEMPLATES: { label: string; subject: string; body: string }[] = [
   {
     label: "Intro — quick question",
     subject: "Quick question about {{company}}'s website",
-    body: "Hi {{name}},\n\nI came across {{company}} and noticed a few quick wins that could help your website turn more visitors into customers.\n\nWould you be open to a short call this week so I can walk you through them? No pressure — just a few ideas.\n\nBest,\nChris\nBlackRidge Platforms",
+    body: "Hi {{name}},\n\nI came across {{company}} and noticed a few quick wins that could help your website turn more visitors into customers.\n\nWould you be open to a short call this week so I can walk you through them? No pressure — just a few ideas.\n\nBest,",
   },
   {
     label: "Follow-up",
     subject: "Following up — {{company}} website",
-    body: "Hi {{name}},\n\nJust circling back on my earlier note about your website. I'd love to show you what a refreshed site could do for {{company}}.\n\nAre you free for 15 minutes this week?\n\nBest,\nChris\nBlackRidge Platforms",
+    body: "Hi {{name}},\n\nJust circling back on my earlier note about your website. I'd love to show you what a refreshed site could do for {{company}}.\n\nAre you free for 15 minutes this week?\n\nBest,",
   },
   {
     label: "Proposal ready",
     subject: "Your website proposal — {{company}}",
-    body: "Hi {{name}},\n\nThanks for the great conversation. I've put together a proposal for your new website and would love to walk you through it.\n\nLet me know what time works and I'll send the details over.\n\nBest,\nChris\nBlackRidge Platforms",
+    body: "Hi {{name}},\n\nThanks for the great conversation. I've put together a proposal for your new website and would love to walk you through it.\n\nLet me know what time works and I'll send the details over.\n\nBest,",
   },
 ];
 
