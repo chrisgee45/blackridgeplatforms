@@ -16,6 +16,7 @@ import { registerOutreachRoutes } from "./outreach-routes";
 import PDFDocument from "pdfkit";
 import { registerStripeRoutes } from "./stripe-routes";
 import { registerBookkeepingRoutes } from "./bookkeeping-routes";
+import { bookkeepingStorage } from "./bookkeeping-storage";
 import { createAccountingV2Router } from "./accounting-v2-routes";
 import { registerGaapRoutes } from "./gaap-routes";
 import { seedCampaignA } from "./outreach-seed";
@@ -431,6 +432,55 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete lead" });
+    }
+  });
+
+  app.post("/api/leads/:id/email", isAuthenticated, async (req, res) => {
+    try {
+      const leadId = req.params.id as string;
+      const lead = await storage.getContactSubmission(leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+
+      const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+      const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+      if (!subject || !body) {
+        return res.status(400).json({ message: "Subject and body are required" });
+      }
+
+      const resend = getResendClient();
+      if (!resend) {
+        return res.status(500).json({ message: "Email service not configured — set RESEND_API_KEY" });
+      }
+
+      const escapeHtml = (s: string) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">${
+        body.split("\n").map((line) => (line ? escapeHtml(line) : "")).join("<br/>")
+      }</div>`;
+
+      await resend.client.emails.send({
+        from: resend.fromEmail,
+        to: [lead.email],
+        subject,
+        html,
+        text: body,
+      });
+
+      await storage.updateContactSubmission(leadId, { lastContactedAt: new Date().toISOString() });
+      await bookkeepingStorage.createLeadActivity({
+        leadId,
+        type: "email_sent",
+        description: subject,
+        metadata: { body, to: lead.email },
+        createdBy: "admin",
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Send lead email error:", error);
+      res.status(500).json({ message: `Failed to send email: ${error?.message || "unknown error"}` });
     }
   });
 
