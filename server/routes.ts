@@ -20,6 +20,8 @@ import { bookkeepingStorage } from "./bookkeeping-storage";
 import { registerCrmCalendarRoutes, ensureCrmSchema, startEventReminderRunner } from "./crm-calendar";
 import { registerBookingRoutes } from "./booking-routes";
 import { registerProposalRoutes } from "./proposal-routes";
+import { registerPushRoutes, ensurePushTable } from "./push-routes";
+import { initPush } from "./push";
 import { createAccountingV2Router } from "./accounting-v2-routes";
 import { registerGaapRoutes } from "./gaap-routes";
 import { seedCampaignA } from "./outreach-seed";
@@ -309,8 +311,11 @@ export async function registerRoutes(
   registerCrmCalendarRoutes(app, isAuthenticated);
   registerBookingRoutes(app);
   registerProposalRoutes(app, isAuthenticated);
+  registerPushRoutes(app, isAuthenticated);
 
+  initPush();
   ensureCrmSchema().catch(err => console.error("Failed to ensure CRM schema:", err));
+  ensurePushTable().catch(err => console.error("Failed to ensure push table:", err));
   seedCampaignA().catch(err => console.error("Failed to seed Campaign A:", err));
   seedQaTemplates().catch(err => console.error("Failed to seed QA templates:", err));
   opsStorage.ensureInvoiceCounter().catch(err => console.error("Failed to seed invoice counter:", err));

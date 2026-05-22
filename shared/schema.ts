@@ -881,6 +881,18 @@ export const insertProposalSchema = createInsertSchema(proposals).omit({
 export type InsertProposal = z.infer<typeof insertProposalSchema>;
 export type Proposal = typeof proposals.$inferSelect;
 
+// === Web Push Subscriptions ===
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+
 // === Bookkeeping System ===
 
 export const accountTypeEnum = pgEnum("account_type", [
