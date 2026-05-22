@@ -336,7 +336,7 @@ function EventRow({
         </div>
         <div className="text-xs text-muted-foreground truncate">
           {format(new Date(event.startAt), "h:mm a")}
-          {event.endAt ? ` – ${format(new Date(event.endAt), "h:mm a")}` : ""}
+          {event.endAt ? ` to ${format(new Date(event.endAt), "h:mm a")}` : ""}
           {lead ? ` · ${lead.name}` : ""}
           {event.location ? ` · ${event.location}` : ""}
         </div>
@@ -518,7 +518,7 @@ export function EventDialog({
               <SelectContent>
                 <SelectItem value="none">No lead</SelectItem>
                 {leads.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>{l.name}{l.company ? ` — ${l.company}` : ""}</SelectItem>
+                  <SelectItem key={l.id} value={l.id}>{l.name}{l.company ? ` (${l.company})` : ""}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
