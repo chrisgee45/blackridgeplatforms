@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   ChevronLeft, ChevronRight, Plus, CalendarDays, LayoutGrid, List,
-  Clock, MapPin, Trash2, Loader2, Check, Video, Phone, Users, Presentation, CircleDot,
+  Clock, Trash2, Loader2, Check, Phone, Users, Presentation, CircleDot, Link2,
 } from "lucide-react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -56,6 +56,17 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<CrmEvent | null>(null);
   const [presetDate, setPresetDate] = useState<Date | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyBookingLink = () => {
+    const url = `${window.location.origin}/book`;
+    navigator.clipboard?.writeText(url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
+  };
 
   const { data: events = [], isLoading } = useQuery<CrmEvent[]>({
     queryKey: ["/api/crm/events"],
@@ -143,6 +154,10 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
               <List className="h-3.5 w-3.5" /> Agenda
             </button>
           </div>
+          <Button size="sm" variant="outline" onClick={copyBookingLink} data-testid="button-copy-booking-link">
+            {copied ? <Check className="h-4 w-4 mr-1 text-green-500" /> : <Link2 className="h-4 w-4 mr-1" />}
+            {copied ? "Copied!" : "Booking link"}
+          </Button>
           <Button size="sm" onClick={() => openNew()} data-testid="button-new-event">
             <Plus className="h-4 w-4 mr-1" /> New Event
           </Button>

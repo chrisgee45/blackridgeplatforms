@@ -18,6 +18,7 @@ import { registerStripeRoutes } from "./stripe-routes";
 import { registerBookkeepingRoutes } from "./bookkeeping-routes";
 import { bookkeepingStorage } from "./bookkeeping-storage";
 import { registerCrmCalendarRoutes, ensureCrmSchema } from "./crm-calendar";
+import { registerBookingRoutes } from "./booking-routes";
 import { createAccountingV2Router } from "./accounting-v2-routes";
 import { registerGaapRoutes } from "./gaap-routes";
 import { seedCampaignA } from "./outreach-seed";
@@ -305,6 +306,7 @@ export async function registerRoutes(
   registerWelcomeSequenceRoutes(app, isAuthenticated);
   registerQaAuditRoutes(app, isAuthenticated);
   registerCrmCalendarRoutes(app, isAuthenticated);
+  registerBookingRoutes(app);
 
   ensureCrmSchema().catch(err => console.error("Failed to ensure CRM schema:", err));
   seedCampaignA().catch(err => console.error("Failed to seed Campaign A:", err));

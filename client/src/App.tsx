@@ -33,6 +33,7 @@ const QualityPage = lazy(() => import("@/pages/ops/quality-page"));
 const PoliciesPage = lazy(() => import("@/pages/ops/policies-page"));
 const PayPage = lazy(() => import("@/pages/pay-page"));
 const KickoffForm = lazy(() => import("@/pages/kickoff-form"));
+const BookPage = lazy(() => import("@/pages/book-page"));
 const OAuthCallback = lazy(() => import("@/pages/oauth-callback"));
 
 function LoadingFallback() {
@@ -146,6 +147,7 @@ function Router() {
         </Route>
         <Route path="/pay/:token" component={PayPage} />
         <Route path="/kickoff/:token" component={KickoffForm} />
+        <Route path="/book" component={BookPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
