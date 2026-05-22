@@ -22,6 +22,7 @@ export class DatabaseStorage implements IStorage {
       name: lead.name,
       email: lead.email,
       company: lead.company || null,
+      website: lead.website || null,
       projectType: lead.projectType || null,
       budget: lead.budget || null,
       message: lead.message,

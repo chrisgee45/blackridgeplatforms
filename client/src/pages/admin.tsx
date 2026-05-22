@@ -379,6 +379,7 @@ function AddLeadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
     name: "",
     email: "",
     company: "",
+    website: "",
     projectType: "",
     budget: "",
     message: "",
@@ -400,7 +401,7 @@ function AddLeadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       toast({ title: "Lead created" });
       onOpenChange(false);
       setFormData({
-        name: "", email: "", company: "", projectType: "", budget: "",
+        name: "", email: "", company: "", website: "", projectType: "", budget: "",
         message: "", projectedValue: "", closeProbability: "", leadSource: "",
         followUpDate: "", status: "new", priority: "medium",
       });
@@ -424,6 +425,7 @@ function AddLeadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
       priority: formData.priority,
     };
     if (formData.company) payload.company = formData.company;
+    if (formData.website) payload.website = formData.website;
     if (formData.projectType) payload.projectType = formData.projectType;
     if (formData.budget) payload.budget = formData.budget;
     if (formData.projectedValue) payload.projectedValue = parseInt(formData.projectedValue, 10);
@@ -460,6 +462,10 @@ function AddLeadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Company</label>
               <Input value={formData.company} onChange={e => update("company", e.target.value)} data-testid="input-add-lead-company" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Current Website</label>
+              <Input value={formData.website} onChange={e => update("website", e.target.value)} placeholder="example.com" data-testid="input-add-lead-website" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Project Type</label>
@@ -579,6 +585,7 @@ function LeadDetailContent({
     name: lead.name,
     email: lead.email,
     company: lead.company || "",
+    website: lead.website || "",
     projectType: lead.projectType || "",
     budget: lead.budget || "",
     message: lead.message,
@@ -675,6 +682,7 @@ function LeadDetailContent({
                         name: editForm.name,
                         email: editForm.email,
                         company: editForm.company || null,
+                        website: editForm.website || null,
                         projectType: editForm.projectType || null,
                         budget: editForm.budget || null,
                         message: editForm.message,
@@ -691,7 +699,7 @@ function LeadDetailContent({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    setEditForm({ name: lead.name, email: lead.email, company: lead.company || "", projectType: lead.projectType || "", budget: lead.budget || "", message: lead.message });
+                    setEditForm({ name: lead.name, email: lead.email, company: lead.company || "", website: lead.website || "", projectType: lead.projectType || "", budget: lead.budget || "", message: lead.message });
                     setIsEditing(false);
                   }}
                   data-testid="button-cancel-edit-lead"
@@ -726,6 +734,26 @@ function LeadDetailContent({
               <Input value={editForm.company} onChange={e => setEditForm(p => ({ ...p, company: e.target.value }))} data-testid="input-edit-lead-company" />
             ) : (
               <p className="text-sm font-medium">{lead.company || "Not provided"}</p>
+            )}
+          </div>
+          <div>
+            <span className="text-xs text-muted-foreground">Current Website</span>
+            {isEditing ? (
+              <Input value={editForm.website} onChange={e => setEditForm(p => ({ ...p, website: e.target.value }))} placeholder="example.com" data-testid="input-edit-lead-website" />
+            ) : lead.website ? (
+              <p className="text-sm font-medium">
+                <a
+                  href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                  data-testid="link-lead-website"
+                >
+                  {lead.website}
+                </a>
+              </p>
+            ) : (
+              <p className="text-sm font-medium">Not provided</p>
             )}
           </div>
           <div>
