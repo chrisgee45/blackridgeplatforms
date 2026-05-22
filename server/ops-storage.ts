@@ -5,6 +5,7 @@ import {
   projectPayments, aiReports, projectDocuments,
   clients, deals, subscriptions, stripePayments, stripeEvents, paymentLinks, expenses,
   qaTemplates, qaChecklists, qaAuditLog, invoiceCounter,
+  kickoffSubmissions, welcomeSequences,
   type InsertCompany, type Company,
   type InsertContactPerson, type ContactPerson,
   type InsertProject, type Project,
@@ -114,10 +115,13 @@ export class OpsStorage {
     await db.delete(activityLogs).where(eq(activityLogs.projectId, id));
     await db.delete(projectPayments).where(eq(projectPayments.projectId, id));
     await db.delete(projectDocuments).where(eq(projectDocuments.projectId, id));
+    await db.delete(kickoffSubmissions).where(eq(kickoffSubmissions.projectId, id));
+    await db.delete(welcomeSequences).where(eq(welcomeSequences.projectId, id));
     await db.update(deals).set({ projectId: null }).where(eq(deals.projectId, id));
     await db.update(subscriptions).set({ projectId: null }).where(eq(subscriptions.projectId, id));
     await db.update(stripePayments).set({ projectId: null }).where(eq(stripePayments.projectId, id));
     await db.update(paymentLinks).set({ projectId: null }).where(eq(paymentLinks.projectId, id));
+    await db.update(expenses).set({ projectId: null }).where(eq(expenses.projectId, id));
     const result = await db.delete(projects).where(eq(projects.id, id)).returning();
     return result.length > 0;
   }
