@@ -3,6 +3,7 @@ import { db } from "./db";
 import { crmEvents } from "@shared/schema";
 import { eq, asc, sql, and, isNull, isNotNull, gte } from "drizzle-orm";
 import { isReminderConfigured, sendReminder } from "./sms";
+import { isPushConfigured, sendPushToAll } from "./push";
 
 const REMINDER_TZ = "America/Chicago";
 const ALLOWED_REMINDERS = [15, 30, 60, 120, 1440];
@@ -183,7 +184,7 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
 export function startEventReminderRunner() {
   async function tick() {
     try {
-      if (!isReminderConfigured()) return;
+      if (!isReminderConfigured() && !isPushConfigured()) return;
       const now = new Date();
       const due = await db
         .select()
@@ -207,12 +208,30 @@ export function startEventReminderRunner() {
         });
         const parts = [`Reminder: ${ev.title}`, `at ${when}`];
         if (ev.location) parts.push(ev.location);
-        try {
-          await sendReminder(parts.join(" • "));
+        let sent = false;
+        if (isReminderConfigured()) {
+          try {
+            await sendReminder(parts.join(" • "));
+            sent = true;
+          } catch (err: any) {
+            console.error(`Text reminder failed for event ${ev.id}:`, err?.message);
+          }
+        }
+        if (isPushConfigured()) {
+          try {
+            await sendPushToAll({
+              title: `Reminder: ${ev.title}`,
+              body: `at ${when}${ev.location ? " • " + ev.location : ""}`,
+              url: "/admin",
+            });
+            sent = true;
+          } catch (err: any) {
+            console.error(`Push reminder failed for event ${ev.id}:`, err?.message);
+          }
+        }
+        if (sent) {
           await db.update(crmEvents).set({ reminderSentAt: new Date() }).where(eq(crmEvents.id, ev.id));
           console.log(`Sent reminder for event ${ev.id}`);
-        } catch (err: any) {
-          console.error(`Reminder failed for event ${ev.id}:`, err?.message);
         }
       }
     } catch (error) {

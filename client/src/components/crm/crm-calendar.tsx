@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/select";
 import {
   ChevronLeft, ChevronRight, Plus, CalendarDays, LayoutGrid, List,
-  Clock, Trash2, Loader2, Check, Phone, Users, Presentation, CircleDot, Link2, MessageSquare,
+  Clock, Trash2, Loader2, Check, Phone, Users, Presentation, CircleDot, Link2, MessageSquare, Bell,
 } from "lucide-react";
+import { enablePush } from "@/lib/push";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
   addMonths, subMonths, format, isSameMonth, isSameDay, isToday, isBefore,
@@ -75,6 +76,23 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
       toast({ title: "Test SMS failed", description: desc, variant: "destructive" });
     } finally {
       setTestingSms(false);
+    }
+  };
+
+  const [enablingPush, setEnablingPush] = useState(false);
+  const enablePushAlerts = async () => {
+    setEnablingPush(true);
+    try {
+      const result = await enablePush();
+      toast({
+        title: result.ok ? "Push alerts enabled" : "Couldn't enable alerts",
+        description: result.message,
+        variant: result.ok ? undefined : "destructive",
+      });
+    } catch (e: any) {
+      toast({ title: "Couldn't enable alerts", description: e?.message || "Try again", variant: "destructive" });
+    } finally {
+      setEnablingPush(false);
     }
   };
 
@@ -174,6 +192,10 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
               <List className="h-3.5 w-3.5" /> Agenda
             </button>
           </div>
+          <Button size="sm" variant="outline" onClick={enablePushAlerts} disabled={enablingPush} data-testid="button-enable-push">
+            {enablingPush ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Bell className="h-4 w-4 mr-1" />}
+            Alerts
+          </Button>
           <Button size="sm" variant="outline" onClick={testSms} disabled={testingSms} data-testid="button-test-sms">
             {testingSms ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-1" />}
             Test SMS
