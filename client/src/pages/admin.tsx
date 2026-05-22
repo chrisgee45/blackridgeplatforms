@@ -71,6 +71,7 @@ import {
   Shield,
   Sparkles,
   Menu,
+  StickyNote,
 } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -1047,12 +1048,16 @@ function LeadDetailContent({
 
         <Separator className="border-border/30" />
 
-        <div>
-          <label className="text-xs text-muted-foreground mb-2 block">Internal Notes</label>
+        <div className="rounded-lg border border-border/50 bg-card/30 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <StickyNote className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Internal Notes</span>
+          </div>
           <Textarea
             value={editNotes}
             onChange={(e) => setEditNotes(e.target.value)}
             rows={3}
+            placeholder="Anything worth remembering about this lead..."
             data-testid="input-lead-detail-notes"
           />
           <Button
@@ -1067,21 +1072,21 @@ function LeadDetailContent({
           </Button>
         </div>
 
-        <Separator className="border-border/30" />
+        <div className="rounded-lg border border-border/50 bg-card/30 p-4">
+          <LeadEmailComposer lead={lead} />
+        </div>
 
-        <LeadEmailComposer lead={lead} />
+        <div className="rounded-lg border border-border/50 bg-card/30 p-4">
+          <LeadEventsSection lead={lead} />
+        </div>
 
-        <Separator className="border-border/30" />
+        <div className="rounded-lg border border-border/50 bg-card/30 p-4">
+          <LeadProposalsSection lead={lead} />
+        </div>
 
-        <LeadEventsSection lead={lead} />
-
-        <Separator className="border-border/30" />
-
-        <LeadProposalsSection lead={lead} />
-
-        <Separator className="border-border/30" />
-
-        <LeadActivityTimeline leadId={lead.id} />
+        <div className="rounded-lg border border-border/50 bg-card/30 p-4">
+          <LeadActivityTimeline leadId={lead.id} />
+        </div>
 
         <Separator className="border-border/30" />
 
