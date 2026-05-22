@@ -911,19 +911,19 @@ function LeadDetailContent({
         <div className="grid sm:grid-cols-3 gap-4">
           <div>
             <span className="text-xs text-muted-foreground">Projected Value</span>
-            <p className="text-sm font-medium text-green-400" data-testid="text-lead-detail-projected-value">
+            <p className="text-sm font-medium text-green-400 tabular-nums" data-testid="text-lead-detail-projected-value">
               {formatCurrency(lead.projectedValue)}
             </p>
           </div>
           <div>
             <span className="text-xs text-muted-foreground">Close Probability</span>
-            <p className="text-sm font-medium" data-testid="text-lead-detail-close-probability">
+            <p className="text-sm font-medium tabular-nums" data-testid="text-lead-detail-close-probability">
               {lead.closeProbability != null ? `${lead.closeProbability}%` : "-"}
             </p>
           </div>
           <div>
             <span className="text-xs text-muted-foreground">Weighted Value</span>
-            <p className="text-sm font-medium text-primary" data-testid="text-lead-detail-weighted-value">
+            <p className="text-sm font-medium text-primary tabular-nums" data-testid="text-lead-detail-weighted-value">
               {weightedValue != null ? formatCurrency(weightedValue) : "-"}
             </p>
           </div>
@@ -1057,6 +1057,7 @@ function LeadDetailContent({
           />
           <Button
             size="sm"
+            variant="outline"
             className="mt-2"
             onClick={() => notesMutation.mutate({ id: lead.id, notes: editNotes })}
             disabled={notesMutation.isPending}
