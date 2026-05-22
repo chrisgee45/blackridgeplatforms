@@ -25,6 +25,19 @@ export async function ensureCrmSchema(): Promise<void> {
     )
   `);
   await db.execute(sql`ALTER TABLE contact_submissions ADD COLUMN IF NOT EXISTS website text`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS proposals (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_id varchar NOT NULL REFERENCES contact_submissions(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      content text NOT NULL,
+      amount integer,
+      status text NOT NULL DEFAULT 'draft',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      sent_at timestamptz
+    )
+  `);
 }
 
 const VALID_TYPES = ["meeting", "call", "demo", "follow_up", "other"];

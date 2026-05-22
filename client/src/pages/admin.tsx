@@ -7,7 +7,7 @@ import { isUnauthorizedError } from "@/lib/auth-utils";
 import { MfaSettingsDialog } from "@/components/MfaSettings";
 import CrmCalendar, { EventDialog, styleFor } from "@/components/crm/crm-calendar";
 import { format } from "date-fns";
-import type { ContactSubmission, UpdateLead, CreateLead, ProjectTemplate, Project, LeadActivity, CrmEvent } from "@shared/schema";
+import type { ContactSubmission, UpdateLead, CreateLead, ProjectTemplate, Project, LeadActivity, CrmEvent, Proposal } from "@shared/schema";
 import { createLeadSchema } from "@shared/schema";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   LogOut,
@@ -62,6 +63,7 @@ import {
   MessageSquare,
   Activity,
   Shield,
+  Sparkles,
 } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -975,6 +977,10 @@ function LeadDetailContent({
 
         <Separator className="border-border/30" />
 
+        <LeadProposalsSection lead={lead} />
+
+        <Separator className="border-border/30" />
+
         <LeadActivityTimeline leadId={lead.id} />
 
         <Separator className="border-border/30" />
@@ -1265,6 +1271,309 @@ function LeadEventsSection({ lead }: { lead: ContactSubmission }) {
         leads={[lead]}
       />
     </div>
+  );
+}
+
+function renderProposalInline(text: string): React.ReactNode {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>,
+  );
+}
+
+function ProposalContent({ content }: { content: string }) {
+  const blocks: React.ReactNode[] = [];
+  let listItems: string[] = [];
+  let key = 0;
+  const flushList = () => {
+    if (listItems.length) {
+      const items = [...listItems];
+      blocks.push(
+        <ul key={key++} className="list-disc pl-5 space-y-1 my-2 text-sm">
+          {items.map((it, i) => <li key={i}>{renderProposalInline(it)}</li>)}
+        </ul>,
+      );
+      listItems = [];
+    }
+  };
+  for (const raw of content.split("\n")) {
+    const line = raw.trimEnd();
+    if (line.startsWith("## ")) {
+      flushList();
+      blocks.push(<h2 key={key++} className="text-base font-bold text-primary mt-5 mb-1.5 first:mt-0">{renderProposalInline(line.slice(3))}</h2>);
+    } else if (line.startsWith("### ")) {
+      flushList();
+      blocks.push(<h3 key={key++} className="text-sm font-bold mt-3 mb-1">{renderProposalInline(line.slice(4))}</h3>);
+    } else if (line.startsWith("- ")) {
+      listItems.push(line.slice(2));
+    } else if (line.trim() === "") {
+      flushList();
+    } else {
+      flushList();
+      blocks.push(<p key={key++} className="text-sm leading-relaxed my-1.5">{renderProposalInline(line)}</p>);
+    }
+  }
+  flushList();
+  return <div data-testid="proposal-rendered">{blocks}</div>;
+}
+
+const PROPOSAL_STATUS: Record<string, string> = {
+  draft: "bg-slate-500/15 text-slate-600 border-slate-500/30",
+  sent: "bg-blue-500/15 text-blue-600 border-blue-500/30",
+  accepted: "bg-green-500/15 text-green-600 border-green-500/30",
+  declined: "bg-red-500/15 text-red-600 border-red-500/30",
+};
+
+function LeadProposalsSection({ lead }: { lead: ContactSubmission }) {
+  const { toast } = useToast();
+  const [selected, setSelected] = useState<Proposal | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const { data: proposals = [], isLoading } = useQuery<Proposal[]>({
+    queryKey: ["/api/leads", lead.id, "proposals"],
+    queryFn: async () => {
+      const res = await fetch(`/api/leads/${lead.id}/proposals`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch proposals");
+      return res.json();
+    },
+  });
+
+  const errorText = (error: any) => {
+    const m = String(error?.message || "").match(/^\d+:\s*([\s\S]*)$/);
+    if (m) { try { return JSON.parse(m[1])?.message || m[1]; } catch { return m[1]; } }
+    return error?.message || "Something went wrong";
+  };
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${lead.id}/proposal/generate`, {});
+      return res.json();
+    },
+    onSuccess: (proposal: Proposal) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", lead.id, "proposals"] });
+      setSelected(proposal);
+      setDialogOpen(true);
+      toast({ title: "Proposal generated", description: "Review and edit before sending." });
+    },
+    onError: (e) => toast({ title: "Could not generate", description: errorText(e), variant: "destructive" }),
+  });
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Proposals</span>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => generateMutation.mutate()}
+          disabled={generateMutation.isPending}
+          data-testid="button-generate-proposal"
+        >
+          {generateMutation.isPending
+            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            : <Sparkles className="h-4 w-4 mr-1" />}
+          {generateMutation.isPending ? "Writing..." : "Generate with AI"}
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      ) : proposals.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-proposals">
+          No proposals yet. Generate one and Claude will draft it from this lead's details.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {proposals.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => { setSelected(p); setDialogOpen(true); }}
+              className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-border/50 hover-elevate transition-colors text-left"
+              data-testid={`proposal-${p.id}`}
+            >
+              <div className="h-8 w-8 rounded-md flex items-center justify-center shrink-0 bg-primary/10">
+                <FileText className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{p.title}</div>
+                <div className="text-xs text-muted-foreground">
+                  {p.amount != null ? `$${p.amount.toLocaleString()} · ` : ""}
+                  {new Date(p.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </div>
+              </div>
+              <Badge variant="outline" className={`text-[10px] shrink-0 capitalize ${PROPOSAL_STATUS[p.status] ?? ""}`}>
+                {p.status}
+              </Badge>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <ProposalDialog
+          key={selected.id}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          proposal={selected}
+          lead={lead}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProposalDialog({
+  open, onOpenChange, proposal, lead,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  proposal: Proposal;
+  lead: ContactSubmission;
+}) {
+  const { toast } = useToast();
+  const [mode, setMode] = useState<"view" | "edit">("view");
+  const [title, setTitle] = useState(proposal.title);
+  const [content, setContent] = useState(proposal.content);
+  const [amount, setAmount] = useState(proposal.amount != null ? String(proposal.amount) : "");
+  const [status, setStatus] = useState(proposal.status);
+
+  const errorText = (error: any) => {
+    const m = String(error?.message || "").match(/^\d+:\s*([\s\S]*)$/);
+    if (m) { try { return JSON.parse(m[1])?.message || m[1]; } catch { return m[1]; } }
+    return error?.message || "Something went wrong";
+  };
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["/api/leads", lead.id, "proposals"] });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/proposals/${proposal.id}`, { title, content, amount, status });
+    },
+    onSuccess: () => { toast({ title: "Proposal saved" }); refresh(); setMode("view"); },
+    onError: (e) => toast({ title: "Error", description: errorText(e), variant: "destructive" }),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: async () => { await apiRequest("POST", `/api/proposals/${proposal.id}/send`, {}); },
+    onSuccess: () => { toast({ title: "Proposal sent", description: `Emailed to ${lead.email}` }); refresh(); onOpenChange(false); },
+    onError: (e) => toast({ title: "Error", description: errorText(e), variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => { await apiRequest("DELETE", `/api/proposals/${proposal.id}`); },
+    onSuccess: () => { toast({ title: "Proposal deleted" }); refresh(); onOpenChange(false); },
+    onError: (e) => toast({ title: "Error", description: errorText(e), variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-proposal">
+        <DialogHeader>
+          <div className="bg-neutral-950 rounded-lg px-4 py-3 flex items-center justify-center mb-2">
+            <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-10 w-auto" />
+          </div>
+          <DialogTitle className="sr-only">Proposal</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {mode === "edit" ? (
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="font-semibold" data-testid="input-proposal-title" />
+          ) : (
+            <h2 className="text-lg font-bold">{title}</h2>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center rounded-md border border-border/60 p-0.5">
+              <button
+                onClick={() => setMode("view")}
+                className={`px-2.5 py-1 rounded text-xs font-medium ${mode === "view" ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                data-testid="button-proposal-view"
+              >
+                Preview
+              </button>
+              <button
+                onClick={() => setMode("edit")}
+                className={`px-2.5 py-1 rounded text-xs font-medium ${mode === "edit" ? "bg-primary/15 text-primary" : "text-muted-foreground"}`}
+                data-testid="button-proposal-edit"
+              >
+                Edit
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">$</span>
+              <Input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Amount"
+                className="h-8 w-28"
+                data-testid="input-proposal-amount"
+              />
+            </div>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="h-8 w-32" data-testid="select-proposal-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="accepted">Accepted</SelectItem>
+                <SelectItem value="declined">Declined</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {mode === "edit" ? (
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={20}
+              className="font-mono text-xs"
+              data-testid="input-proposal-content"
+            />
+          ) : (
+            <div className="rounded-lg border border-border/50 bg-card p-5">
+              <ProposalContent content={content} />
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            className="mr-auto"
+            onClick={() => { if (confirm("Delete this proposal?")) deleteMutation.mutate(); }}
+            disabled={deleteMutation.isPending}
+            data-testid="button-delete-proposal"
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            data-testid="button-save-proposal"
+          >
+            {saveMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+            Save
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => { if (confirm(`Email this proposal to ${lead.email}?`)) sendMutation.mutate(); }}
+            disabled={sendMutation.isPending}
+            data-testid="button-send-proposal"
+          >
+            {sendMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+            Send to Client
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
