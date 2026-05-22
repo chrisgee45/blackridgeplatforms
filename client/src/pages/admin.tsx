@@ -336,7 +336,7 @@ function HotLeadsWidget({ onOpenDetail, leads }: { onOpenDetail: (lead: ContactS
   if (isLoading || hotLeads.length === 0) return null;
 
   return (
-    <Card className="border-border/50 bg-card/50 mb-8" data-testid="card-hot-leads">
+    <Card className="border-border/50 bg-card/50" data-testid="card-hot-leads">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <Flame className="h-4 w-4 text-orange-500" />
@@ -2116,12 +2116,12 @@ export default function AdminPortal() {
             { label: "Won", value: stats.won, icon: DollarSign, color: "text-green-400", testId: "text-stat-won" },
           ].map((stat) => (
             <Card key={stat.label} className="border-border/50 bg-card/50">
-              <CardContent className="p-4 pt-4">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs text-muted-foreground">{stat.label}</span>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{stat.label}</span>
                   <stat.icon className={`h-4 w-4 ${stat.color}`} />
                 </div>
-                <p className={`text-2xl font-bold ${stat.color}`} data-testid={stat.testId}>
+                <p className={`text-3xl font-semibold tabular-nums tracking-tight ${stat.color}`} data-testid={stat.testId}>
                   {leadsLoading ? "-" : stat.value}
                 </p>
               </CardContent>
@@ -2131,77 +2131,79 @@ export default function AdminPortal() {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <Card className="border-border/50 bg-card/50">
-            <CardContent className="p-4 pt-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs text-muted-foreground">Pipeline Value</span>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Pipeline Value</span>
                 <Target className="h-4 w-4 text-cyan-400" />
               </div>
-              <p className="text-2xl font-bold text-cyan-400" data-testid="text-pipeline-total">
+              <p className="text-3xl font-semibold tabular-nums tracking-tight text-cyan-400" data-testid="text-pipeline-total">
                 {leadsLoading ? "-" : formatCurrency(stats.pipelineValue)}
               </p>
             </CardContent>
           </Card>
           <Card className="border-border/50 bg-card/50">
-            <CardContent className="p-4 pt-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs text-muted-foreground">Weighted Forecast</span>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Weighted Forecast</span>
                 <Percent className="h-4 w-4 text-purple-400" />
               </div>
-              <p className="text-2xl font-bold text-purple-400" data-testid="text-weighted-forecast">
+              <p className="text-3xl font-semibold tabular-nums tracking-tight text-purple-400" data-testid="text-weighted-forecast">
                 {leadsLoading ? "-" : formatCurrency(stats.weightedForecast)}
               </p>
             </CardContent>
           </Card>
           <Card className="border-border/50 bg-card/50">
-            <CardContent className="p-4 pt-4">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs text-muted-foreground">Monthly Revenue Goal</span>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Monthly Revenue Goal</span>
                 <DollarSign className="h-4 w-4 text-green-400" />
               </div>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-sm font-bold text-green-400" data-testid="text-monthly-revenue">
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <span className="text-3xl font-semibold tabular-nums tracking-tight text-green-400" data-testid="text-monthly-revenue">
                   {formatCurrency(monthlyWonValue)}
                 </span>
-                <span className="text-xs text-muted-foreground">/ {formatCurrency(monthlyGoal)}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">/ {formatCurrency(monthlyGoal)}</span>
               </div>
               <Progress value={goalProgress} className="h-2" data-testid="progress-monthly-goal" />
-              <span className="text-xs text-muted-foreground mt-1 block">{goalProgress}% of goal</span>
+              <span className="text-xs text-muted-foreground mt-1.5 block">{goalProgress}% of goal</span>
             </CardContent>
           </Card>
         </div>
 
-        <HotLeadsWidget onOpenDetail={openDetail} leads={leads} />
+        <div className={`grid gap-4 mb-8 items-start ${Object.keys(sourceBreakdown).length > 0 && !leadsLoading ? "lg:grid-cols-2" : ""}`}>
+          <HotLeadsWidget onOpenDetail={openDetail} leads={leads} />
 
-        {Object.keys(sourceBreakdown).length > 0 && !leadsLoading && (
-          <Card className="border-border/50 bg-card/50 mb-8">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Lead Source Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="space-y-3">
-                {Object.entries(sourceBreakdown)
-                  .sort((a, b) => b[1].value - a[1].value)
-                  .map(([source, data]) => (
-                    <div key={source} data-testid={`row-source-${source.toLowerCase().replace(/\s/g, '-')}`}>
-                      <div className="flex items-center justify-between gap-4 mb-1">
-                        <span className="text-sm font-medium">{source}</span>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span>{data.count} lead{data.count !== 1 ? "s" : ""}</span>
-                          <span className="font-medium text-foreground">{formatCurrency(data.value)}</span>
+          {Object.keys(sourceBreakdown).length > 0 && !leadsLoading && (
+            <Card className="border-border/50 bg-card/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Lead Source Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="space-y-3">
+                  {Object.entries(sourceBreakdown)
+                    .sort((a, b) => b[1].value - a[1].value)
+                    .map(([source, data]) => (
+                      <div key={source} data-testid={`row-source-${source.toLowerCase().replace(/\s/g, '-')}`}>
+                        <div className="flex items-center justify-between gap-4 mb-1">
+                          <span className="text-sm font-medium">{source}</span>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>{data.count} lead{data.count !== 1 ? "s" : ""}</span>
+                            <span className="font-medium text-foreground tabular-nums">{formatCurrency(data.value)}</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary/60"
+                            style={{ width: `${Math.round((data.value / maxSourceValue) * 100)}%` }}
+                          />
                         </div>
                       </div>
-                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-primary/60"
-                          style={{ width: `${Math.round((data.value / maxSourceValue) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         <Card className="border-border/50 bg-card/50 mb-6">
           <CardContent className="p-4 pt-4">
