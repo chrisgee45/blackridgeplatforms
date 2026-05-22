@@ -1512,7 +1512,8 @@ export default function AdminPortal() {
       lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (lead.company?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
-    const matchesStatus = statusFilter === "all" || lead.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "all" ? lead.status !== "won" : lead.status === statusFilter;
     const matchesPriority = priorityFilter === "all" || lead.priority === priorityFilter;
     const matchesSource = sourceFilter === "all" || lead.leadSource === sourceFilter;
     return matchesSearch && matchesStatus && matchesPriority && matchesSource;
