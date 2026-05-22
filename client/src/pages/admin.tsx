@@ -25,7 +25,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Mountain,
   LogOut,
   Search,
   Filter,
@@ -190,10 +189,8 @@ function LoginForm() {
       <Card className="w-full max-w-sm border-border/50 bg-card/80">
         <CardHeader className="text-center pb-4">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Mountain className="h-6 w-6 text-primary" />
-            <span className="font-bold text-lg tracking-tight">
-              BlackRidge<span className="text-primary"> CRM</span>
-            </span>
+            <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-12 w-auto" />
+            <span className="font-semibold text-xs tracking-[0.2em] uppercase text-primary">CRM</span>
           </div>
           <CardTitle className="text-lg">{mfaStep ? "Two-Factor Authentication" : "Admin Login"}</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
@@ -1445,11 +1442,9 @@ export default function AdminPortal() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between gap-4 h-16">
-          <div className="flex items-center gap-3">
-            <Mountain className="h-5 w-5 text-primary" />
-            <span className="font-bold tracking-tight text-sm">
-              BlackRidge<span className="text-primary"> CRM</span>
-            </span>
+          <div className="flex items-center gap-2">
+            <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
+            <span className="font-semibold text-[10px] tracking-[0.2em] uppercase text-primary border-l border-border/40 pl-2">CRM</span>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
