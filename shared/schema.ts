@@ -831,6 +831,29 @@ export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit(
 export type InsertLeadActivity = z.infer<typeof insertLeadActivitySchema>;
 export type LeadActivity = typeof leadActivities.$inferSelect;
 
+// === CRM Calendar Events ===
+
+export const crmEvents = pgTable("crm_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").references(() => contactSubmissions.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  type: text("type").notNull().default("meeting"),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  endAt: timestamp("end_at", { withTimezone: true }),
+  location: text("location"),
+  notes: text("notes"),
+  status: text("status").notNull().default("scheduled"),
+  createdBy: text("created_by").default("admin"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertCrmEventSchema = createInsertSchema(crmEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCrmEvent = z.infer<typeof insertCrmEventSchema>;
+export type CrmEvent = typeof crmEvents.$inferSelect;
+
 // === Bookkeeping System ===
 
 export const accountTypeEnum = pgEnum("account_type", [

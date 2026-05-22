@@ -17,6 +17,7 @@ import PDFDocument from "pdfkit";
 import { registerStripeRoutes } from "./stripe-routes";
 import { registerBookkeepingRoutes } from "./bookkeeping-routes";
 import { bookkeepingStorage } from "./bookkeeping-storage";
+import { registerCrmCalendarRoutes, ensureCrmEventsTable } from "./crm-calendar";
 import { createAccountingV2Router } from "./accounting-v2-routes";
 import { registerGaapRoutes } from "./gaap-routes";
 import { seedCampaignA } from "./outreach-seed";
@@ -303,7 +304,9 @@ export async function registerRoutes(
   registerKickoffRoutes(app, isAuthenticated);
   registerWelcomeSequenceRoutes(app, isAuthenticated);
   registerQaAuditRoutes(app, isAuthenticated);
+  registerCrmCalendarRoutes(app, isAuthenticated);
 
+  ensureCrmEventsTable().catch(err => console.error("Failed to ensure crm_events table:", err));
   seedCampaignA().catch(err => console.error("Failed to seed Campaign A:", err));
   seedQaTemplates().catch(err => console.error("Failed to seed QA templates:", err));
   opsStorage.ensureInvoiceCounter().catch(err => console.error("Failed to seed invoice counter:", err));

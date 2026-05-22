@@ -5,6 +5,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/auth-utils";
 import { MfaSettingsDialog } from "@/components/MfaSettings";
+import CrmCalendar from "@/components/crm/crm-calendar";
 import type { ContactSubmission, UpdateLead, CreateLead, ProjectTemplate, Project, LeadActivity } from "@shared/schema";
 import { createLeadSchema } from "@shared/schema";
 import { useLocation } from "wouter";
@@ -1346,6 +1347,7 @@ export default function AdminPortal() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mfaOpen, setMfaOpen] = useState(false);
+  const [view, setView] = useState<"leads" | "calendar">("leads");
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery<ContactSubmission[]>({
     queryKey: ["/api/leads"],
@@ -1442,9 +1444,27 @@ export default function AdminPortal() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between gap-4 h-16">
-          <div className="flex items-center gap-2">
-            <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
-            <span className="font-semibold text-[10px] tracking-[0.2em] uppercase text-primary border-l border-border/40 pl-2">CRM</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
+              <span className="font-semibold text-[10px] tracking-[0.2em] uppercase text-primary border-l border-border/40 pl-2">CRM</span>
+            </div>
+            <div className="hidden sm:flex items-center rounded-md border border-border/60 p-0.5">
+              <button
+                onClick={() => setView("leads")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${view === "leads" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                data-testid="button-view-leads"
+              >
+                <Users className="h-3.5 w-3.5" /> Leads
+              </button>
+              <button
+                onClick={() => setView("calendar")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${view === "calendar" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                data-testid="button-view-calendar"
+              >
+                <CalendarDays className="h-3.5 w-3.5" /> Calendar
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
@@ -1490,6 +1510,10 @@ export default function AdminPortal() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {view === "calendar" ? (
+          <CrmCalendar leads={leads} />
+        ) : (
+        <>
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-1" data-testid="text-crm-title">Lead Management</h1>
           <p className="text-muted-foreground text-sm">Track and manage incoming project inquiries</p>
@@ -1766,6 +1790,8 @@ export default function AdminPortal() {
               );
             })}
           </div>
+        )}
+        </>
         )}
       </main>
 
