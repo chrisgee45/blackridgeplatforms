@@ -110,6 +110,7 @@ export function registerBookingRoutes(app: Express) {
           location: "Phone / Video call",
           notes: notes || null,
           status: "scheduled",
+          reminderMinutes: 60,
           createdBy: "booking",
         })
         .returning();
