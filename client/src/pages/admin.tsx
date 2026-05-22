@@ -33,6 +33,7 @@ import {
   TrendingUp,
   DollarSign,
   Mail,
+  Send,
   Building2,
   Calendar,
   ChevronRight,
@@ -937,6 +938,10 @@ function LeadDetailContent({
 
         <Separator className="border-border/30" />
 
+        <LeadEmailComposer lead={lead} />
+
+        <Separator className="border-border/30" />
+
         <LeadActivityTimeline leadId={lead.id} />
 
         <Separator className="border-border/30" />
@@ -985,6 +990,133 @@ const ACTIVITY_COLORS: Record<string, string> = {
   meeting: "text-cyan-500",
   follow_up: "text-orange-500",
 };
+
+const EMAIL_TEMPLATES: { label: string; subject: string; body: string }[] = [
+  {
+    label: "Intro — quick question",
+    subject: "Quick question about {{company}}'s website",
+    body: "Hi {{name}},\n\nI came across {{company}} and noticed a few quick wins that could help your website turn more visitors into customers.\n\nWould you be open to a short call this week so I can walk you through them? No pressure — just a few ideas.\n\nBest,\nChris\nBlackRidge Platforms",
+  },
+  {
+    label: "Follow-up",
+    subject: "Following up — {{company}} website",
+    body: "Hi {{name}},\n\nJust circling back on my earlier note about your website. I'd love to show you what a refreshed site could do for {{company}}.\n\nAre you free for 15 minutes this week?\n\nBest,\nChris\nBlackRidge Platforms",
+  },
+  {
+    label: "Proposal ready",
+    subject: "Your website proposal — {{company}}",
+    body: "Hi {{name}},\n\nThanks for the great conversation. I've put together a proposal for your new website and would love to walk you through it.\n\nLet me know what time works and I'll send the details over.\n\nBest,\nChris\nBlackRidge Platforms",
+  },
+];
+
+function LeadEmailComposer({ lead }: { lead: ContactSubmission }) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+
+  const fill = (text: string) =>
+    text
+      .replace(/\{\{name\}\}/g, lead.name || "there")
+      .replace(/\{\{company\}\}/g, lead.company || "your business");
+
+  const applyTemplate = (label: string) => {
+    const tpl = EMAIL_TEMPLATES.find((t) => t.label === label);
+    if (!tpl) return;
+    setSubject(fill(tpl.subject));
+    setBody(fill(tpl.body));
+  };
+
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${lead.id}/email`, { subject, body });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", lead.id, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({ title: "Email sent", description: `Sent to ${lead.email}` });
+      setSubject("");
+      setBody("");
+      setExpanded(false);
+    },
+    onError: (error: any) => {
+      let description = "Failed to send email";
+      const match = String(error?.message || "").match(/^\d+:\s*([\s\S]*)$/);
+      if (match) {
+        try {
+          description = JSON.parse(match[1])?.message || match[1] || description;
+        } catch {
+          description = match[1] || description;
+        }
+      }
+      toast({ title: "Error", description, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Mail className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Email</span>
+        </div>
+        {!expanded && (
+          <Button size="sm" variant="outline" onClick={() => setExpanded(true)} data-testid="button-compose-email">
+            <Mail className="h-4 w-4 mr-1" /> Compose Email
+          </Button>
+        )}
+      </div>
+      {expanded && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">To: {lead.email}</p>
+          <Select onValueChange={applyTemplate}>
+            <SelectTrigger className="w-full" data-testid="select-email-template">
+              <SelectValue placeholder="Start from a template (optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              {EMAIL_TEMPLATES.map((t) => (
+                <SelectItem key={t.label} value={t.label}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            placeholder="Subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            data-testid="input-email-subject"
+          />
+          <Textarea
+            placeholder="Write your message..."
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={8}
+            data-testid="input-email-body"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => { setExpanded(false); setSubject(""); setBody(""); }}
+              data-testid="button-cancel-email"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => sendMutation.mutate()}
+              disabled={!subject.trim() || !body.trim() || sendMutation.isPending}
+              data-testid="button-send-email"
+            >
+              {sendMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+              Send Email
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function LeadActivityTimeline({ leadId }: { leadId: string }) {
   const { toast } = useToast();
