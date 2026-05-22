@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   ChevronLeft, ChevronRight, Plus, CalendarDays, LayoutGrid, List,
-  Clock, Trash2, Loader2, Check, Phone, Users, Presentation, CircleDot, Link2,
+  Clock, Trash2, Loader2, Check, Phone, Users, Presentation, CircleDot, Link2, MessageSquare,
 } from "lucide-react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -57,6 +57,26 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
   const [editing, setEditing] = useState<CrmEvent | null>(null);
   const [presetDate, setPresetDate] = useState<Date | null>(null);
   const [copied, setCopied] = useState(false);
+  const [testingSms, setTestingSms] = useState(false);
+  const { toast } = useToast();
+
+  const testSms = async () => {
+    setTestingSms(true);
+    try {
+      const res = await apiRequest("POST", "/api/crm/test-sms", {});
+      await res.json();
+      toast({ title: "Test text sent", description: "Check your phone in a moment." });
+    } catch (e: any) {
+      let desc = e?.message || "Failed to send";
+      const m = String(e?.message || "").match(/^\d+:\s*([\s\S]*)$/);
+      if (m) {
+        try { desc = JSON.parse(m[1])?.message || m[1]; } catch { desc = m[1]; }
+      }
+      toast({ title: "Test SMS failed", description: desc, variant: "destructive" });
+    } finally {
+      setTestingSms(false);
+    }
+  };
 
   const copyBookingLink = () => {
     const url = `${window.location.origin}/book`;
@@ -154,6 +174,10 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
               <List className="h-3.5 w-3.5" /> Agenda
             </button>
           </div>
+          <Button size="sm" variant="outline" onClick={testSms} disabled={testingSms} data-testid="button-test-sms">
+            {testingSms ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-1" />}
+            Test SMS
+          </Button>
           <Button size="sm" variant="outline" onClick={copyBookingLink} data-testid="button-copy-booking-link">
             {copied ? <Check className="h-4 w-4 mr-1 text-green-500" /> : <Link2 className="h-4 w-4 mr-1" />}
             {copied ? "Copied!" : "Booking link"}
