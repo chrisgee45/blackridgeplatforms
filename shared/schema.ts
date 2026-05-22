@@ -857,6 +857,28 @@ export const insertCrmEventSchema = createInsertSchema(crmEvents).omit({
 export type InsertCrmEvent = z.infer<typeof insertCrmEventSchema>;
 export type CrmEvent = typeof crmEvents.$inferSelect;
 
+// === Proposals ===
+
+export const proposals = pgTable("proposals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").references(() => contactSubmissions.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  amount: integer("amount"),
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+
+export const insertProposalSchema = createInsertSchema(proposals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertProposal = z.infer<typeof insertProposalSchema>;
+export type Proposal = typeof proposals.$inferSelect;
+
 // === Bookkeeping System ===
 
 export const accountTypeEnum = pgEnum("account_type", [
