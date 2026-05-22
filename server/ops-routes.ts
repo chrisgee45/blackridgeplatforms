@@ -102,15 +102,15 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
       await opsStorage.createActivityLog({
         entityType: "project",
         entityId: projectId,
-        projectId: projectId,
+        projectId: null,
         action: "deleted",
         details: { projectName: project.name, reason: reason || "No reason provided" },
         createdBy: "admin",
       });
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Delete project error:", error);
-      res.status(500).json({ message: "Failed to delete project" });
+      res.status(500).json({ message: `Failed to delete project: ${error?.message || "unknown error"}` });
     }
   });
 

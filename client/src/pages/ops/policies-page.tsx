@@ -24,7 +24,7 @@ import {
 import {
   FileText, Plus, Search, Send, Edit, Trash2, MoreHorizontal, Upload,
   Loader2, Eye, Archive, CheckCircle2, Clock, BookOpen, Shield,
-  Briefcase, Users, FileCheck, AlertTriangle, Paperclip,
+  Briefcase, Users, FileCheck, AlertTriangle, Paperclip, ExternalLink,
 } from "lucide-react";
 import type { Policy } from "@shared/schema";
 
@@ -287,8 +287,17 @@ function EmailDialog({
       setSubject("");
       setMessage("");
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to send email", variant: "destructive" });
+    onError: (error: any) => {
+      let description = "Failed to send email";
+      const match = String(error?.message || "").match(/^\d+:\s*([\s\S]*)$/);
+      if (match) {
+        try {
+          description = JSON.parse(match[1])?.message || match[1] || description;
+        } catch {
+          description = match[1] || description;
+        }
+      }
+      toast({ title: "Error", description, variant: "destructive" });
     },
   });
 
@@ -416,11 +425,26 @@ function PolicyViewer({
             </div>
           )}
           {policy.fileName && (
-            <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg text-blue-700 text-sm">
-              <Paperclip className="h-4 w-4" />
-              <span>{policy.fileName}</span>
-              {policy.fileSize && <span className="text-blue-400">({(policy.fileSize / 1024).toFixed(1)} KB)</span>}
-            </div>
+            policy.fileStorageKey ? (
+              <a
+                href={policy.fileStorageKey}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg text-blue-700 text-sm hover-elevate transition-colors"
+                data-testid="link-policy-file"
+              >
+                <Paperclip className="h-4 w-4" />
+                <span className="underline">{policy.fileName}</span>
+                {policy.fileSize && <span className="text-blue-400">({(policy.fileSize / 1024).toFixed(1)} KB)</span>}
+                <ExternalLink className="h-3.5 w-3.5 ml-auto" />
+              </a>
+            ) : (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg text-blue-700 text-sm">
+                <Paperclip className="h-4 w-4" />
+                <span>{policy.fileName}</span>
+                {policy.fileSize && <span className="text-blue-400">({(policy.fileSize / 1024).toFixed(1)} KB)</span>}
+              </div>
+            )
           )}
           <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
             <p>Created: {new Date(policy.createdAt).toLocaleString()}</p>
