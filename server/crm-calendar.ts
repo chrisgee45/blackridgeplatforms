@@ -37,9 +37,12 @@ function parseDate(value: unknown): Date | null {
 }
 
 export function registerCrmCalendarRoutes(app: Express, isAuthenticated: RequestHandler) {
-  app.get("/api/crm/events", isAuthenticated, async (_req, res) => {
+  app.get("/api/crm/events", isAuthenticated, async (req, res) => {
     try {
-      const events = await db.select().from(crmEvents).orderBy(asc(crmEvents.startAt));
+      const leadId = typeof req.query.leadId === "string" && req.query.leadId ? req.query.leadId : null;
+      const events = leadId
+        ? await db.select().from(crmEvents).where(eq(crmEvents.leadId, leadId)).orderBy(asc(crmEvents.startAt))
+        : await db.select().from(crmEvents).orderBy(asc(crmEvents.startAt));
       res.json(events);
     } catch (error: any) {
       console.error("Fetch CRM events error:", error);

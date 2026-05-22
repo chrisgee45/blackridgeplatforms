@@ -35,7 +35,7 @@ const EVENT_STYLES: Record<string, {
   other:     { dot: "bg-slate-500",  pill: "bg-slate-500/15 text-slate-600 dark:text-slate-300 border-slate-500/30",    soft: "bg-slate-500/10",  icon: CircleDot,    label: "Other" },
 };
 
-function styleFor(type: string) {
+export function styleFor(type: string) {
   return EVENT_STYLES[type] ?? EVENT_STYLES.other;
 }
 
@@ -405,13 +405,14 @@ function EmptyState() {
   );
 }
 
-function EventDialog({
-  open, onOpenChange, event, presetDate, leads,
+export function EventDialog({
+  open, onOpenChange, event, presetDate, presetLeadId, leads,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   event: CrmEvent | null;
   presetDate: Date | null;
+  presetLeadId?: string | null;
   leads: ContactSubmission[];
 }) {
   const { toast } = useToast();
@@ -423,7 +424,7 @@ function EventDialog({
   const [date, setDate] = useState(format(initialStart, "yyyy-MM-dd"));
   const [startTime, setStartTime] = useState(event ? format(new Date(event.startAt), "HH:mm") : "10:00");
   const [endTime, setEndTime] = useState(event?.endAt ? format(new Date(event.endAt), "HH:mm") : "");
-  const [leadId, setLeadId] = useState(event?.leadId ?? "none");
+  const [leadId, setLeadId] = useState(event?.leadId ?? presetLeadId ?? "none");
   const [location, setLocation] = useState(event?.location ?? "");
   const [notes, setNotes] = useState(event?.notes ?? "");
   const [status, setStatus] = useState(event?.status ?? "scheduled");
