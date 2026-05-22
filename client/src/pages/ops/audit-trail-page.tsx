@@ -230,7 +230,7 @@ export default function AuditTrailPage() {
                 {filteredLogs.map((log) => {
                   const isExpanded = expandedId === log.id;
                   const Icon = ACTION_ICONS[log.action] || FileText;
-                  const colorClass = ACTION_COLORS[log.action] || "bg-gray-50 text-gray-700";
+                  const colorClass = ACTION_COLORS[log.action] || "bg-muted text-muted-foreground";
                   return (
                     <>
                       <TableRow

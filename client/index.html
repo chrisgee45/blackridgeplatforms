@@ -20,6 +20,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Apply the Obsidian dark theme to the admin app and system pages
+      // before first paint, so there's no flash. The public marketing
+      // site (/) stays on the light theme.
+      (function () {
+        var p = location.pathname;
+        if (p.indexOf("/admin") === 0 || p.indexOf("/book") === 0 || p.indexOf("/pay") === 0 || p.indexOf("/kickoff") === 0) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

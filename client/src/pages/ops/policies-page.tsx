@@ -41,7 +41,7 @@ const CATEGORIES = [
 const STATUS_CONFIG = {
   draft: { label: "Draft", color: "bg-yellow-100 text-yellow-800", icon: Clock },
   published: { label: "Published", color: "bg-emerald-100 text-emerald-800", icon: CheckCircle2 },
-  archived: { label: "Archived", color: "bg-gray-100 text-gray-600", icon: Archive },
+  archived: { label: "Archived", color: "bg-muted text-gray-600", icon: Archive },
 };
 
 function PolicyEditor({
@@ -616,8 +616,8 @@ export default function PoliciesPage() {
                   <TableRow key={policy.id} data-testid={`policy-row-${policy.id}`}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                          <CatIcon className="h-4 w-4 text-slate-600" />
+                        <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <CatIcon className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <div>
                           <p className="font-medium text-sm">{policy.title}</p>

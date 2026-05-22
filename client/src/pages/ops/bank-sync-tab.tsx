@@ -506,7 +506,7 @@ const STATUS_CONFIG = {
   pending: { label: "Pending", color: "bg-yellow-100 text-yellow-800", icon: Clock },
   matched: { label: "Matched", color: "bg-blue-100 text-blue-800", icon: Link2 },
   categorized: { label: "Categorized", color: "bg-emerald-100 text-emerald-800", icon: CheckCircle2 },
-  ignored: { label: "Ignored", color: "bg-gray-100 text-gray-600", icon: XCircle },
+  ignored: { label: "Ignored", color: "bg-muted text-gray-600", icon: XCircle },
 };
 
 export default function BankSyncTab() {

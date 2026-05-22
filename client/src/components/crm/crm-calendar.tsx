@@ -32,7 +32,7 @@ const EVENT_STYLES: Record<string, {
   call:      { dot: "bg-violet-500", pill: "bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-500/30", soft: "bg-violet-500/10", icon: Phone,        label: "Call" },
   demo:      { dot: "bg-amber-500",  pill: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30",    soft: "bg-amber-500/10",  icon: Presentation, label: "Demo" },
   follow_up: { dot: "bg-orange-500", pill: "bg-orange-500/15 text-orange-600 dark:text-orange-300 border-orange-500/30", soft: "bg-orange-500/10", icon: Clock,        label: "Follow-up" },
-  other:     { dot: "bg-slate-500",  pill: "bg-slate-500/15 text-slate-600 dark:text-slate-300 border-slate-500/30",    soft: "bg-slate-500/10",  icon: CircleDot,    label: "Other" },
+  other:     { dot: "bg-slate-500",  pill: "bg-slate-500/15 text-muted-foreground dark:text-slate-300 border-slate-500/30",    soft: "bg-slate-500/10",  icon: CircleDot,    label: "Other" },
 };
 
 export function styleFor(type: string) {

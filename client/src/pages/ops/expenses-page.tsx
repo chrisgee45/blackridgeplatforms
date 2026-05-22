@@ -1349,7 +1349,7 @@ export default function ExpensesPage() {
                           onClick={() => updateVendorMutation.mutate({ id: v.id, data: { is1099Contractor: !v.is1099Contractor } })}
                           data-testid={`toggle-1099-${v.id}`}
                         >
-                          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${v.is1099Contractor ? "translate-x-4" : "translate-x-1"}`} />
+                          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-card transition-transform ${v.is1099Contractor ? "translate-x-4" : "translate-x-1"}`} />
                         </button>
                       </TableCell>
                       <TableCell>

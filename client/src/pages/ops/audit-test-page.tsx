@@ -34,7 +34,7 @@ export default function AuditTestPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900" data-testid="text-page-title">Website Audit Test Tool</h1>
+        <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Website Audit Test Tool</h1>
         <p className="text-sm text-gray-500 mt-1">Run a single-site audit to test the Bad Website Finder pipeline.</p>
       </div>
 
@@ -156,7 +156,7 @@ export default function AuditTestPage() {
               <ScoreCard label="Rule Score" value={audit.ruleScore} testId="text-rule-score" />
               <ScoreCard label="AI Score" value={audit.aiScore} testId="text-ai-score" />
               <ScoreCard label="Bad Site Score" value={audit.badSiteScore} testId="text-bad-site-score" />
-              <div className="text-center p-3 bg-gray-50 rounded-lg">
+              <div className="text-center p-3 bg-muted rounded-lg">
                 <p className="text-xs text-gray-500 mb-1">Redesign Worthy</p>
                 <Badge
                   data-testid="badge-redesign-worthy"
@@ -173,7 +173,7 @@ export default function AuditTestPage() {
                 <img
                   src={audit.screenshotUrl}
                   alt={`Screenshot of ${audit.websiteUrl}`}
-                  className="rounded-lg border border-gray-200 max-w-full"
+                  className="rounded-lg border border-border max-w-full"
                   data-testid="img-screenshot"
                 />
               </ResultSection>
@@ -181,7 +181,7 @@ export default function AuditTestPage() {
 
             {audit.topProblems && (
               <ResultSection title="Top Problems" testId="text-top-problems">
-                <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                   {(audit.topProblems as string[]).map((p: string, i: number) => (
                     <li key={i}>{p}</li>
                   ))}
@@ -191,25 +191,25 @@ export default function AuditTestPage() {
 
             {audit.pitchAngle && (
               <ResultSection title="Pitch Angle" testId="text-pitch-angle">
-                <p className="text-sm text-gray-700">{audit.pitchAngle}</p>
+                <p className="text-sm text-muted-foreground">{audit.pitchAngle}</p>
               </ResultSection>
             )}
 
             {audit.openingLine && (
               <ResultSection title="Opening Line" testId="text-opening-line">
-                <p className="text-sm text-gray-700 italic">"{audit.openingLine}"</p>
+                <p className="text-sm text-muted-foreground italic">"{audit.openingLine}"</p>
               </ResultSection>
             )}
 
             {audit.visualStyleAssessment && (
               <ResultSection title="Visual Style Assessment" testId="text-visual-style">
-                <p className="text-sm text-gray-700">{audit.visualStyleAssessment}</p>
+                <p className="text-sm text-muted-foreground">{audit.visualStyleAssessment}</p>
               </ResultSection>
             )}
 
             {audit.conversionAssessment && (
               <ResultSection title="Conversion Assessment" testId="text-conversion">
-                <p className="text-sm text-gray-700">{audit.conversionAssessment}</p>
+                <p className="text-sm text-muted-foreground">{audit.conversionAssessment}</p>
               </ResultSection>
             )}
 
@@ -226,9 +226,9 @@ export default function AuditTestPage() {
 function ScoreCard({ label, value, testId }: { label: string; value: number | string | null; testId: string }) {
   const num = value != null ? Number(value) : null;
   return (
-    <div className="text-center p-3 bg-gray-50 rounded-lg">
+    <div className="text-center p-3 bg-muted rounded-lg">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-2xl font-bold text-gray-900" data-testid={testId}>
+      <p className="text-2xl font-bold text-foreground" data-testid={testId}>
         {num != null ? num : "—"}
       </p>
     </div>
@@ -238,7 +238,7 @@ function ScoreCard({ label, value, testId }: { label: string; value: number | st
 function ResultSection({ title, testId, children }: { title: string; testId: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-1">{title}</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-1">{title}</h3>
       <div data-testid={testId}>{children}</div>
     </div>
   );

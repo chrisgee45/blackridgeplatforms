@@ -1319,7 +1319,7 @@ function ProposalContent({ content }: { content: string }) {
 }
 
 const PROPOSAL_STATUS: Record<string, string> = {
-  draft: "bg-slate-500/15 text-slate-600 border-slate-500/30",
+  draft: "bg-slate-500/15 text-muted-foreground border-slate-500/30",
   sent: "bg-blue-500/15 text-blue-600 border-blue-500/30",
   accepted: "bg-green-500/15 text-green-600 border-green-500/30",
   declined: "bg-red-500/15 text-red-600 border-red-500/30",
