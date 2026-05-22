@@ -2139,6 +2139,7 @@ export default function AdminPortal() {
               <p className="text-3xl font-semibold tabular-nums tracking-tight text-cyan-400" data-testid="text-pipeline-total">
                 {leadsLoading ? "-" : formatCurrency(stats.pipelineValue)}
               </p>
+              <p className="text-xs text-muted-foreground mt-1.5">Total value of open leads in play</p>
             </CardContent>
           </Card>
           <Card className="border-border/50 bg-card/50">
@@ -2150,6 +2151,7 @@ export default function AdminPortal() {
               <p className="text-3xl font-semibold tabular-nums tracking-tight text-purple-400" data-testid="text-weighted-forecast">
                 {leadsLoading ? "-" : formatCurrency(stats.weightedForecast)}
               </p>
+              <p className="text-xs text-muted-foreground mt-1.5">Pipeline adjusted for close probability</p>
             </CardContent>
           </Card>
           <Card className="border-border/50 bg-card/50">
