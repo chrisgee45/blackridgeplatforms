@@ -64,6 +64,7 @@ import {
   Activity,
   Shield,
   Sparkles,
+  Menu,
 } from "lucide-react";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -1905,11 +1906,11 @@ export default function AdminPortal() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between gap-4 h-16">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-3 h-14 sm:h-16">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="bg-neutral-950 rounded-md px-2.5 py-1.5 flex items-center">
-                <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-7 w-auto" />
+                <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-6 sm:h-7 w-auto" />
               </div>
               <span className="font-semibold text-[10px] tracking-[0.2em] uppercase text-primary border-l border-border/40 pl-2">CRM</span>
             </div>
@@ -1931,7 +1932,8 @@ export default function AdminPortal() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-wrap">
+          {/* Desktop actions */}
+          <div className="hidden sm:flex items-center gap-2">
             <a href="/admin/ops">
               <Button variant="outline" size="sm" data-testid="button-ops-portal">
                 <Zap className="h-4 w-4 mr-1" />
@@ -1947,28 +1949,52 @@ export default function AdminPortal() {
               Export CSV
             </Button>
             {user && (
-              <span className="text-sm text-muted-foreground hidden sm:inline" data-testid="text-admin-user">
+              <span className="text-sm text-muted-foreground" data-testid="text-admin-user">
                 {user.firstName}
               </span>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setMfaOpen(true)}
-              data-testid="button-mfa-settings"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setMfaOpen(true)} data-testid="button-mfa-settings">
               <Shield className="h-4 w-4 mr-1" />
               MFA
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => logout()}
-              data-testid="button-logout"
-            >
+            <Button variant="ghost" size="sm" onClick={() => logout()} data-testid="button-logout">
               <LogOut className="h-4 w-4 mr-1" />
               Logout
             </Button>
+          </div>
+
+          {/* Mobile menu */}
+          <div className="sm:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" data-testid="button-mobile-menu">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => setView("leads")} data-testid="menu-view-leads">
+                  <Users className="h-4 w-4 mr-2" /> Leads
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setView("calendar")} data-testid="menu-view-calendar">
+                  <CalendarDays className="h-4 w-4 mr-2" /> Calendar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setAddLeadOpen(true)} data-testid="menu-add-lead">
+                  <Plus className="h-4 w-4 mr-2" /> Add Lead
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportCSV} data-testid="menu-export-csv">
+                  <Download className="h-4 w-4 mr-2" /> Export CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild data-testid="menu-ops-portal">
+                  <a href="/admin/ops"><Zap className="h-4 w-4 mr-2" /> Ops Portal</a>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMfaOpen(true)} data-testid="menu-mfa">
+                  <Shield className="h-4 w-4 mr-2" /> MFA Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => logout()} data-testid="menu-logout">
+                  <LogOut className="h-4 w-4 mr-2" /> Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
