@@ -10,7 +10,7 @@ import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { registerOpsRoutes } from "./ops-routes";
 import { registerObjectStorageRoutes } from "./object-storage";
-import { getResendClient } from "./email";
+import { getResendClient, buildEmailSignatureHtml, buildEmailSignatureText } from "./email";
 import { createAiRouter } from "./routes/ai";
 import { registerOutreachRoutes } from "./outreach-routes";
 import PDFDocument from "pdfkit";
@@ -458,14 +458,14 @@ export async function registerRoutes(
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">${
         body.split("\n").map((line) => (line ? escapeHtml(line) : "")).join("<br/>")
-      }</div>`;
+      }${buildEmailSignatureHtml()}</div>`;
 
       await resend.client.emails.send({
         from: resend.fromEmail,
         to: [lead.email],
         subject,
         html,
-        text: body,
+        text: `${body}\n\n${buildEmailSignatureText()}`,
       });
 
       await storage.updateContactSubmission(leadId, { lastContactedAt: new Date().toISOString() });
