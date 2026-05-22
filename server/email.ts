@@ -18,11 +18,10 @@ export function getResendClient(): { client: Resend; fromEmail: string } | null 
 }
 
 /**
- * Public URL of the BlackRidge logo for email signatures. Empty until the
- * logo file is hosted — once it's served from a stable URL, set this and
- * the signature renders the image automatically.
+ * Public URL of the BlackRidge logo for email signatures. Served as a
+ * static asset from client/public/blackridge-logo.png.
  */
-const SIGNATURE_LOGO_URL = "";
+const SIGNATURE_LOGO_URL = "https://www.blackridgeplatforms.com/blackridge-logo.png";
 
 const GOLD = "#bd8b22";
 
