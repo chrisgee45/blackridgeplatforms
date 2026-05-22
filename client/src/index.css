@@ -90,54 +90,55 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* OBSIDIAN - dark-first theme for the admin app and system pages */
 .dark {
   --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --badge-outline: rgba(255,255,255, .07);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
-  --background: 220 10% 6%;
-  --foreground: 220 10% 92%;
-  --border: 220 8% 16%;
-  --card: 220 10% 9%;
-  --card-foreground: 220 10% 92%;
-  --card-border: 220 8% 14%;
-  --sidebar: 220 10% 8%;
-  --sidebar-foreground: 220 8% 90%;
-  --sidebar-border: 220 8% 14%;
-  --sidebar-primary: 38 75% 55%;
-  --sidebar-primary-foreground: 220 10% 6%;
-  --sidebar-accent: 220 8% 14%;
-  --sidebar-accent-foreground: 220 8% 90%;
-  --sidebar-ring: 38 75% 55%;
-  --popover: 220 10% 10%;
-  --popover-foreground: 220 10% 92%;
-  --popover-border: 220 8% 14%;
-  --primary: 38 75% 55%;
-  --primary-foreground: 220 10% 6%;
-  --secondary: 220 8% 14%;
-  --secondary-foreground: 220 8% 88%;
-  --muted: 220 8% 12%;
-  --muted-foreground: 220 6% 55%;
-  --accent: 220 8% 14%;
-  --accent-foreground: 220 8% 88%;
-  --destructive: 0 72% 32%;
-  --destructive-foreground: 0 85% 97%;
-  --input: 220 8% 22%;
-  --ring: 38 75% 55%;
-  --chart-1: 38 75% 75%;
-  --chart-2: 195 75% 72%;
-  --chart-3: 220 65% 70%;
-  --chart-4: 280 60% 68%;
-  --chart-5: 160 70% 72%;
-  --shadow-2xs: 0px 2px 0px 0px hsl(220 6% 46% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(220 6% 46% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(220 6% 46% / 0.00), 0px 1px 2px -1px hsl(220 6% 46% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(220 6% 46% / 0.00), 0px 1px 2px -1px hsl(220 6% 46% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(220 6% 46% / 0.00), 0px 2px 4px -1px hsl(220 6% 46% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(220 6% 46% / 0.00), 0px 4px 6px -1px hsl(220 6% 46% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(220 6% 46% / 0.00), 0px 8px 10px -1px hsl(220 6% 46% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(220 6% 46% / 0.00);
+  --elevate-1: rgba(255,255,255, .035);
+  --elevate-2: rgba(255,255,255, .075);
+  --background: 225 16% 5%;
+  --foreground: 220 14% 92%;
+  --border: 225 10% 15%;
+  --card: 225 14% 8%;
+  --card-foreground: 220 14% 92%;
+  --card-border: 225 10% 14%;
+  --sidebar: 228 18% 4%;
+  --sidebar-foreground: 220 10% 84%;
+  --sidebar-border: 225 10% 13%;
+  --sidebar-primary: 41 90% 56%;
+  --sidebar-primary-foreground: 228 28% 6%;
+  --sidebar-accent: 225 12% 12%;
+  --sidebar-accent-foreground: 220 14% 94%;
+  --sidebar-ring: 41 90% 56%;
+  --popover: 225 13% 9%;
+  --popover-foreground: 220 14% 92%;
+  --popover-border: 225 10% 16%;
+  --primary: 41 90% 56%;
+  --primary-foreground: 228 30% 7%;
+  --secondary: 225 12% 13%;
+  --secondary-foreground: 220 13% 88%;
+  --muted: 225 12% 11%;
+  --muted-foreground: 220 9% 57%;
+  --accent: 225 12% 14%;
+  --accent-foreground: 220 13% 90%;
+  --destructive: 0 72% 56%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 225 10% 18%;
+  --ring: 41 90% 56%;
+  --chart-1: 41 90% 60%;
+  --chart-2: 190 80% 56%;
+  --chart-3: 222 72% 64%;
+  --chart-4: 270 62% 67%;
+  --chart-5: 152 56% 52%;
+  --shadow-2xs: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.4), 0 1px 2px -1px rgba(0,0,0,.4);
+  --shadow: 0 2px 8px rgba(0,0,0,.45), 0 1px 2px -1px rgba(0,0,0,.4);
+  --shadow-md: 0 6px 16px rgba(0,0,0,.5), 0 2px 4px -2px rgba(0,0,0,.4);
+  --shadow-lg: 0 12px 28px rgba(0,0,0,.55), 0 4px 8px -4px rgba(0,0,0,.45);
+  --shadow-xl: 0 22px 44px rgba(0,0,0,.6);
+  --shadow-2xl: 0 28px 56px rgba(0,0,0,.7);
 
 /* Fallback for older browsers */
   --sidebar-primary-border: hsl(var(--sidebar-primary));
@@ -176,6 +177,52 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+}
+
+/* ----- Obsidian polish (scoped to the dark app) ----- */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv05", "ss01";
+}
+
+.dark ::selection {
+  background-color: hsl(41 90% 56% / 0.26);
+  color: hsl(220 14% 96%);
+}
+
+.dark ::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: hsl(225 10% 20%);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(225 10% 30%);
+}
+
+.dark :focus-visible {
+  outline: 2px solid hsl(41 90% 56% / 0.55);
+  outline-offset: 1px;
+}
+
+/* Tabular figures for numeric-heavy elements */
+.dark table,
+.dark .tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /**

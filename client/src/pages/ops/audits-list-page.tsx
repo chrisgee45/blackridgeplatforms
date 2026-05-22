@@ -152,7 +152,7 @@ export default function AuditsListPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" data-testid="text-page-title">Website Audits</h1>
+          <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Website Audits</h1>
           <p className="text-sm text-gray-500 mt-1">
             {filtered.length} audit{filtered.length !== 1 ? "s" : ""}
             {hasActiveFilters ? " (filtered)" : ""}
@@ -349,13 +349,13 @@ export default function AuditsListPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="table-audits">
                 <thead>
-                  <tr className="border-b bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <tr className="border-b bg-muted text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     <th className="px-4 py-3 w-8">
                       <input
                         type="checkbox"
                         checked={pendingFiltered.length > 0 && selectedIds.size === pendingFiltered.length}
                         onChange={toggleSelectAll}
-                        className="rounded border-gray-300"
+                        className="rounded border-border"
                         data-testid="checkbox-select-all"
                         title="Select all pending audits"
                       />
@@ -412,7 +412,7 @@ function ScoreBadge({ value }: { value: number | string | null }) {
 function AuditRow({ audit, onPreview, isSelected, onToggleSelect }: { audit: WebsiteAudit; onPreview: () => void; isSelected: boolean; onToggleSelect: () => void }) {
   const isPending = audit.status === "pending";
   return (
-    <tr className={`hover:bg-gray-50 transition-colors ${isSelected ? "bg-blue-50/50" : ""}`} data-testid={`row-audit-${audit.id}`}>
+    <tr className={`hover:bg-muted transition-colors ${isSelected ? "bg-blue-50/50" : ""}`} data-testid={`row-audit-${audit.id}`}>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           {isPending ? (
@@ -420,7 +420,7 @@ function AuditRow({ audit, onPreview, isSelected, onToggleSelect }: { audit: Web
               type="checkbox"
               checked={isSelected}
               onChange={onToggleSelect}
-              className="rounded border-gray-300"
+              className="rounded border-border"
               data-testid={`checkbox-audit-${audit.id}`}
             />
           ) : (
@@ -436,7 +436,7 @@ function AuditRow({ audit, onPreview, isSelected, onToggleSelect }: { audit: Web
           </button>
         </div>
       </td>
-      <td className="px-4 py-3 font-medium text-gray-900 max-w-[200px] truncate" data-testid={`text-business-${audit.id}`}>
+      <td className="px-4 py-3 font-medium text-foreground max-w-[200px] truncate" data-testid={`text-business-${audit.id}`}>
         {audit.businessName}
       </td>
       <td className="px-4 py-3 max-w-[200px]">
@@ -481,7 +481,7 @@ function AuditRow({ audit, onPreview, isSelected, onToggleSelect }: { audit: Web
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending: "bg-gray-100 text-gray-700",
+    pending: "bg-muted text-muted-foreground",
     imported: "bg-blue-100 text-blue-700",
     rejected: "bg-red-100 text-red-700",
   };
@@ -537,13 +537,13 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
         data-testid="drawer-backdrop"
       />
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-200"
+        className="fixed right-0 top-0 h-full w-full max-w-lg bg-card shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-200"
         data-testid="drawer-audit-detail"
       >
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-card border-b px-6 py-4 flex items-center justify-between z-10">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-gray-900 truncate" data-testid="drawer-business-name">
+              <h2 className="text-lg font-bold text-foreground truncate" data-testid="drawer-business-name">
                 {audit.businessName}
               </h2>
               <StatusBadge status={audit.status} />
@@ -562,7 +562,7 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-gray-500"
             data-testid="button-close-drawer"
           >
             <X className="w-5 h-5" />
@@ -570,7 +570,7 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
         </div>
 
         {isPending && (
-          <div className="px-6 py-3 bg-gray-50 border-b flex items-center gap-2">
+          <div className="px-6 py-3 bg-muted border-b flex items-center gap-2">
             <Button
               size="sm"
               data-testid="button-import-lead"
@@ -608,7 +608,7 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
               <img
                 src={audit.screenshotUrl}
                 alt={`Screenshot of ${audit.websiteUrl}`}
-                className="rounded-lg border border-gray-200 w-full"
+                className="rounded-lg border border-border w-full"
                 data-testid="drawer-screenshot"
               />
             </div>
@@ -618,7 +618,7 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
             <ScoreCard label="Rule Score" value={audit.ruleScore} testId="drawer-rule-score" />
             <ScoreCard label="AI Score" value={audit.aiScore} testId="drawer-ai-score" />
             <ScoreCard label="Final Score" value={score} testId="drawer-bad-site-score" />
-            <div className="text-center p-3 bg-gray-50 rounded-lg">
+            <div className="text-center p-3 bg-muted rounded-lg">
               <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">Redesign</p>
               <Badge
                 data-testid="drawer-redesign-worthy"
@@ -634,7 +634,7 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
             <DetailSection title="Top Problems" testId="drawer-top-problems">
               <ul className="space-y-2">
                 {(audit.topProblems as string[]).map((p, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                  <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
                     <span className="flex-shrink-0 w-5 h-5 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-medium mt-0.5">
                       {i + 1}
                     </span>
@@ -655,19 +655,19 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
 
           {audit.pitchAngle && (
             <DetailSection title="Pitch Angle" testId="drawer-pitch-angle">
-              <p className="text-sm text-gray-700">{audit.pitchAngle}</p>
+              <p className="text-sm text-muted-foreground">{audit.pitchAngle}</p>
             </DetailSection>
           )}
 
           {audit.visualStyleAssessment && (
             <DetailSection title="Visual Style Assessment" testId="drawer-visual-style">
-              <p className="text-sm text-gray-700">{audit.visualStyleAssessment}</p>
+              <p className="text-sm text-muted-foreground">{audit.visualStyleAssessment}</p>
             </DetailSection>
           )}
 
           {audit.conversionAssessment && (
             <DetailSection title="Conversion Assessment" testId="drawer-conversion">
-              <p className="text-sm text-gray-700">{audit.conversionAssessment}</p>
+              <p className="text-sm text-muted-foreground">{audit.conversionAssessment}</p>
             </DetailSection>
           )}
 
@@ -684,14 +684,14 @@ function AuditDetailDrawer({ audit: initialAudit, onClose }: { audit: WebsiteAud
 }
 
 function ScoreCard({ label, value, testId }: { label: string; value: number | null; testId: string }) {
-  let color = "text-gray-900";
+  let color = "text-foreground";
   if (value != null) {
     if (value >= 60) color = "text-red-600";
     else if (value >= 40) color = "text-amber-600";
     else color = "text-green-600";
   }
   return (
-    <div className="text-center p-3 bg-gray-50 rounded-lg">
+    <div className="text-center p-3 bg-muted rounded-lg">
       <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">{label}</p>
       <p className={`text-xl font-bold ${color}`} data-testid={testId}>
         {value != null ? value : "--"}

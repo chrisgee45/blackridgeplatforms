@@ -179,7 +179,7 @@ export default function GaapManagementTab() {
                         isClosed
                           ? "bg-green-50 border-green-200"
                           : period
-                          ? "bg-white border-border"
+                          ? "bg-card border-border"
                           : "bg-muted/30 border-dashed"
                       }`}
                       data-testid={`period-${month}`}
@@ -299,10 +299,10 @@ export default function GaapManagementTab() {
                   <p className="text-blue-600 text-xs">Full access: close periods, void entries, manage users, year-end close</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-muted border border-border">
                 <UserCog className="w-4 h-4 text-gray-600 mt-0.5 shrink-0" />
                 <div className="text-sm">
-                  <p className="font-medium text-gray-800">Bookkeeper</p>
+                  <p className="font-medium text-foreground">Bookkeeper</p>
                   <p className="text-gray-600 text-xs">Can create/edit entries and expenses. Cannot close periods, void entries, or manage users</p>
                 </div>
               </div>

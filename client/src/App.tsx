@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Switch, Route } from "wouter";
+import { lazy, Suspense, useEffect } from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -63,7 +63,16 @@ function PlaceholderPage({ title }: { title: string }) {
 
 function ProjectsPage() { return <PlaceholderPage title="Projects" />; }
 
+function useObsidianTheme() {
+  const [location] = useLocation();
+  useEffect(() => {
+    const isAppRoute = ["/admin", "/book", "/pay", "/kickoff"].some((p) => location.startsWith(p));
+    document.documentElement.classList.toggle("dark", isAppRoute);
+  }, [location]);
+}
+
 function Router() {
+  useObsidianTheme();
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Switch>

@@ -365,7 +365,7 @@ export default function BudgetTab() {
                             {row.variance < 0 ? "-" : "+"}{currencyFmt.format(Math.abs(row.variance))}
                           </TableCell>
                           <TableCell>
-                            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden relative" data-testid={`progress-${row.accountNumber}`}>
+                            <div className="w-full bg-muted rounded-full h-3 overflow-hidden relative" data-testid={`progress-${row.accountNumber}`}>
                               <div
                                 className={`h-full rounded-full transition-all ${isOver ? "bg-red-400" : pct > 80 ? "bg-amber-400" : "bg-emerald-400"}`}
                                 style={{ width: `${Math.min(pct, 100)}%` }}
@@ -401,7 +401,7 @@ export default function BudgetTab() {
                         {reportData.totals.variance < 0 ? "-" : "+"}{currencyFmt.format(Math.abs(reportData.totals.variance))}
                       </TableCell>
                       <TableCell>
-                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
                           <div
                             className={`h-full rounded-full ${reportData.totals.percentUsed > 100 ? "bg-red-400" : reportData.totals.percentUsed > 80 ? "bg-amber-400" : "bg-emerald-400"}`}
                             style={{ width: `${Math.min(reportData.totals.percentUsed, 100)}%` }}
