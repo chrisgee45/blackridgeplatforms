@@ -4,11 +4,11 @@ import { crmEvents } from "@shared/schema";
 import { eq, asc, sql } from "drizzle-orm";
 
 /**
- * Ensures the crm_events table exists. The app has no migration runner —
- * schema is otherwise managed with drizzle-kit push — so this idempotent
- * DDL runs on startup alongside the other seed routines.
+ * Ensures CRM schema additions exist. The app has no migration runner —
+ * schema is otherwise managed with drizzle-kit push — so these idempotent
+ * statements run on startup alongside the other seed routines.
  */
-export async function ensureCrmEventsTable(): Promise<void> {
+export async function ensureCrmSchema(): Promise<void> {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS crm_events (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,6 +24,7 @@ export async function ensureCrmEventsTable(): Promise<void> {
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await db.execute(sql`ALTER TABLE contact_submissions ADD COLUMN IF NOT EXISTS website text`);
 }
 
 const VALID_TYPES = ["meeting", "call", "demo", "follow_up", "other"];
