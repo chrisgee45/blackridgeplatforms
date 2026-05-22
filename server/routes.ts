@@ -17,7 +17,7 @@ import PDFDocument from "pdfkit";
 import { registerStripeRoutes } from "./stripe-routes";
 import { registerBookkeepingRoutes } from "./bookkeeping-routes";
 import { bookkeepingStorage } from "./bookkeeping-storage";
-import { registerCrmCalendarRoutes, ensureCrmSchema } from "./crm-calendar";
+import { registerCrmCalendarRoutes, ensureCrmSchema, startEventReminderRunner } from "./crm-calendar";
 import { registerBookingRoutes } from "./booking-routes";
 import { registerProposalRoutes } from "./proposal-routes";
 import { createAccountingV2Router } from "./accounting-v2-routes";
@@ -318,6 +318,7 @@ export async function registerRoutes(
   startRecurringExpenseRunner();
   startDailyBackupScheduler();
   startWelcomeSequenceRunner();
+  startEventReminderRunner();
 
   app.post("/api/contact", async (req, res) => {
     try {

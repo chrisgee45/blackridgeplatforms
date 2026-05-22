@@ -1,7 +1,17 @@
 import type { Express, RequestHandler } from "express";
 import { db } from "./db";
 import { crmEvents } from "@shared/schema";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, asc, sql, and, isNull, isNotNull, gte } from "drizzle-orm";
+import { isSmsConfigured, sendSms, getReminderPhone } from "./sms";
+
+const REMINDER_TZ = "America/Chicago";
+const ALLOWED_REMINDERS = [15, 30, 60, 120, 1440];
+
+function normalizeReminder(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return ALLOWED_REMINDERS.includes(n) ? n : null;
+}
 
 /**
  * Ensures CRM schema additions exist. The app has no migration runner —
@@ -20,11 +30,15 @@ export async function ensureCrmSchema(): Promise<void> {
       location text,
       notes text,
       status text NOT NULL DEFAULT 'scheduled',
+      reminder_minutes integer,
+      reminder_sent_at timestamptz,
       created_by text DEFAULT 'admin',
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
   await db.execute(sql`ALTER TABLE contact_submissions ADD COLUMN IF NOT EXISTS website text`);
+  await db.execute(sql`ALTER TABLE crm_events ADD COLUMN IF NOT EXISTS reminder_minutes integer`);
+  await db.execute(sql`ALTER TABLE crm_events ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS proposals (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -83,6 +97,7 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
         location: typeof req.body?.location === "string" ? req.body.location.trim() || null : null,
         notes: typeof req.body?.notes === "string" ? req.body.notes.trim() || null : null,
         status,
+        reminderMinutes: normalizeReminder(req.body?.reminderMinutes),
         createdBy: "admin",
       }).returning();
 
@@ -105,6 +120,7 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
         const d = parseDate(req.body.startAt);
         if (!d) return res.status(400).json({ message: "Invalid start date/time" });
         updates.startAt = d;
+        updates.reminderSentAt = null;
       }
       if (req.body?.endAt !== undefined) updates.endAt = parseDate(req.body.endAt);
       if (req.body?.leadId !== undefined) updates.leadId = req.body.leadId || null;
@@ -113,6 +129,10 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
       }
       if (req.body?.notes !== undefined) {
         updates.notes = typeof req.body.notes === "string" ? req.body.notes.trim() || null : null;
+      }
+      if (req.body?.reminderMinutes !== undefined) {
+        updates.reminderMinutes = normalizeReminder(req.body.reminderMinutes);
+        updates.reminderSentAt = null;
       }
 
       if (Object.keys(updates).length === 0) {
@@ -138,4 +158,55 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
       res.status(500).json({ message: "Failed to delete event" });
     }
   });
+}
+
+/**
+ * Background runner that texts a reminder before calendar events that have
+ * a reminder set. Idempotent: each event is reminded at most once
+ * (reminder_sent_at), and rescheduling re-arms it.
+ */
+export function startEventReminderRunner() {
+  async function tick() {
+    try {
+      if (!isSmsConfigured()) return;
+      const phone = getReminderPhone();
+      if (!phone) return;
+      const now = new Date();
+      const due = await db
+        .select()
+        .from(crmEvents)
+        .where(
+          and(
+            isNotNull(crmEvents.reminderMinutes),
+            isNull(crmEvents.reminderSentAt),
+            eq(crmEvents.status, "scheduled"),
+            gte(crmEvents.startAt, now),
+          ),
+        );
+      for (const ev of due) {
+        const fireAt = new Date(new Date(ev.startAt).getTime() - (ev.reminderMinutes ?? 0) * 60000);
+        if (now < fireAt) continue;
+        const when = new Date(ev.startAt).toLocaleString("en-US", {
+          timeZone: REMINDER_TZ,
+          weekday: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        const parts = [`Reminder: ${ev.title}`, `at ${when}`];
+        if (ev.location) parts.push(ev.location);
+        try {
+          await sendSms(phone, parts.join(" • "));
+          await db.update(crmEvents).set({ reminderSentAt: new Date() }).where(eq(crmEvents.id, ev.id));
+          console.log(`Sent SMS reminder for event ${ev.id}`);
+        } catch (err: any) {
+          console.error(`SMS reminder failed for event ${ev.id}:`, err?.message);
+        }
+      }
+    } catch (error) {
+      console.error("Event reminder runner error:", error);
+    }
+  }
+  setInterval(tick, 60 * 1000);
+  tick();
+  console.log("Event reminder runner started (60s interval)");
 }

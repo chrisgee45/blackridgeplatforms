@@ -846,6 +846,8 @@ export const crmEvents = pgTable("crm_events", {
   location: text("location"),
   notes: text("notes"),
   status: text("status").notNull().default("scheduled"),
+  reminderMinutes: integer("reminder_minutes"),
+  reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
   createdBy: text("created_by").default("admin"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
