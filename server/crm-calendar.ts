@@ -77,6 +77,22 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
     }
   });
 
+  app.post("/api/crm/test-sms", isAuthenticated, async (_req, res) => {
+    try {
+      if (!isSmsConfigured()) {
+        return res.status(400).json({
+          message: "SMS is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER and REMINDER_PHONE in Railway.",
+        });
+      }
+      const phone = getReminderPhone()!;
+      await sendSms(phone, "BlackRidge CRM: this is a test message. Your SMS reminders are working.");
+      res.json({ success: true, to: phone });
+    } catch (error: any) {
+      console.error("Test SMS error:", error);
+      res.status(500).json({ message: error?.message || "Failed to send test SMS" });
+    }
+  });
+
   app.post("/api/crm/events", isAuthenticated, async (req, res) => {
     try {
       const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
