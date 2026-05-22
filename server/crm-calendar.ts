@@ -2,7 +2,7 @@ import type { Express, RequestHandler } from "express";
 import { db } from "./db";
 import { crmEvents } from "@shared/schema";
 import { eq, asc, sql, and, isNull, isNotNull, gte } from "drizzle-orm";
-import { isSmsConfigured, sendSms, getReminderPhone } from "./sms";
+import { isReminderConfigured, sendReminder } from "./sms";
 
 const REMINDER_TZ = "America/Chicago";
 const ALLOWED_REMINDERS = [15, 30, 60, 120, 1440];
@@ -79,17 +79,16 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
 
   app.post("/api/crm/test-sms", isAuthenticated, async (_req, res) => {
     try {
-      if (!isSmsConfigured()) {
+      if (!isReminderConfigured()) {
         return res.status(400).json({
-          message: "SMS is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER and REMINDER_PHONE in Railway.",
+          message: "No reminder channel is configured. Set REMINDER_SMS_EMAIL (carrier gateway) or the TWILIO_* variables in Railway.",
         });
       }
-      const phone = getReminderPhone()!;
-      await sendSms(phone, "BlackRidge CRM: this is a test message. Your SMS reminders are working.");
-      res.json({ success: true, to: phone });
+      await sendReminder("BlackRidge CRM: this is a test message. Your reminders are working.");
+      res.json({ success: true });
     } catch (error: any) {
       console.error("Test SMS error:", error);
-      res.status(500).json({ message: error?.message || "Failed to send test SMS" });
+      res.status(500).json({ message: error?.message || "Failed to send test message" });
     }
   });
 
@@ -184,9 +183,7 @@ export function registerCrmCalendarRoutes(app: Express, isAuthenticated: Request
 export function startEventReminderRunner() {
   async function tick() {
     try {
-      if (!isSmsConfigured()) return;
-      const phone = getReminderPhone();
-      if (!phone) return;
+      if (!isReminderConfigured()) return;
       const now = new Date();
       const due = await db
         .select()
@@ -211,11 +208,11 @@ export function startEventReminderRunner() {
         const parts = [`Reminder: ${ev.title}`, `at ${when}`];
         if (ev.location) parts.push(ev.location);
         try {
-          await sendSms(phone, parts.join(" • "));
+          await sendReminder(parts.join(" • "));
           await db.update(crmEvents).set({ reminderSentAt: new Date() }).where(eq(crmEvents.id, ev.id));
-          console.log(`Sent SMS reminder for event ${ev.id}`);
+          console.log(`Sent reminder for event ${ev.id}`);
         } catch (err: any) {
-          console.error(`SMS reminder failed for event ${ev.id}:`, err?.message);
+          console.error(`Reminder failed for event ${ev.id}:`, err?.message);
         }
       }
     } catch (error) {
