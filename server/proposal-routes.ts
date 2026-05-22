@@ -9,6 +9,8 @@ const SYSTEM_PROMPT = `You are a senior proposal writer for BlackRidge Platforms
 
 Write a complete, client-ready website proposal. It should feel personal, confident and benefit-focused, as if written by an experienced consultant who genuinely understands this client's business. Never generic, never templated.
 
+The lead's message and the internal notes are your most important source of context. They reflect what the salesperson has learned about this specific prospect. Weave concrete details from them into the proposal: their business, their situation, what makes them unique, what they actually want. If the notes mention specifics (a referral, multiple locations, a competitor, a pain point, a particular project type) name those specifics in the proposal. The output must read as if you genuinely know this prospect, not as a template.
+
 Format using simple markdown only:
 - "## " for section headings
 - "**bold**" for emphasis
@@ -27,8 +29,8 @@ Use exactly these sections in this order:
 ## Next Steps
 
 Guidance:
-- "Understanding Your Goals": two to four sentences that show you grasp their situation and what they want.
-- "What We'll Build": concrete deliverables as a bulleted list.
+- "Understanding Your Goals": two to four sentences that explicitly reference specific details from the lead's message and internal notes. This is where you prove you read about them, not a generic recap.
+- "What We'll Build": concrete deliverables as a bulleted list, tailored to what the notes indicate they actually need.
 - "Timeline": a realistic phased timeline (discovery, design, build, launch).
 - "Investment": if a budget is provided, base the figure on it; otherwise give a clear price and note it can be tailored to scope.
 - "Why BlackRidge": three short, specific reasons.
@@ -108,8 +110,15 @@ export function registerProposalRoutes(app: Express, isAuthenticated: RequestHan
         : "None recorded yet.";
 
       const userPrompt = [
-        "Write a website proposal for this prospect.",
+        "Write a website proposal for this prospect. The lead description and internal notes below are your primary source of context. Ground the proposal in their specifics.",
         "",
+        "=== LEAD DESCRIPTION (what we know about this prospect) ===",
+        lead.message || "Nothing recorded.",
+        "",
+        "=== INTERNAL NOTES (additional context from the salesperson) ===",
+        lead.notes || "None.",
+        "",
+        "=== LEAD DETAILS ===",
         `Contact name: ${lead.name}`,
         `Company: ${lead.company || "Not provided"}`,
         `Current website: ${lead.website || "None / not provided"}`,
@@ -117,10 +126,7 @@ export function registerProposalRoutes(app: Express, isAuthenticated: RequestHan
         `Stated budget: ${lead.budget || "Not provided"}`,
         `Estimated project value: ${lead.projectedValue != null ? "$" + lead.projectedValue : "Not provided"}`,
         "",
-        `What they told us: ${lead.message || "Nothing specific."}`,
-        `Internal notes: ${lead.notes || "None."}`,
-        "",
-        "Recent activity with this lead:",
+        "=== RECENT ACTIVITY ===",
         activitySummary,
         "",
         `Today's date: ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
