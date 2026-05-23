@@ -2233,7 +2233,7 @@ export default function AdminPortal() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="all">Status</SelectItem>
                     {Object.entries(STATUS_LABELS).map(([key, label]) => (
                       <SelectItem key={key} value={key}>{label}</SelectItem>
                     ))}
@@ -2244,7 +2244,7 @@ export default function AdminPortal() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Priority</SelectItem>
+                    <SelectItem value="all">Priority</SelectItem>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
                     <SelectItem value="high">High</SelectItem>
@@ -2256,7 +2256,7 @@ export default function AdminPortal() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="all">Source</SelectItem>
                     {LEAD_SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -2312,7 +2312,7 @@ export default function AdminPortal() {
                       <div className="flex items-center gap-4 min-w-0 flex-1">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-semibold text-sm truncate" data-testid={`text-lead-name-${lead.id}`}>
+                            <span className="font-semibold text-sm" data-testid={`text-lead-name-${lead.id}`}>
                               {lead.name}
                             </span>
                             {lead.company && (
@@ -2321,6 +2321,12 @@ export default function AdminPortal() {
                                 {lead.company}
                               </span>
                             )}
+                            <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[lead.priority]}`}>
+                              {lead.priority}
+                            </Badge>
+                            <Badge variant="outline" className={`text-xs ${STATUS_COLORS[lead.status]}`}>
+                              {STATUS_LABELS[lead.status] || lead.status}
+                            </Badge>
                             {stale && <Badge variant="outline" className="text-xs bg-red-500/15 text-red-400 border-red-500/20">Stale</Badge>}
                             {overdue && <Badge variant="outline" className="text-xs bg-red-500/15 text-red-400 border-red-500/20">Overdue</Badge>}
                             {todayFollowUp && !overdue && <Badge variant="outline" className="text-xs bg-amber-500/15 text-amber-400 border-amber-500/20">Follow-Up Today</Badge>}
@@ -2374,15 +2380,7 @@ export default function AdminPortal() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[lead.priority]}`}>
-                          {lead.priority}
-                        </Badge>
-                        <Badge variant="outline" className={`text-xs ${STATUS_COLORS[lead.status]}`}>
-                          {STATUS_LABELS[lead.status] || lead.status}
-                        </Badge>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground self-center shrink-0" />
                     </div>
                   </CardContent>
                 </Card>
