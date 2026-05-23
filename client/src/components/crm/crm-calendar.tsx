@@ -19,8 +19,7 @@ import {
 import { enablePush } from "@/lib/push";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
-  addMonths, subMonths, format, isSameMonth, isSameDay, isToday, isBefore,
-  startOfDay,
+  addMonths, subMonths, format, isSameMonth, isSameDay, isToday,
 } from "date-fns";
 import type { CrmEvent, ContactSubmission } from "@shared/schema";
 
@@ -44,6 +43,17 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function dayKey(d: Date | string): string {
   return format(new Date(d), "yyyy-MM-dd");
+}
+
+/**
+ * True if an event is upcoming or currently in progress. An event without an
+ * explicit endAt is treated as 30 minutes long.
+ */
+function isUpcomingOrCurrent(e: CrmEvent, now: Date): boolean {
+  if (e.status === "cancelled") return false;
+  const start = new Date(e.startAt).getTime();
+  const end = e.endAt ? new Date(e.endAt).getTime() : start + 30 * 60_000;
+  return end >= now.getTime();
 }
 
 interface CrmCalendarProps {
@@ -148,9 +158,9 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
   }, [cursor]);
 
   const upcoming = useMemo(() => {
-    const today = startOfDay(new Date());
+    const now = new Date();
     return events
-      .filter((e) => !isBefore(new Date(e.startAt), today) && e.status !== "cancelled")
+      .filter((e) => isUpcomingOrCurrent(e, now))
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
       .slice(0, 8);
   }, [events]);
@@ -327,11 +337,13 @@ function AgendaList({
   leadMap: Map<string, ContactSubmission>;
   onEventClick: (e: CrmEvent) => void;
 }) {
-  const today = startOfDay(new Date());
   const sorted = useMemo(
-    () => [...events]
-      .filter((e) => !isBefore(new Date(e.startAt), today))
-      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()),
+    () => {
+      const now = new Date();
+      return [...events]
+        .filter((e) => isUpcomingOrCurrent(e, now))
+        .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    },
     [events],
   );
 
