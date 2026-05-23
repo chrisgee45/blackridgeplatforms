@@ -301,18 +301,6 @@ export function registerStripeRoutes(app: Express, isAuthenticated: RequestHandl
       });
 
       try {
-        await bookkeepingStorage.postPaymentToLedger(
-          amount,
-          `Stripe payment: ${description || "One-time payment"}`,
-          "stripe_payment",
-          payment.id,
-          true
-        );
-      } catch (e) {
-        console.error("Auto-post Stripe payment to ledger failed:", e);
-      }
-
-      try {
         const revenueAcctId = await getAccountIdByCode("4000");
         await recordRevenue({
           amount: Number(amount),

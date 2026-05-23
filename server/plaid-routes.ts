@@ -426,36 +426,39 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
         ? parsedDate
         : (txn.createdAt || new Date());
 
+      const { bookkeepingStorage } = await import("./bookkeeping-storage");
+      const { postJournal, getAccountIdByCode, recordRevenue, recordExpense } = await import("./accounting-v2");
+
+      // Resolve the user-selected account (sent as a V1 id from the bank-sync UI) to a V2 id.
+      const resolveToV2 = async (id: string): Promise<string> => {
+        const v1Acct = await bookkeepingStorage.getAccount(id);
+        if (v1Acct) return getAccountIdByCode(v1Acct.accountNumber);
+        return id;
+      };
+      const v2AccountId = await resolveToV2(String(accountId));
+
       if (type === "owner_contribution") {
-        const { bookkeepingStorage } = await import("./bookkeeping-storage");
-        const ownerContribAccount = await bookkeepingStorage.getAccountByNumber("3200");
-        if (!ownerContribAccount) throw new Error("Owner Contribution account (3200) not found");
-        await bookkeepingStorage.createJournalEntryWithLines(
-          {
-            date: txnDate,
-            memo: `Owner contribution: ${memo}`,
-            sourceType: "owner_contribution",
-            createdBy: "admin",
-          },
-          [
-            { accountId: String(accountId), debit: String(amount), credit: "0" },
-            { accountId: ownerContribAccount.id, debit: "0", credit: String(amount) },
-          ]
-        );
+        const ownerContribAcctId = await getAccountIdByCode("3200");
+        await postJournal({
+          occurredAt: txnDate,
+          memo: `Owner contribution: ${memo}`,
+          referenceType: "owner_contribution",
+          referenceId: `bank_sync_${txn.id}`,
+          lines: [
+            { accountId: v2AccountId, debit: amount, credit: 0 },
+            { accountId: ownerContribAcctId, debit: 0, credit: amount },
+          ],
+        });
 
         await db.update(bankTransactions)
-          .set({
-            status: "categorized",
-            linkedAccountId: String(accountId),
-          })
+          .set({ status: "categorized", linkedAccountId: String(accountId) })
           .where(eq(bankTransactions.id, id));
 
         res.json({ transaction: txn, type: "owner_contribution" });
       } else if (type === "income" || type === "refund") {
-        const { recordRevenue } = await import("./accounting-v2");
         const tx = await recordRevenue({
           amount,
-          revenueAccountId: String(accountId),
+          revenueAccountId: v2AccountId,
           occurredAt: txnDate,
           memo: type === "refund" ? `Refund: ${memo}` : memo,
           paymentMethod: paymentMethod || "card",
@@ -465,41 +468,30 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
         });
 
         await db.update(bankTransactions)
-          .set({
-            status: "categorized",
-            linkedAccountId: String(accountId),
-          })
+          .set({ status: "categorized", linkedAccountId: String(accountId) })
           .where(eq(bankTransactions.id, id));
 
         res.json({ transaction: txn, journalEntry: tx });
       } else if (type === "transfer") {
-        const { bookkeepingStorage } = await import("./bookkeeping-storage");
-        const cashAccount = await bookkeepingStorage.getAccountByNumber("1000");
-        if (!cashAccount) throw new Error("Cash account (1000) not found");
-        await bookkeepingStorage.createJournalEntryWithLines(
-          {
-            date: txnDate,
-            memo: `Transfer: ${memo}`,
-            sourceType: "bank_sync",
-            createdBy: "admin",
-          },
-          [
-            { accountId: String(accountId), debit: String(amount), credit: "0" },
-            { accountId: cashAccount.id, debit: "0", credit: String(amount) },
-          ]
-        );
+        const cashAcctId = await getAccountIdByCode("1000");
+        await postJournal({
+          occurredAt: txnDate,
+          memo: `Transfer: ${memo}`,
+          referenceType: "bank_sync_transfer",
+          referenceId: `bank_sync_${txn.id}`,
+          lines: [
+            { accountId: v2AccountId, debit: amount, credit: 0 },
+            { accountId: cashAcctId, debit: 0, credit: amount },
+          ],
+        });
 
         await db.update(bankTransactions)
-          .set({
-            status: "categorized",
-            linkedAccountId: String(accountId),
-          })
+          .set({ status: "categorized", linkedAccountId: String(accountId) })
           .where(eq(bankTransactions.id, id));
 
         res.json({ transaction: txn, type: "transfer" });
       } else {
-        const { bookkeepingStorage } = await import("./bookkeeping-storage");
-        const expenseData = {
+        const expense = await bookkeepingStorage.createExpense({
           accountId: String(accountId),
           description: memo,
           amount: String(amount),
@@ -509,9 +501,17 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
           taxDeductible: taxDeductible !== false,
           isBillable: false,
           fundingSource: "business_checking",
-        };
+        } as any);
 
-        const expense = await bookkeepingStorage.createExpenseWithJournal(expenseData as any);
+        await recordExpense({
+          amount,
+          expenseAccountId: v2AccountId,
+          paymentMethod: paymentMethod === "credit_card" ? "credit_card" : "cash",
+          occurredAt: txnDate,
+          memo,
+          referenceType: "expense",
+          referenceId: `expense_${expense.id}`,
+        });
 
         await db.update(bankTransactions)
           .set({

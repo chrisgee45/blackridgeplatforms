@@ -129,15 +129,45 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
       const { assertPeriodOpen, createAuditLog } = await import("./gaap-compliance");
       await assertPeriodOpen(new Date(entryData.date));
       const username = (req.session as any)?.adminUsername || "admin";
-      const result = await bookkeepingStorage.createJournalEntryWithLines(
-        { ...entryData, date: new Date(entryData.date), createdBy: username },
-        lines
-      );
+
+      const { postJournal, getAccountIdByCode } = await import("./accounting-v2");
+
+      const resolvedLines: { accountId: string; debit: number; credit: number; memo?: string }[] = [];
+      for (const line of lines) {
+        let v2AccountId: string;
+        const legacy = await bookkeepingStorage.getAccount(line.accountId);
+        if (legacy) {
+          v2AccountId = await getAccountIdByCode(legacy.accountNumber);
+        } else {
+          v2AccountId = line.accountId;
+        }
+        resolvedLines.push({
+          accountId: v2AccountId,
+          debit: Number(line.debit || 0),
+          credit: Number(line.credit || 0),
+          memo: line.memo || undefined,
+        });
+      }
+
+      const totalDebits = resolvedLines.reduce((s, l) => s + l.debit, 0);
+      const totalCredits = resolvedLines.reduce((s, l) => s + l.credit, 0);
+      if (Math.abs(totalDebits - totalCredits) > 0.005) {
+        return res.status(400).json({ message: "Journal entry must balance: debits must equal credits" });
+      }
+
+      const result = await postJournal({
+        occurredAt: new Date(entryData.date),
+        memo: entryData.memo,
+        referenceType: entryData.sourceType || "manual_entry",
+        referenceId: entryData.sourceId || `manual_entry_${Date.now()}`,
+        lines: resolvedLines,
+      });
+
       await createAuditLog({
         action: "create",
         recordType: "journal_entry",
         recordId: result.id,
-        amount: lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0).toFixed(2),
+        amount: totalDebits.toFixed(2),
         description: `Created journal entry: ${entryData.memo || ""}`,
         performedBy: username,
       });
@@ -878,13 +908,18 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
       }
       const validTypes = ["project", "subscription", "other"];
       const safeType = validTypes.includes(revenueType) ? revenueType : "project";
-      const accountNumber = safeType === "subscription" ? "4100" : safeType === "other" ? "4200" : "4000";
-      const entry = await bookkeepingStorage.postManualRevenue(
-        String(parsedAmount),
-        description.trim(),
-        parsedDate,
-        accountNumber
-      );
+      const v2RevenueCode = safeType === "subscription" ? "4010" : safeType === "other" ? "4090" : "4000";
+      const { recordRevenue, getAccountIdByCode } = await import("./accounting-v2");
+      const revenueAcctId = await getAccountIdByCode(v2RevenueCode);
+      const entry = await recordRevenue({
+        amount: parsedAmount,
+        revenueAccountId: revenueAcctId,
+        paymentMethod: "cash",
+        occurredAt: parsedDate,
+        memo: description.trim(),
+        referenceType: "manual_revenue",
+        referenceId: `manual_revenue_${Date.now()}`,
+      });
       res.status(201).json(entry);
     } catch (error) {
       console.error("Manual revenue error:", error);
@@ -892,27 +927,10 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
     }
   });
 
-  // === Backfill existing payments to ledger ===
-
-  app.post("/api/ops/backfill-ledger", isAuthenticated, async (req, res) => {
-    try {
-      const count = await backfillExistingPayments();
-      res.json({ success: true, entriesCreated: count });
-    } catch (error) {
-      console.error("Backfill error:", error);
-      res.status(500).json({ message: "Failed to backfill ledger" });
-    }
-  });
-
-  // Seed chart of accounts on startup, then backfill existing payments
-  bookkeepingStorage.seedDefaultAccounts().then(async () => {
-    try {
-      const count = await backfillExistingPayments();
-      if (count > 0) console.log(`Backfilled ${count} payments to ledger`);
-    } catch (err) {
-      console.error("Failed to backfill payments:", err);
-    }
-  }).catch(err =>
+  // Seed chart of accounts on startup. V1 accounts table is kept for legacy
+  // FK references on historical expenses/bills; no new V1 journal entries are
+  // written from anywhere in the app — V2 is the single source of truth.
+  bookkeepingStorage.seedDefaultAccounts().catch(err =>
     console.error("Failed to seed chart of accounts:", err)
   );
 
@@ -960,9 +978,6 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
       const v2Accounts = await db.select().from(accountsV2).orderBy(accountsV2.code);
       const v2Map = new Map(v2Accounts.map(a => [a.id, a]));
 
-      const v1Accounts = await bookkeepingStorage.getAccounts();
-
-      const v1Lines: Array<{ accountId: string; debit: string; credit: string; memo: string }> = [];
       const v2Lines: Array<{ accountId: string; debit?: number; credit?: number; memo?: string }> = [];
 
       for (const b of balances) {
@@ -979,15 +994,6 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
           v2Lines.push({ accountId: b.accountId, debit: absAmount, credit: 0, memo: "Opening balance" });
         } else {
           v2Lines.push({ accountId: b.accountId, debit: 0, credit: absAmount, memo: "Opening balance" });
-        }
-
-        const v1Match = v1Accounts.find(a => a.accountNumber === v2Acct.code);
-        if (v1Match) {
-          if (isDebitNormal) {
-            v1Lines.push({ accountId: v1Match.id, debit: absAmount.toFixed(2), credit: "0", memo: "Opening balance" });
-          } else {
-            v1Lines.push({ accountId: v1Match.id, debit: "0", credit: absAmount.toFixed(2), memo: "Opening balance" });
-          }
         }
       }
 
@@ -1029,20 +1035,7 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
         lines: v2Lines,
       });
 
-      let v1Posted = false;
-      if (v1Lines.length > 0) {
-        try {
-          await bookkeepingStorage.createJournalEntryWithLines(
-            { date, memo: "Opening Balances", reference: `opening_balance_${startDate}`, sourceType: "opening_balance", sourceId: `opening_balance_${startDate}` },
-            v1Lines
-          );
-          v1Posted = true;
-        } catch (e) {
-          console.error("V1 opening balance journal failed (v2 succeeded):", e);
-        }
-      }
-
-      res.status(201).json({ success: true, transactionId: v2Tx.id, lineCount: v2Lines.length, v1Posted });
+      res.status(201).json({ success: true, transactionId: v2Tx.id, lineCount: v2Lines.length });
     } catch (error: any) {
       console.error("Opening balances error:", error);
       if (error.message?.includes("ref_unique_idx")) {
@@ -1523,52 +1516,3 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
   });
 }
 
-async function backfillExistingPayments(): Promise<number> {
-  const { db: database } = await import("./db");
-  const { sql } = await import("drizzle-orm");
-  let count = 0;
-
-  const projectPayments = await database.execute(sql`
-    SELECT pp.id, pp.amount, pp.type, pp.label, pp.received_date, p.name as project_name
-    FROM project_payments pp
-    LEFT JOIN projects p ON p.id = pp.project_id
-    WHERE pp.status = 'received' AND (pp.ledger_excluded = false OR pp.ledger_excluded IS NULL)
-  `);
-
-  for (const pp of projectPayments.rows as any[]) {
-    const sourceId = `project_payment_${pp.id}`;
-    const exists = await bookkeepingStorage.hasExistingJournalForSource("project_payment", sourceId);
-    if (!exists) {
-      const desc = `Project payment: ${pp.project_name || "Unknown"} - ${pp.label || pp.type}`;
-      const date = pp.received_date ? new Date(pp.received_date) : new Date();
-      await bookkeepingStorage.postPaymentToLedgerWithDate(
-        String(pp.amount), desc, "project_payment", sourceId, date, true
-      );
-      count++;
-    }
-  }
-
-  const stripePayments = await database.execute(sql`
-    SELECT sp.id, sp.amount, sp.description, sp.paid_at, sp.created_at, sp.payment_type, sp.subscription_id
-    FROM stripe_payments sp
-    WHERE sp.status = 'succeeded'
-  `);
-
-  for (const sp of stripePayments.rows as any[]) {
-    const sourceId = `stripe_payment_${sp.id}`;
-    const exists = await bookkeepingStorage.hasExistingJournalForSource("stripe_payment", sourceId);
-    if (!exists) {
-      const isSubscription = sp.payment_type === "recurring" || !!sp.subscription_id;
-      const desc = isSubscription
-        ? `Subscription payment: ${sp.description || "Recurring"}`
-        : `Stripe payment: ${sp.description || "Payment"}`;
-      const date = sp.paid_at ? new Date(sp.paid_at) : sp.created_at ? new Date(sp.created_at) : new Date();
-      await bookkeepingStorage.postPaymentToLedgerWithDate(
-        String(sp.amount), desc, "stripe_payment", sourceId, date, !isSubscription
-      );
-      count++;
-    }
-  }
-
-  return count;
-}
