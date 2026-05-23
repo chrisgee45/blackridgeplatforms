@@ -40,6 +40,8 @@ export async function ensureCrmSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE contact_submissions ADD COLUMN IF NOT EXISTS website text`);
   await db.execute(sql`ALTER TABLE crm_events ADD COLUMN IF NOT EXISTS reminder_minutes integer`);
   await db.execute(sql`ALTER TABLE crm_events ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz`);
+  await db.execute(sql`ALTER TABLE project_payments ADD COLUMN IF NOT EXISTS is_deposit boolean NOT NULL DEFAULT false`);
+  await db.execute(sql`ALTER TABLE project_payments ADD COLUMN IF NOT EXISTS revenue_recognized_at timestamptz`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS proposals (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),

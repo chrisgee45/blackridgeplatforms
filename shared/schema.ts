@@ -394,6 +394,8 @@ export const projectPayments = pgTable("project_payments", {
   paymentMethod: text("payment_method"),
   notes: text("notes"),
   ledgerExcluded: boolean("ledger_excluded").default(false),
+  isDeposit: boolean("is_deposit").notNull().default(false),
+  revenueRecognizedAt: timestamp("revenue_recognized_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

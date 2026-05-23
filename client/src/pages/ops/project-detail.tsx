@@ -147,6 +147,7 @@ export default function ProjectDetail() {
   const [newPaymentType, setNewPaymentType] = useState("milestone");
   const [newPaymentDueDate, setNewPaymentDueDate] = useState("");
   const [newPaymentNotes, setNewPaymentNotes] = useState("");
+  const [newPaymentIsDeposit, setNewPaymentIsDeposit] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("other");
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [invoiceDueDate, setInvoiceDueDate] = useState("");
@@ -308,7 +309,7 @@ export default function ProjectDetail() {
   });
 
   const addPaymentMutation = useMutation({
-    mutationFn: async (data: { label: string; amount: number; type: string; dueDate?: string; receivedDate?: string; status: string; notes?: string }) => {
+    mutationFn: async (data: { label: string; amount: number; type: string; dueDate?: string; receivedDate?: string; status: string; notes?: string; isDeposit?: boolean }) => {
       const res = await apiRequest("POST", `/api/ops/projects/${projectId}/payments`, data);
       return res.json();
     },
@@ -340,6 +341,22 @@ export default function ProjectDetail() {
       setCollectPaymentId(null);
       const methodLabels: Record<string, string> = { stripe: "Stripe", cashapp: "Cash App", venmo: "Venmo", cash: "Cash", check: "Check" };
       toast({ title: "Payment collected", description: `Recorded via ${methodLabels[collectMethod] || collectMethod}` });
+    },
+  });
+
+  const recognizeDepositMutation = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const res = await apiRequest("POST", "/api/accounting/recognize-deposit", { paymentId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId, "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting/income-statement"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting/balance-sheet"] });
+      toast({ title: "Revenue recognized", description: "Deposit moved from Unearned Revenue to Income" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to recognize deposit", variant: "destructive" });
     },
   });
 
@@ -1095,6 +1112,21 @@ export default function ProjectDetail() {
                 data-testid="input-payment-notes"
               />
             </div>
+            <label className="flex items-start gap-2 pt-1 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={newPaymentIsDeposit}
+                onChange={(e) => setNewPaymentIsDeposit(e.target.checked)}
+                data-testid="checkbox-payment-is-deposit"
+              />
+              <span className="text-sm">
+                <span className="font-medium">Treat as deposit / unearned revenue</span>
+                <span className="block text-xs text-muted-foreground">
+                  Posts to <strong>2100 Unearned Revenue</strong> until you click <em>Recognize as Revenue</em>. Use this for upfront deposits before work is delivered.
+                </span>
+              </span>
+            </label>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="ghost" onClick={() => setShowAddPaymentDialog(false)} data-testid="button-cancel-payment">
@@ -1110,6 +1142,7 @@ export default function ProjectDetail() {
                   status: "pending",
                   dueDate: newPaymentDueDate ? new Date(newPaymentDueDate).toISOString() : undefined,
                   notes: newPaymentNotes || undefined,
+                  isDeposit: newPaymentIsDeposit,
                 });
                 setShowAddPaymentDialog(false);
                 setNewPaymentLabel("");
@@ -1117,6 +1150,7 @@ export default function ProjectDetail() {
                 setNewPaymentType("milestone");
                 setNewPaymentDueDate("");
                 setNewPaymentNotes("");
+                setNewPaymentIsDeposit(false);
               }}
               data-testid="button-confirm-payment"
             >
@@ -1737,6 +1771,16 @@ export default function ProjectDetail() {
                       <Badge variant="outline" className="text-[10px]" data-testid={`badge-payment-type-${payment.id}`}>
                         {typeLabels[payment.type] || payment.type}
                       </Badge>
+                      {payment.isDeposit && !payment.revenueRecognizedAt && (
+                        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30" data-testid={`badge-deposit-${payment.id}`}>
+                          Unearned
+                        </Badge>
+                      )}
+                      {payment.isDeposit && payment.revenueRecognizedAt && (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30" data-testid={`badge-recognized-${payment.id}`}>
+                          Recognized
+                        </Badge>
+                      )}
                     </div>
                     {payment.notes && (
                       <p className="text-xs text-muted-foreground/70 mt-0.5">{payment.notes}</p>
@@ -1760,6 +1804,22 @@ export default function ProjectDetail() {
                       <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30" data-testid={`badge-payment-status-${payment.id}`}>
                         {payment.paymentMethod ? ({ stripe: "Stripe", cashapp: "Cash App", venmo: "Venmo", cash: "Cash", check: "Check" } as Record<string, string>)[payment.paymentMethod] || "Collected" : "Collected"}
                       </Badge>
+                      {payment.isDeposit && !payment.revenueRecognizedAt && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={recognizeDepositMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Recognize "${payment.label}" ($${payment.amount}) as earned revenue? This posts DR Unearned Revenue / CR Income.`)) {
+                              recognizeDepositMutation.mutate(payment.id);
+                            }
+                          }}
+                          data-testid={`button-recognize-${payment.id}`}
+                        >
+                          Recognize Revenue
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"

@@ -201,6 +201,52 @@ export async function getAccountIdByCode(code: string): Promise<string> {
 
 type PaymentMethod = "cash" | "credit_card" | "stripe" | "ach" | "check";
 
+export async function recordStripePayout(input: {
+  amount: number;
+  occurredAt?: Date;
+  memo?: string;
+  referenceId?: string;
+}) {
+  if (input.amount <= 0) throw new Error("Payout amount must be > 0");
+
+  const cashId = await getAccountIdByCode("1000");
+  const stripeClearingId = await getAccountIdByCode("1020");
+
+  return postJournal({
+    occurredAt: input.occurredAt ?? new Date(),
+    memo: input.memo ?? "Stripe payout to bank",
+    referenceType: "stripe_payout",
+    referenceId: input.referenceId ?? `stripe_payout_${Date.now()}`,
+    lines: [
+      { accountId: cashId, debit: input.amount, memo: "Funds deposited" },
+      { accountId: stripeClearingId, credit: input.amount, memo: "Clearing released" },
+    ],
+  });
+}
+
+export async function recognizeDeferredRevenue(input: {
+  amount: number;
+  revenueAccountId: string;
+  occurredAt?: Date;
+  memo?: string;
+  referenceId?: string;
+}) {
+  if (input.amount <= 0) throw new Error("Recognition amount must be > 0");
+
+  const unearnedRevenueId = await getAccountIdByCode("2100");
+
+  return postJournal({
+    occurredAt: input.occurredAt ?? new Date(),
+    memo: input.memo ?? "Recognize deferred revenue",
+    referenceType: "recognize_deferred",
+    referenceId: input.referenceId ?? `recognize_deferred_${Date.now()}`,
+    lines: [
+      { accountId: unearnedRevenueId, debit: input.amount, memo: "Release from unearned" },
+      { accountId: input.revenueAccountId, credit: input.amount, memo: "Recognize earned" },
+    ],
+  });
+}
+
 export async function recordRevenue(input: {
   amount: number;
   revenueAccountId: string;

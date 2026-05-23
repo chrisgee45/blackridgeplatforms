@@ -544,7 +544,7 @@ export class BookkeepingStorage {
   async postPaymentToLedgerWithDate(amount: string, description: string, sourceType: string, sourceId: string, date: Date, isProjectRevenue: boolean = true): Promise<JournalEntry> {
     const exists = await this.hasExistingJournalForSource(sourceType, sourceId);
     if (exists) {
-      const [existing] = await database.select().from(journalEntries)
+      const [existing] = await db.select().from(journalEntries)
         .where(and(eq(journalEntries.sourceType, sourceType), eq(journalEntries.sourceId, sourceId)))
         .limit(1);
       return existing;

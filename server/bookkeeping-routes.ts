@@ -334,7 +334,7 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
           await recordExpense({
             amount: Number(expense.amount),
             expenseAccountId: v2ExpenseAccountId,
-            paymentMethod: expense.paymentMethod === "credit_card" ? "credit_card" : "cash",
+            paymentMethod: expense.paymentMethod === "card" ? "credit_card" : "cash",
             occurredAt: expense.date,
             memo: expense.description || "Expense",
             referenceType: "expense",
@@ -944,6 +944,79 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
     console.error("Failed to seed v2 accounts:", err)
   );
 
+  // Record a Stripe payout settling to the bank: DR 1000 Cash / CR 1020 Stripe Clearing.
+  app.post("/api/accounting/stripe-payout", isAuthenticated, async (req, res) => {
+    try {
+      const amount = Number(req.body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ message: "Amount must be a positive number" });
+      }
+      const payoutDate = req.body.payoutDate ? new Date(req.body.payoutDate) : new Date();
+      const { recordStripePayout } = await import("./accounting-v2");
+      const tx = await recordStripePayout({
+        amount,
+        occurredAt: payoutDate,
+        memo: req.body.memo || "Stripe payout to bank",
+        referenceId: req.body.referenceId,
+      });
+      res.status(201).json(tx);
+    } catch (error: any) {
+      console.error("Stripe payout error:", error);
+      res.status(500).json({ message: error?.message || "Failed to record Stripe payout" });
+    }
+  });
+
+  // Recognize a project deposit as revenue: DR 2100 Unearned / CR <revenue acct>.
+  // Pass paymentId of the original deposit, or amount + revenueAccountCode for ad-hoc recognition.
+  app.post("/api/accounting/recognize-deposit", isAuthenticated, async (req, res) => {
+    try {
+      const { recognizeDeferredRevenue, getAccountIdByCode } = await import("./accounting-v2");
+      const { db } = await import("./db");
+      const { projectPayments } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      if (req.body.paymentId) {
+        const [pp] = await db.select().from(projectPayments)
+          .where(eq(projectPayments.id, String(req.body.paymentId))).limit(1);
+        if (!pp) return res.status(404).json({ message: "Project payment not found" });
+        if (!pp.isDeposit) return res.status(400).json({ message: "Payment is not flagged as a deposit" });
+        if (pp.revenueRecognizedAt) return res.status(409).json({ message: "Revenue already recognized for this deposit" });
+
+        const revenueAcctId = await getAccountIdByCode("4000");
+        const tx = await recognizeDeferredRevenue({
+          amount: pp.amount,
+          revenueAccountId: revenueAcctId,
+          occurredAt: new Date(),
+          memo: `Recognize deposit: ${pp.label}`,
+          referenceId: `recognize_payment_${pp.id}`,
+        });
+
+        await db.update(projectPayments)
+          .set({ revenueRecognizedAt: new Date() })
+          .where(eq(projectPayments.id, pp.id));
+
+        return res.status(201).json({ transaction: tx, payment: { ...pp, revenueRecognizedAt: new Date() } });
+      }
+
+      const amount = Number(req.body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ message: "Amount or paymentId is required" });
+      }
+      const revCode = req.body.revenueAccountCode || "4000";
+      const revenueAcctId = await getAccountIdByCode(revCode);
+      const tx = await recognizeDeferredRevenue({
+        amount,
+        revenueAccountId: revenueAcctId,
+        occurredAt: req.body.occurredAt ? new Date(req.body.occurredAt) : new Date(),
+        memo: req.body.memo || "Recognize deferred revenue",
+      });
+      res.status(201).json({ transaction: tx });
+    } catch (error: any) {
+      console.error("Recognize deposit error:", error);
+      res.status(500).json({ message: error?.message || "Failed to recognize deposit" });
+    }
+  });
+
   // Admin trigger: re-run V1 → V2 backfill and report the result.
   app.post("/api/accounting/backfill-from-v1", isAuthenticated, async (_req, res) => {
     try {
@@ -1014,15 +1087,6 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
           v2Lines.push({ accountId: equityAcct.id, debit: 0, credit: diff, memo: "Opening balance — equity plug" });
         } else {
           v2Lines.push({ accountId: equityAcct.id, debit: Math.abs(diff), credit: 0, memo: "Opening balance — equity plug" });
-        }
-
-        const v1Equity = v1Accounts.find(a => a.accountNumber === "3000");
-        if (v1Equity) {
-          if (diff > 0) {
-            v1Lines.push({ accountId: v1Equity.id, debit: "0", credit: diff.toFixed(2), memo: "Opening balance — equity plug" });
-          } else {
-            v1Lines.push({ accountId: v1Equity.id, debit: Math.abs(diff).toFixed(2), credit: "0", memo: "Opening balance — equity plug" });
-          }
         }
       }
 
