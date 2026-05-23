@@ -2135,7 +2135,7 @@ export default function AdminPortal() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
           <Card className="border-border/50 bg-card/50">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-2 mb-2.5">
@@ -2160,7 +2160,7 @@ export default function AdminPortal() {
               <p className="text-xs text-muted-foreground mt-1.5">Pipeline adjusted for close probability</p>
             </CardContent>
           </Card>
-          <Card className="border-border/50 bg-card/50">
+          <Card className="border-border/50 bg-card/50 col-span-2 sm:col-span-1">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Monthly Revenue Goal</span>
@@ -2226,9 +2226,9 @@ export default function AdminPortal() {
                   data-testid="input-search-leads"
                 />
               </div>
-              <div className="flex gap-3 flex-wrap">
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[140px]" data-testid="select-status-filter">
+                  <SelectTrigger className="w-full sm:w-[140px]" data-testid="select-status-filter">
                     <Filter className="h-3 w-3 mr-1" />
                     <SelectValue />
                   </SelectTrigger>
@@ -2240,7 +2240,7 @@ export default function AdminPortal() {
                   </SelectContent>
                 </Select>
                 <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                  <SelectTrigger className="w-[140px]" data-testid="select-priority-filter">
+                  <SelectTrigger className="w-full sm:w-[140px]" data-testid="select-priority-filter">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -2252,7 +2252,7 @@ export default function AdminPortal() {
                   </SelectContent>
                 </Select>
                 <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                  <SelectTrigger className="w-[150px]" data-testid="select-source-filter">
+                  <SelectTrigger className="w-full sm:w-[150px]" data-testid="select-source-filter">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
