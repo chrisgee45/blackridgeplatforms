@@ -148,13 +148,13 @@ export default function PipelinePage() {
                   )}
                 </div>
 
-                <div className="flex-1 space-y-2 min-h-[100px]">
+                <div className="flex-1 space-y-2 md:min-h-[100px]">
                   {stageProjects.length === 0 ? (
                     <div
-                      className="flex flex-col items-center justify-center py-8 text-muted-foreground/50"
+                      className="flex md:flex-col items-center justify-center gap-1.5 py-2 md:py-8 text-muted-foreground/50"
                       data-testid={`empty-column-${stage}`}
                     >
-                      <FolderKanban className="w-6 h-6 mb-1" />
+                      <FolderKanban className="w-4 h-4 md:w-6 md:h-6 md:mb-1" />
                       <span className="text-xs">No projects</span>
                     </div>
                   ) : (
