@@ -1232,7 +1232,7 @@ export default function ProjectDetail() {
 
       <Card>
         <CardContent className="pt-6 pb-4">
-          <div className="flex items-center justify-between gap-1 overflow-x-auto">
+          <div className="flex items-center md:justify-between gap-1 overflow-x-auto">
             {STAGES.map((stage, idx) => {
               const isCurrent = idx === currentStageIdx;
               const isComplete = idx < currentStageIdx;
@@ -1242,8 +1242,8 @@ export default function ProjectDetail() {
               const hasIncompleteGates = incompleteGateCount > 0;
 
               return (
-                <div key={stage} className="flex items-center flex-1 min-w-0" data-testid={`stage-step-${stage}`}>
-                  <div className="flex flex-col items-center gap-1.5 flex-1">
+                <div key={stage} className="flex items-center shrink-0 md:flex-1 md:min-w-0" data-testid={`stage-step-${stage}`}>
+                  <div className="flex flex-col items-center gap-1.5 px-2 md:px-0 md:flex-1">
                     {isComplete && !hasIncompleteGates && (
                       <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                     )}
