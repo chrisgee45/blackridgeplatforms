@@ -1444,20 +1444,6 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
         for (const f of pending) {
           await opsStorage.updateScheduledFollowup(f.id, { status: "completed", completedAt: new Date() });
         }
-        const ledgerDesc = methodLabel
-          ? `Project payment (${methodLabel}): ${payment.label}`
-          : `Project payment: ${payment.label}`;
-        try {
-          await bookkeepingStorage.postPaymentToLedger(
-            String(payment.amount),
-            ledgerDesc,
-            "project_payment",
-            payment.id,
-            true
-          );
-        } catch (e) {
-          console.error("Auto-post project payment to ledger failed:", e);
-        }
         try {
           const { recordRevenue, getAccountIdByCode } = await import("./accounting-v2");
           const revenueAcctId = await getAccountIdByCode("4000");
