@@ -192,20 +192,21 @@ export default function CrmCalendar({ leads }: CrmCalendarProps) {
               <List className="h-3.5 w-3.5" /> Agenda
             </button>
           </div>
-          <Button size="sm" variant="outline" onClick={enablePushAlerts} disabled={enablingPush} data-testid="button-enable-push">
-            {enablingPush ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Bell className="h-4 w-4 mr-1" />}
-            Alerts
+          <Button size="sm" variant="outline" onClick={enablePushAlerts} disabled={enablingPush} data-testid="button-enable-push" title="Enable push alerts">
+            {enablingPush ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <Bell className="h-4 w-4 sm:mr-1" />}
+            <span className="hidden sm:inline">Alerts</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={testSms} disabled={testingSms} data-testid="button-test-sms">
-            {testingSms ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-1" />}
-            Test SMS
+          <Button size="sm" variant="outline" onClick={testSms} disabled={testingSms} data-testid="button-test-sms" title="Send a test SMS">
+            {testingSms ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <MessageSquare className="h-4 w-4 sm:mr-1" />}
+            <span className="hidden sm:inline">Test SMS</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={copyBookingLink} data-testid="button-copy-booking-link">
-            {copied ? <Check className="h-4 w-4 mr-1 text-green-500" /> : <Link2 className="h-4 w-4 mr-1" />}
-            {copied ? "Copied!" : "Booking link"}
+          <Button size="sm" variant="outline" onClick={copyBookingLink} data-testid="button-copy-booking-link" title="Copy public booking link">
+            {copied ? <Check className="h-4 w-4 sm:mr-1 text-green-500" /> : <Link2 className="h-4 w-4 sm:mr-1" />}
+            <span className="hidden sm:inline">{copied ? "Copied!" : "Booking link"}</span>
           </Button>
           <Button size="sm" onClick={() => openNew()} data-testid="button-new-event">
-            <Plus className="h-4 w-4 mr-1" /> New Event
+            <Plus className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">New Event</span>
           </Button>
         </div>
       </div>
