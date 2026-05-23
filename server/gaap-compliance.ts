@@ -307,37 +307,36 @@ export async function performYearEndClose(year: number, closedBy: string): Promi
     }
   }
 
-  const existingClose = await db.select().from(journalEntries)
+  const yearRefId = `year_${year}`;
+  const existingClose = await db.select().from(transactionsV2)
     .where(and(
-      eq(journalEntries.sourceType, "year_end_close"),
-      eq(journalEntries.sourceId, `year_${year}`),
-      eq(journalEntries.isVoid, false)
+      eq(transactionsV2.referenceType, "year_end_close"),
+      eq(transactionsV2.referenceId, yearRefId),
     )).limit(1);
   if (existingClose.length > 0) throw new Error(`Year ${year} has already been closed`);
 
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31, 23, 59, 59);
 
-  const revenueAccounts = await db.select().from(accounts)
-    .where(and(eq(accounts.type, "revenue"), eq(accounts.isActive, true)));
-  const expenseAccounts = await db.select().from(accounts)
-    .where(and(eq(accounts.type, "expense"), eq(accounts.isActive, true)));
+  const revenueAccounts = await db.select().from(accountsV2)
+    .where(eq(accountsV2.type, "revenue"));
+  const expenseAccounts = await db.select().from(accountsV2)
+    .where(eq(accountsV2.type, "expense"));
 
   const allAccounts = [...revenueAccounts, ...expenseAccounts];
-  const closingLines: { accountId: string; debit: string; credit: string; memo: string }[] = [];
+  const closingLines: { accountId: string; debit: number; credit: number; memo: string }[] = [];
   let netIncome = 0;
 
   for (const acct of allAccounts) {
     const result = await db.select({
-      totalDebit: sql<string>`COALESCE(SUM(${journalLines.debit}), 0)`,
-      totalCredit: sql<string>`COALESCE(SUM(${journalLines.credit}), 0)`,
-    }).from(journalLines)
-      .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+      totalDebit: sql<string>`COALESCE(SUM(${transactionLinesV2.debit}), 0)`,
+      totalCredit: sql<string>`COALESCE(SUM(${transactionLinesV2.credit}), 0)`,
+    }).from(transactionLinesV2)
+      .innerJoin(transactionsV2, eq(transactionLinesV2.transactionId, transactionsV2.id))
       .where(and(
-        eq(journalLines.accountId, acct.id),
-        gte(journalEntries.date, yearStart),
-        lte(journalEntries.date, yearEnd),
-        eq(journalEntries.isVoid, false),
+        eq(transactionLinesV2.accountId, acct.id),
+        gte(transactionsV2.occurredAt, yearStart),
+        lte(transactionsV2.occurredAt, yearEnd),
       ));
 
     const totalDebit = Number(result[0]?.totalDebit ?? 0);
@@ -346,37 +345,29 @@ export async function performYearEndClose(year: number, closedBy: string): Promi
 
     if (Math.abs(balance) < 0.005) continue;
 
+    closingLines.push({
+      accountId: acct.id,
+      debit: Math.max(balance * -1, 0),
+      credit: Math.max(balance, 0),
+      memo: `Close ${acct.name} to Retained Earnings`,
+    });
+
     if (acct.type === "revenue") {
-      closingLines.push({
-        accountId: acct.id,
-        debit: Math.max(balance * -1, 0).toFixed(2),
-        credit: Math.max(balance, 0).toFixed(2),
-        memo: `Close ${acct.name} to Retained Earnings`,
-      });
       netIncome += (totalCredit - totalDebit);
     } else {
-      closingLines.push({
-        accountId: acct.id,
-        debit: Math.max(balance * -1, 0).toFixed(2),
-        credit: Math.max(balance, 0).toFixed(2),
-        memo: `Close ${acct.name} to Retained Earnings`,
-      });
       netIncome -= (totalDebit - totalCredit);
     }
   }
 
-  let retainedEarningsAcct = await db.select().from(accounts)
-    .where(eq(accounts.accountNumber, "3900")).limit(1);
+  let retainedEarningsAcct = await db.select().from(accountsV2)
+    .where(eq(accountsV2.code, "3900")).limit(1);
 
   if (retainedEarningsAcct.length === 0) {
-    const [created] = await db.insert(accounts).values({
-      accountNumber: "3900",
+    const [created] = await db.insert(accountsV2).values({
+      code: "3900",
       name: "Retained Earnings",
       type: "equity",
-      subtype: "retained_earnings",
-      normalBalance: "credit",
-      isActive: true,
-      description: "Accumulated net income from prior years",
+      isSystem: true,
     }).returning();
     retainedEarningsAcct = [created];
   }
@@ -384,15 +375,15 @@ export async function performYearEndClose(year: number, closedBy: string): Promi
   if (netIncome > 0) {
     closingLines.push({
       accountId: retainedEarningsAcct[0].id,
-      debit: "0",
-      credit: netIncome.toFixed(2),
+      debit: 0,
+      credit: netIncome,
       memo: `Net income for ${year} to Retained Earnings`,
     });
   } else if (netIncome < 0) {
     closingLines.push({
       accountId: retainedEarningsAcct[0].id,
-      debit: Math.abs(netIncome).toFixed(2),
-      credit: "0",
+      debit: Math.abs(netIncome),
+      credit: 0,
       memo: `Net loss for ${year} to Retained Earnings`,
     });
   }
@@ -402,23 +393,14 @@ export async function performYearEndClose(year: number, closedBy: string): Promi
   }
 
   const closingDate = new Date(year, 11, 31);
-  const [closingEntry] = await db.insert(journalEntries).values({
-    date: closingDate,
+  const { postJournal } = await import("./accounting-v2");
+  const closingEntry = await postJournal({
+    occurredAt: closingDate,
     memo: `Year-end closing entry for ${year}`,
-    sourceType: "year_end_close",
-    sourceId: `year_${year}`,
-    createdBy: closedBy,
-  }).returning();
-
-  for (const line of closingLines) {
-    await db.insert(journalLines).values({
-      journalEntryId: closingEntry.id,
-      accountId: line.accountId,
-      debit: line.debit,
-      credit: line.credit,
-      memo: line.memo,
-    });
-  }
+    referenceType: "year_end_close",
+    referenceId: yearRefId,
+    lines: closingLines,
+  });
 
   await createAuditLog({
     action: "create",

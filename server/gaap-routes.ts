@@ -159,9 +159,6 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
       const { assertPeriodOpen } = await import("./gaap-compliance");
       await assertPeriodOpen(new Date(date));
 
-      const { db } = await import("./db");
-      const { journalEntries, journalLines } = await import("@shared/schema");
-
       const totalDebits = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
       const totalCredits = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
       if (Math.abs(totalDebits - totalCredits) > 0.005) {
@@ -169,23 +166,20 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
       }
 
       const username = (req.session as any)?.adminUsername || "admin";
-      const [entry] = await db.insert(journalEntries).values({
-        date: new Date(date),
-        memo: memo || `Adjusting entry for ${periodMonth}/${periodYear}`,
-        sourceType: "adjusting",
-        sourceId: `adj_${periodYear}_${periodMonth}`,
-        createdBy: username,
-      }).returning();
+      const { postJournal } = await import("./accounting-v2");
 
-      for (const line of lines) {
-        await db.insert(journalLines).values({
-          journalEntryId: entry.id,
-          accountId: line.accountId,
-          debit: String(line.debit || 0),
-          credit: String(line.credit || 0),
-          memo: line.memo || "",
-        });
-      }
+      const entry = await postJournal({
+        occurredAt: new Date(date),
+        memo: memo || `Adjusting entry for ${periodMonth}/${periodYear}`,
+        referenceType: "adjusting",
+        referenceId: `adj_${periodYear}_${periodMonth}_${Date.now()}`,
+        lines: lines.map((l: any) => ({
+          accountId: l.accountId,
+          debit: Number(l.debit || 0),
+          credit: Number(l.credit || 0),
+          memo: l.memo || undefined,
+        })),
+      });
 
       await createAuditLog({
         action: "create",
@@ -205,33 +199,33 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
   app.get("/api/ops/journal-entries/adjusting", isAuthenticated, async (req, res) => {
     try {
       const { db } = await import("./db");
-      const { journalEntries, journalLines, accounts } = await import("@shared/schema");
-      const { eq, and, gte, lte } = await import("drizzle-orm");
+      const { transactionsV2, transactionLinesV2, accountsV2 } = await import("@shared/schema");
+      const { eq, and, like } = await import("drizzle-orm");
 
-      const conditions: any[] = [eq(journalEntries.sourceType, "adjusting"), eq(journalEntries.isVoid, false)];
+      const conditions: any[] = [eq(transactionsV2.referenceType, "adjusting")];
       if (req.query.year && req.query.month) {
         const year = Number(req.query.year);
         const month = Number(req.query.month);
-        conditions.push(eq(journalEntries.sourceId, `adj_${year}_${month}`));
+        conditions.push(like(transactionsV2.referenceId, `adj_${year}_${month}_%`));
       }
 
-      const entries = await db.select().from(journalEntries)
+      const entries = await db.select().from(transactionsV2)
         .where(and(...conditions))
-        .orderBy(journalEntries.date);
+        .orderBy(transactionsV2.occurredAt);
 
       const result = [];
       for (const entry of entries) {
         const lines = await db.select({
-          id: journalLines.id,
-          accountId: journalLines.accountId,
-          accountName: accounts.name,
-          debit: journalLines.debit,
-          credit: journalLines.credit,
-          memo: journalLines.memo,
-        }).from(journalLines)
-          .innerJoin(accounts, eq(journalLines.accountId, accounts.id))
-          .where(eq(journalLines.journalEntryId, entry.id));
-        result.push({ ...entry, lines });
+          id: transactionLinesV2.id,
+          accountId: transactionLinesV2.accountId,
+          accountName: accountsV2.name,
+          debit: transactionLinesV2.debit,
+          credit: transactionLinesV2.credit,
+          memo: transactionLinesV2.lineMemo,
+        }).from(transactionLinesV2)
+          .innerJoin(accountsV2, eq(transactionLinesV2.accountId, accountsV2.id))
+          .where(eq(transactionLinesV2.transactionId, entry.id));
+        result.push({ ...entry, date: entry.occurredAt, lines });
       }
 
       res.json(result);
