@@ -91,6 +91,7 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [viewMode, setViewMode] = useState<"month" | "agenda">("month");
 
   const calendarDays = useMemo(() => getCalendarDays(currentYear, currentMonth), [currentYear, currentMonth]);
 
@@ -121,6 +122,18 @@ export default function CalendarPage() {
     if (!selectedDay) return [];
     return eventsByDate.get(formatDate(selectedDay)) ?? [];
   }, [selectedDay, eventsByDate]);
+
+  const agendaGroups = useMemo(() => {
+    const groups: { date: Date; events: CalendarEvent[] }[] = [];
+    for (const day of calendarDays) {
+      if (day.getMonth() !== currentMonth) continue;
+      const items = eventsByDate.get(formatDate(day));
+      if (items && items.length > 0) {
+        groups.push({ date: new Date(day), events: items });
+      }
+    }
+    return groups;
+  }, [calendarDays, eventsByDate, currentMonth]);
 
   function goToPrevMonth() {
     if (currentMonth === 0) {
@@ -155,30 +168,52 @@ export default function CalendarPage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-4">
           <div className="flex items-center gap-2 flex-wrap">
             <CalendarIcon className="w-5 h-5 text-muted-foreground" />
             <CardTitle className="text-lg" data-testid="text-month-year">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </CardTitle>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={goToPrevMonth}
-              data-testid="button-prev-month"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={goToNextMonth}
-              data-testid="button-next-month"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-md border border-border/60 p-0.5">
+              <Button
+                size="sm"
+                variant={viewMode === "month" ? "secondary" : "ghost"}
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setViewMode("month")}
+                data-testid="button-view-month"
+              >
+                Month
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "agenda" ? "secondary" : "ghost"}
+                className="h-7 px-2.5 text-xs"
+                onClick={() => setViewMode("agenda")}
+                data-testid="button-view-agenda"
+              >
+                Agenda
+              </Button>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={goToPrevMonth}
+                data-testid="button-prev-month"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={goToNextMonth}
+                data-testid="button-next-month"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -188,6 +223,65 @@ export default function CalendarPage() {
                 <Skeleton key={i} className="h-20 w-full" />
               ))}
             </div>
+          ) : viewMode === "agenda" ? (
+            agendaGroups.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center" data-testid="text-agenda-empty">
+                No events this month.
+              </p>
+            ) : (
+              <div className="space-y-5" data-testid="agenda-list">
+                {agendaGroups.map(({ date, events: dayEvents }) => {
+                  const dateKey = formatDate(date);
+                  const isToday = isSameDay(date, today);
+                  return (
+                    <div key={dateKey} data-testid={`agenda-day-${dateKey}`}>
+                      <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isToday ? "text-primary" : "text-muted-foreground"}`}>
+                        {date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                        {isToday && <span className="ml-2 text-[10px] font-medium normal-case tracking-normal">Today</span>}
+                      </div>
+                      <div className="space-y-1.5">
+                        {dayEvents.map((evt) => {
+                          const config = EVENT_TYPE_CONFIG[evt.event_type];
+                          const Icon = config?.icon ?? CalendarIcon;
+                          return (
+                            <div
+                              key={`${evt.event_type}-${evt.id}`}
+                              className="flex items-start gap-3 p-2.5 rounded-md border border-border/40 hover-elevate cursor-pointer"
+                              onClick={() => handleEventClick(evt)}
+                              data-testid={`agenda-event-${evt.event_type}-${evt.id}`}
+                            >
+                              <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${EVENT_TEXT_COLORS[evt.event_type]}`} />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium">{evt.title}</span>
+                                  <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-[10px]">
+                                    {config?.label ?? evt.event_type}
+                                  </Badge>
+                                </div>
+                                {evt.project_name && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{evt.project_name}</p>
+                                )}
+                                {evt.vendor_name && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{evt.vendor_name}</p>
+                                )}
+                                {evt.detail && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">{evt.detail}</p>
+                                )}
+                                {evt.amount != null && (
+                                  <p className="text-xs font-medium mt-0.5">
+                                    ${Number(evt.amount).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
           ) : (
             <div>
               <div className="grid grid-cols-7 gap-px mb-1">
@@ -227,25 +321,25 @@ export default function CalendarPage() {
                       >
                         {day.getDate()}
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="flex flex-wrap gap-1 sm:flex-col sm:flex-nowrap sm:gap-0.5">
                         {visibleEvents.map((evt) => (
                           <div
                             key={`${evt.event_type}-${evt.id}`}
                             className="flex items-center gap-1"
                             data-testid={`event-pill-${evt.event_type}-${evt.id}`}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${EVENT_COLORS[evt.event_type]}`} />
-                            <span className="text-[10px] truncate leading-tight">
+                            <span className={`w-2 h-2 sm:w-1.5 sm:h-1.5 rounded-full shrink-0 ${EVENT_COLORS[evt.event_type]}`} />
+                            <span className="text-[10px] truncate leading-tight hidden sm:inline">
                               {evt.title}
                             </span>
                           </div>
                         ))}
                         {moreCount > 0 && (
                           <span
-                            className="text-[10px] text-muted-foreground pl-2.5"
+                            className="text-[10px] text-muted-foreground sm:pl-2.5"
                             data-testid={`text-more-events-${dateKey}`}
                           >
-                            +{moreCount} more
+                            +{moreCount}<span className="hidden sm:inline"> more</span>
                           </span>
                         )}
                       </div>
