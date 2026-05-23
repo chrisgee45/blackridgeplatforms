@@ -1072,9 +1072,7 @@ function LeadDetailContent({
           </Button>
         </div>
 
-        <div className="rounded-lg border border-border/50 bg-card/30 p-4">
-          <LeadEmailComposer lead={lead} />
-        </div>
+        <LeadEmailComposer lead={lead} />
 
         <div className="rounded-lg border border-border/50 bg-card/30 p-4">
           <LeadEventsSection lead={lead} />
@@ -1214,83 +1212,88 @@ function LeadEmailComposer({ lead }: { lead: ContactSubmission }) {
     },
   });
 
+  if (!expanded) {
+    return (
+      <Button
+        variant="outline"
+        onClick={() => setExpanded(true)}
+        className="w-full justify-start"
+        data-testid="button-compose-email"
+      >
+        <Mail className="h-4 w-4 mr-2" /> Compose Email
+      </Button>
+    );
+  }
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Mail className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Email</span>
-        </div>
-        {!expanded && (
-          <Button size="sm" variant="outline" onClick={() => setExpanded(true)} data-testid="button-compose-email">
-            <Mail className="h-4 w-4 mr-1" /> Compose Email
-          </Button>
-        )}
-      </div>
-      {expanded && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">To: {lead.email}</p>
-          <Select onValueChange={applyTemplate}>
-            <SelectTrigger className="w-full" data-testid="select-email-template">
-              <SelectValue placeholder="Start from a template (optional)" />
-            </SelectTrigger>
-            <SelectContent>
-              {EMAIL_TEMPLATES.map((t) => (
-                <SelectItem key={t.label} value={t.label}>{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            placeholder="Subject"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            data-testid="input-email-subject"
-          />
-          <Textarea
-            placeholder="Write your message..."
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={8}
-            data-testid="input-email-body"
-          />
-          <div className="rounded-lg border border-border/50 bg-muted/30 p-3" data-testid="email-signature-preview">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-              Signature (added automatically)
-            </p>
-            <div className="flex items-center gap-3">
-              <div className="bg-neutral-950 rounded-md px-3 py-2 flex items-center shrink-0">
-                <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
-              </div>
-              <div className="border-l-2 border-primary/70 pl-3">
-                <div className="text-sm font-bold leading-tight">Chris Gee</div>
-                <div className="text-xs font-semibold text-primary leading-tight">Founder &amp; CEO | BlackRidge Platforms</div>
-                <div className="text-xs text-muted-foreground mt-1 leading-tight">(405) 201-5869</div>
-                <div className="text-xs text-muted-foreground leading-tight">blackridgeplatforms.com</div>
-                <div className="text-xs text-muted-foreground leading-tight">chris@blackridgeplatforms.com</div>
-              </div>
+    <div className="rounded-lg border border-border/50 bg-card/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Email</span>
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => { setExpanded(false); setSubject(""); setBody(""); }}
-              data-testid="button-cancel-email"
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => sendMutation.mutate()}
-              disabled={!subject.trim() || !body.trim() || sendMutation.isPending}
-              data-testid="button-send-email"
-            >
-              {sendMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
-              Send Email
-            </Button>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">To: {lead.email}</p>
+            <Select onValueChange={applyTemplate}>
+              <SelectTrigger className="w-full" data-testid="select-email-template">
+                <SelectValue placeholder="Start from a template (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {EMAIL_TEMPLATES.map((t) => (
+                  <SelectItem key={t.label} value={t.label}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              data-testid="input-email-subject"
+            />
+            <Textarea
+              placeholder="Write your message..."
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={8}
+              data-testid="input-email-body"
+            />
+            <div className="rounded-lg border border-border/50 bg-muted/30 p-3" data-testid="email-signature-preview">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+                Signature (added automatically)
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="bg-neutral-950 rounded-md px-3 py-2 flex items-center shrink-0">
+                  <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
+                </div>
+                <div className="border-l-2 border-primary/70 pl-3">
+                  <div className="text-sm font-bold leading-tight">Chris Gee</div>
+                  <div className="text-xs font-semibold text-primary leading-tight">Founder &amp; CEO | BlackRidge Platforms</div>
+                  <div className="text-xs text-muted-foreground mt-1 leading-tight">(405) 201-5869</div>
+                  <div className="text-xs text-muted-foreground leading-tight">blackridgeplatforms.com</div>
+                  <div className="text-xs text-muted-foreground leading-tight">chris@blackridgeplatforms.com</div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => { setExpanded(false); setSubject(""); setBody(""); }}
+                data-testid="button-cancel-email"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => sendMutation.mutate()}
+                disabled={!subject.trim() || !body.trim() || sendMutation.isPending}
+                data-testid="button-send-email"
+              >
+                {sendMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                Send Email
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
     </div>
   );
 }
