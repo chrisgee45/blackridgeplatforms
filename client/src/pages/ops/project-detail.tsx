@@ -1343,12 +1343,12 @@ export default function ProjectDetail() {
       )}
 
       <div>
-        <div className="flex items-center gap-1 border-b border-border/40 mb-4">
+        <div className="flex items-center gap-1 border-b border-border/40 mb-4 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover-elevate"}`}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${activeTab === tab.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover-elevate"}`}
               data-testid={`tab-${tab.key}`}
             >
               <tab.icon className="w-4 h-4" />
@@ -1368,7 +1368,7 @@ export default function ProjectDetail() {
             {tasks.map((task) => (
               <div
                 key={task.id}
-                className="flex items-center gap-3 py-2 px-3 rounded-md border border-border/30 hover-elevate"
+                className="flex items-start gap-3 py-2 px-3 rounded-md border border-border/30 hover-elevate"
                 data-testid={`task-${task.id}`}
               >
                 <Checkbox
@@ -1382,22 +1382,27 @@ export default function ProjectDetail() {
                     setLogTimeBillable(true);
                     setShowTimeLogDialog(true);
                   }}
+                  className="mt-0.5"
                   data-testid={`checkbox-task-${task.id}`}
                 />
-                <span className={`flex-1 text-sm ${task.status === "done" ? "line-through text-muted-foreground" : ""}`} data-testid={`text-task-title-${task.id}`}>
-                  {task.title}
-                </span>
-                <Badge className={PRIORITY_COLORS[task.priority] || ""} data-testid={`badge-priority-${task.id}`}>
-                  {task.priority}
-                </Badge>
-                {task.dueDate && (
-                  <span className={`text-xs ${isOverdue(task.dueDate) && task.status !== "done" ? "text-red-400" : "text-muted-foreground"}`} data-testid={`text-task-due-${task.id}`}>
-                    {formatDate(task.dueDate)}
+                <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                  <span className={`flex-1 text-sm ${task.status === "done" ? "line-through text-muted-foreground" : ""}`} data-testid={`text-task-title-${task.id}`}>
+                    {task.title}
                   </span>
-                )}
-                <Badge variant="outline" className="text-[10px]" data-testid={`badge-status-${task.id}`}>
-                  {task.status}
-                </Badge>
+                  <div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">
+                    <Badge className={PRIORITY_COLORS[task.priority] || ""} data-testid={`badge-priority-${task.id}`}>
+                      {task.priority}
+                    </Badge>
+                    {task.dueDate && (
+                      <span className={`text-xs ${isOverdue(task.dueDate) && task.status !== "done" ? "text-red-400" : "text-muted-foreground"}`} data-testid={`text-task-due-${task.id}`}>
+                        {formatDate(task.dueDate)}
+                      </span>
+                    )}
+                    <Badge variant="outline" className="text-[10px]" data-testid={`badge-status-${task.id}`}>
+                      {task.status}
+                    </Badge>
+                  </div>
+                </div>
               </div>
             ))}
 
