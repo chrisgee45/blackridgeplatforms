@@ -155,7 +155,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
           title="Active Projects"
           value={dashboard?.activeProjects}
@@ -191,6 +191,7 @@ export default function Dashboard() {
           icon={<Clock className="w-4 h-4 text-amber-500" />}
           loading={dashLoading}
           testId="stat-avg-rate"
+          className="col-span-2 lg:col-span-1"
         />
       </div>
 
@@ -498,6 +499,7 @@ function KPICard({
   loading,
   testId,
   valueClass = "",
+  className = "",
 }: {
   title: string;
   value?: string | number;
@@ -505,9 +507,10 @@ function KPICard({
   loading: boolean;
   testId: string;
   valueClass?: string;
+  className?: string;
 }) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         {icon}
