@@ -218,7 +218,7 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
         else if (data.recurringFrequency === "weekly") next.setDate(next.getDate() + 7);
         data.nextDueDate = next;
       }
-      const expense = await bookkeepingStorage.createExpenseWithJournal(data);
+      const expense = await bookkeepingStorage.createExpense(data);
 
       try {
         const { recordExpense, getAccountIdByCode } = await import("./accounting-v2");
@@ -280,31 +280,38 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
       const memoChanged = updates.description && updates.description !== oldExpense.description;
       const fundingChanged = updates.fundingSource && updates.fundingSource !== oldExpense.fundingSource;
 
-      if ((amountChanged || accountChanged || memoChanged || fundingChanged) && expense.journalEntryId) {
+      if (amountChanged || accountChanged || memoChanged || fundingChanged) {
         try {
-          const { journalLines } = await import("@shared/schema");
           const { eq } = await import("drizzle-orm");
           const { db } = await import("./db");
+          const { transactionsV2, transactionLinesV2 } = await import("@shared/schema");
+          const { recordExpense, getAccountIdByCode } = await import("./accounting-v2");
 
-          const lines = await db.select().from(journalLines).where(eq(journalLines.journalEntryId, expense.journalEntryId));
-          const newAmount = String(expense.amount);
-          const newMemo = expense.description;
-          const creditAccount = await bookkeepingStorage.getCreditAccountForFundingSource(expense.fundingSource);
-
-          for (const line of lines) {
-            const isDebitLine = Number(line.debit) > 0;
-            await db.update(journalLines).set({
-              debit: isDebitLine ? newAmount : "0",
-              credit: isDebitLine ? "0" : newAmount,
-              accountId: isDebitLine ? expense.accountId : creditAccount.id,
-              memo: newMemo,
-            }).where(eq(journalLines.id, line.id));
+          const refId = `expense_${expense.id}`;
+          const [existingTx] = await db.select().from(transactionsV2).where(eq(transactionsV2.referenceId, refId)).limit(1);
+          if (existingTx) {
+            await db.delete(transactionLinesV2).where(eq(transactionLinesV2.transactionId, existingTx.id));
+            await db.delete(transactionsV2).where(eq(transactionsV2.id, existingTx.id));
           }
 
-          const { journalEntries } = await import("@shared/schema");
-          await db.update(journalEntries).set({ memo: newMemo }).where(eq(journalEntries.id, expense.journalEntryId));
+          const legacyAccount = await bookkeepingStorage.getAccount(expense.accountId);
+          let v2ExpenseAccountId: string;
+          try {
+            v2ExpenseAccountId = await getAccountIdByCode(legacyAccount?.accountNumber || "5090");
+          } catch {
+            v2ExpenseAccountId = await getAccountIdByCode("5090");
+          }
+          await recordExpense({
+            amount: Number(expense.amount),
+            expenseAccountId: v2ExpenseAccountId,
+            paymentMethod: expense.paymentMethod === "credit_card" ? "credit_card" : "cash",
+            occurredAt: expense.date,
+            memo: expense.description || "Expense",
+            referenceType: "expense",
+            referenceId: refId,
+          });
         } catch (e) {
-          console.error("Failed to update journal entry for expense edit:", e);
+          console.error("Failed to refresh V2 transaction for expense edit:", e);
         }
       }
 
@@ -909,14 +916,28 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
     console.error("Failed to seed chart of accounts:", err)
   );
 
-  // Seed v2 system accounts, then backfill payments
-  import("./accounting-v2").then(async ({ seedSystemAccounts, backfillV2FromPayments }) => {
+  // Seed v2 system accounts, then backfill payments and any remaining V1 entries
+  import("./accounting-v2").then(async ({ seedSystemAccounts, backfillV2FromPayments, backfillAllV1JournalEntries }) => {
     const { created, skipped } = await seedSystemAccounts();
     console.log(`Accounting v2: ${created} created, ${skipped} already existed`);
     await backfillV2FromPayments();
+    await backfillAllV1JournalEntries();
   }).catch(err =>
     console.error("Failed to seed v2 accounts:", err)
   );
+
+  // Admin trigger: re-run V1 → V2 backfill and report the result.
+  app.post("/api/accounting/backfill-from-v1", isAuthenticated, async (_req, res) => {
+    try {
+      const { backfillAllV1JournalEntries, backfillV2FromPayments } = await import("./accounting-v2");
+      const payments = await backfillV2FromPayments();
+      const entries = await backfillAllV1JournalEntries();
+      res.json({ success: true, paymentsBackfilled: payments, entriesBackfill: entries });
+    } catch (error: any) {
+      console.error("V1→V2 backfill error:", error);
+      res.status(500).json({ message: error?.message || "Failed to backfill" });
+    }
+  });
 
   app.post("/api/accounting/opening-balances", isAuthenticated, async (req, res) => {
     try {

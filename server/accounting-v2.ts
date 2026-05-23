@@ -573,6 +573,144 @@ export async function backfillV2FromPayments() {
   return created;
 }
 
+// === Comprehensive V1 → V2 Journal Migration ===
+//
+// Walks every non-void V1 journal entry and creates a matching V2 transaction
+// if one does not already exist (idempotent via referenceId unique index).
+// Source-driven V1 entries (project_payment, stripe_payment, expense, owner_draw)
+// already have V2 counterparts from backfillV2FromPayments, so this primarily
+// catches manual entries: GAAP adjustments, year-end closing, bill payments,
+// and ad-hoc journal entries created from the bookkeeping UI.
+
+// V1 → V2 account code remap for codes that diverged between the two systems.
+const V1_TO_V2_CODE_REMAP: Record<string, string> = {
+  "4100": "4010",   // V1 Revenue-Subscription → V2 Subscription Income
+  "4200": "4090",   // V1 Revenue-Other       → V2 Other Income
+  "2500": "2050",   // V1 Sales Tax Payable   → V2 Sales Tax Payable
+  "2100": "2000",   // V1 Credit Card Payable → V2 Credit Card Payable
+};
+
+async function resolveV2AccountIdForV1AccountId(
+  v1AccountId: string,
+  v1AccountCache: Map<string, { code: string; name: string; type: string } | null>,
+): Promise<string | null> {
+  const { accounts } = await import("@shared/schema");
+
+  let v1Acct = v1AccountCache.get(v1AccountId);
+  if (v1Acct === undefined) {
+    const [row] = await db.select().from(accounts).where(eq(accounts.id, v1AccountId)).limit(1);
+    v1Acct = row ? { code: row.accountNumber, name: row.name, type: row.type as string } : null;
+    v1AccountCache.set(v1AccountId, v1Acct);
+  }
+  if (!v1Acct) return null;
+
+  const targetCode = V1_TO_V2_CODE_REMAP[v1Acct.code] ?? v1Acct.code;
+
+  const [existing] = await db.select({ id: accountsV2.id })
+    .from(accountsV2)
+    .where(eq(accountsV2.code, targetCode))
+    .limit(1);
+  if (existing) return existing.id;
+
+  const v2Type = (["asset", "liability", "equity", "revenue", "expense"].includes(v1Acct.type)
+    ? v1Acct.type
+    : "asset") as "asset" | "liability" | "equity" | "revenue" | "expense";
+  const [created] = await db.insert(accountsV2).values({
+    code: targetCode,
+    name: v1Acct.name,
+    type: v2Type,
+    isSystem: false,
+  }).returning({ id: accountsV2.id });
+  return created.id;
+}
+
+export async function backfillAllV1JournalEntries(): Promise<{
+  scanned: number;
+  created: number;
+  skipped: number;
+  unbalanced: number;
+  errors: number;
+}> {
+  const { journalEntries, journalLines } = await import("@shared/schema");
+
+  const entries = await db.select().from(journalEntries).where(eq(journalEntries.isVoid, false));
+
+  const existingRefs = await db
+    .select({ referenceId: transactionsV2.referenceId })
+    .from(transactionsV2)
+    .where(sql`${transactionsV2.referenceId} IS NOT NULL`);
+  const refSet = new Set(existingRefs.map(r => r.referenceId));
+
+  const accountCache = new Map<string, { code: string; name: string; type: string } | null>();
+
+  let created = 0;
+  let skipped = 0;
+  let unbalanced = 0;
+  let errors = 0;
+
+  for (const entry of entries) {
+    const refId = entry.sourceType && entry.sourceId
+      ? `${entry.sourceType}_${entry.sourceId}`
+      : `v1_entry_${entry.id}`;
+
+    if (refSet.has(refId)) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      const lines = await db.select().from(journalLines).where(eq(journalLines.journalEntryId, entry.id));
+      if (lines.length === 0) {
+        skipped++;
+        continue;
+      }
+
+      const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+      const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        unbalanced++;
+        console.warn(`V1 entry ${entry.id} unbalanced: DR ${totalDebit} vs CR ${totalCredit} — skipping`);
+        continue;
+      }
+
+      const v2Lines: JournalLine[] = [];
+      let mapFailed = false;
+      for (const l of lines) {
+        const v2AcctId = await resolveV2AccountIdForV1AccountId(l.accountId, accountCache);
+        if (!v2AcctId) {
+          mapFailed = true;
+          break;
+        }
+        v2Lines.push({
+          accountId: v2AcctId,
+          debit: Number(l.debit || 0),
+          credit: Number(l.credit || 0),
+          memo: l.memo ?? undefined,
+        });
+      }
+      if (mapFailed) {
+        errors++;
+        continue;
+      }
+
+      await postJournal({
+        occurredAt: entry.date,
+        memo: entry.memo ?? undefined,
+        referenceType: entry.sourceType ?? "legacy_v1_entry",
+        referenceId: refId,
+        lines: v2Lines,
+      });
+      created++;
+    } catch (e) {
+      errors++;
+      console.error(`Failed to backfill V1 entry ${entry.id}:`, e);
+    }
+  }
+
+  console.log(`V1→V2 entries backfill: ${entries.length} scanned, ${created} created, ${skipped} skipped, ${unbalanced} unbalanced, ${errors} errors`);
+  return { scanned: entries.length, created, skipped, unbalanced, errors };
+}
+
 // === Cash Flow (from Cash account activity) ===
 
 export async function getCashFlow(start: Date, end: Date) {

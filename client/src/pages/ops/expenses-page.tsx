@@ -764,7 +764,7 @@ export default function ExpensesPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
@@ -810,7 +810,7 @@ export default function ExpensesPage() {
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="col-span-2 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Top Categories</CardTitle>
             <Receipt className="w-4 h-4 text-muted-foreground" />

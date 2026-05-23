@@ -493,18 +493,6 @@ export function registerStripeRoutes(app: Express, isAuthenticated: RequestHandl
       }
 
       try {
-        await bookkeepingStorage.postPaymentToLedger(
-          String(link.amount),
-          `Payment link: ${link.description || "Client payment"}`,
-          "stripe_payment",
-          payment.id,
-          true
-        );
-      } catch (e) {
-        console.error("Auto-post payment link to ledger failed:", e);
-      }
-
-      try {
         const revenueAcctId = await getAccountIdByCode("4000");
         await recordRevenue({
           amount: Number(link.amount),
@@ -947,18 +935,6 @@ async function handleInvoicePaid(stripe: Stripe, invoice: any) {
     description: `Invoice ${invoice.number || invoice.id}`,
     paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : new Date(),
   });
-
-  try {
-    await bookkeepingStorage.postPaymentToLedger(
-      amountPaid,
-      `Subscription payment: ${sub.name || "Recurring"} — Invoice ${invoice.number || invoice.id}`,
-      "stripe_payment",
-      `stripe_payment_${payment.id}`,
-      false
-    );
-  } catch (e) {
-    console.error("Auto-post subscription payment to ledger failed:", e);
-  }
 
   try {
     const subRevenueAcctId = await getAccountIdByCode("4010");
