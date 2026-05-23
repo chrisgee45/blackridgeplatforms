@@ -24,6 +24,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # tsc --noEmit catches runtime crashes that esbuild's strip-types
+      # build silently lets through (e.g. missing imports, prop typos).
+      - name: Type check
+        run: npx tsc --noEmit
+
       # A clean build blocks broken, corrupted, or injected code from
       # reaching main.
       - name: Build

@@ -74,7 +74,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.get("/api/policies/:id", isAuthenticated, async (req, res) => {
     try {
-      const [policy] = await db.select().from(policies).where(eq(policies.id, req.params.id));
+      const [policy] = await db.select().from(policies).where(eq(policies.id, String(req.params.id)));
       if (!policy) return res.status(404).json({ message: "Policy not found" });
       res.json(policy);
     } catch (error) {
@@ -128,7 +128,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
       if (fileSize !== undefined) updates.fileSize = fileSize;
 
       if (status === "published") {
-        const [existing] = await db.select().from(policies).where(eq(policies.id, req.params.id));
+        const [existing] = await db.select().from(policies).where(eq(policies.id, String(req.params.id)));
         if (existing && existing.status !== "published") {
           updates.version = (existing.version || 1) + 1;
         }
@@ -136,7 +136,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
 
       const [updated] = await db.update(policies)
         .set(updates)
-        .where(eq(policies.id, req.params.id))
+        .where(eq(policies.id, String(req.params.id)))
         .returning();
 
       if (!updated) return res.status(404).json({ message: "Policy not found" });
@@ -149,7 +149,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
 
   app.delete("/api/policies/:id", isAuthenticated, async (req, res) => {
     try {
-      await db.delete(policies).where(eq(policies.id, req.params.id));
+      await db.delete(policies).where(eq(policies.id, String(req.params.id)));
       res.json({ message: "Policy deleted" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete policy" });
@@ -164,7 +164,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
       }
       const { recipients, subject, message } = parsed.data;
 
-      const [policy] = await db.select().from(policies).where(eq(policies.id, req.params.id));
+      const [policy] = await db.select().from(policies).where(eq(policies.id, String(req.params.id)));
       if (!policy) return res.status(404).json({ message: "Policy not found" });
 
       const safeTitle = escapeHtml(policy.title);
@@ -215,7 +215,7 @@ export function registerPolicyRoutes(app: Express, isAuthenticated: RequestHandl
 
       await db.update(policies)
         .set({ lastEmailedAt: new Date() })
-        .where(eq(policies.id, req.params.id));
+        .where(eq(policies.id, String(req.params.id)));
 
       res.json({ message: "Policy emailed successfully", recipientCount: recipients.length });
     } catch (error) {

@@ -1757,7 +1757,7 @@ Return ONLY valid JSON:
   app.post("/api/outreach/audits/:id/import", isAuthenticated, async (req, res) => {
     try {
       const { websiteAuditStorage } = await import("./website-audit-storage");
-      const lead = await websiteAuditStorage.importAuditToLead(req.params.id);
+      const lead = await websiteAuditStorage.importAuditToLead(String(req.params.id));
       if (!lead) {
         return res.status(400).json({ message: "Audit not found or already imported" });
       }
@@ -1771,7 +1771,7 @@ Return ONLY valid JSON:
   app.post("/api/outreach/audits/:id/reject", isAuthenticated, async (req, res) => {
     try {
       const { websiteAuditStorage } = await import("./website-audit-storage");
-      const audit = await websiteAuditStorage.rejectAudit(req.params.id);
+      const audit = await websiteAuditStorage.rejectAudit(String(req.params.id));
       if (!audit) {
         return res.status(404).json({ message: "Audit not found" });
       }

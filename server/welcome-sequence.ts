@@ -258,7 +258,7 @@ export function registerWelcomeSequenceRoutes(app: Express, isAuthenticated: Req
   app.get("/api/ops/projects/:projectId/sequence", isAuthenticated, async (req, res) => {
     try {
       const rows = await db.select().from(welcomeSequences)
-        .where(eq(welcomeSequences.projectId, req.params.projectId));
+        .where(eq(welcomeSequences.projectId, String(req.params.projectId)));
       res.json(rows[0] || null);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -271,7 +271,7 @@ export function registerWelcomeSequenceRoutes(app: Express, isAuthenticated: Req
       if (!parsed.success) return res.status(400).json({ error: "Valid client name and email are required" });
       const { clientName, clientEmail, companyName } = parsed.data;
       const result = await triggerWelcomeSequence(
-        req.params.projectId, "manual", clientName, clientEmail, companyName
+        String(req.params.projectId), "manual", clientName, clientEmail, companyName
       );
       if (!result.created) {
         return res.status(400).json({ error: result.message });
@@ -285,7 +285,7 @@ export function registerWelcomeSequenceRoutes(app: Express, isAuthenticated: Req
   app.post("/api/ops/projects/:projectId/sequence/cancel", isAuthenticated, async (req, res) => {
     try {
       const rows = await db.select().from(welcomeSequences)
-        .where(eq(welcomeSequences.projectId, req.params.projectId));
+        .where(eq(welcomeSequences.projectId, String(req.params.projectId)));
       if (!rows.length) return res.status(404).json({ error: "No sequence found" });
       if (rows[0].status === "cancelled") return res.json({ success: true });
 
@@ -299,7 +299,7 @@ export function registerWelcomeSequenceRoutes(app: Express, isAuthenticated: Req
   app.post("/api/ops/projects/:projectId/sequence/restart", isAuthenticated, async (req, res) => {
     try {
       const rows = await db.select().from(welcomeSequences)
-        .where(eq(welcomeSequences.projectId, req.params.projectId));
+        .where(eq(welcomeSequences.projectId, String(req.params.projectId)));
       if (rows.length) {
         await db.delete(welcomeSequences).where(eq(welcomeSequences.id, rows[0].id));
       }
@@ -307,7 +307,7 @@ export function registerWelcomeSequenceRoutes(app: Express, isAuthenticated: Req
       if (!parsed.success) return res.status(400).json({ error: "Valid client name and email are required" });
       const { clientName, clientEmail, companyName } = parsed.data;
       const result = await triggerWelcomeSequence(
-        req.params.projectId, "manual", clientName, clientEmail, companyName
+        String(req.params.projectId), "manual", clientName, clientEmail, companyName
       );
       if (!result.created) {
         return res.status(400).json({ error: result.message });
@@ -320,11 +320,11 @@ export function registerWelcomeSequenceRoutes(app: Express, isAuthenticated: Req
 
   app.post("/api/ops/projects/:projectId/sequence/resend/:emailNum", isAuthenticated, async (req, res) => {
     try {
-      const emailNum = parseInt(req.params.emailNum) as 1 | 2 | 3;
+      const emailNum = parseInt(String(req.params.emailNum)) as 1 | 2 | 3;
       if (![1, 2, 3].includes(emailNum)) return res.status(400).json({ error: "Invalid email number" });
 
       const rows = await db.select().from(welcomeSequences)
-        .where(eq(welcomeSequences.projectId, req.params.projectId));
+        .where(eq(welcomeSequences.projectId, String(req.params.projectId)));
       if (!rows.length) return res.status(404).json({ error: "No sequence found" });
 
       await sendSequenceEmail(rows[0].id, emailNum, true);

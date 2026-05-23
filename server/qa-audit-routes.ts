@@ -240,7 +240,7 @@ export function registerQaAuditRoutes(app: Express, isAuthenticated?: RequestHan
   });
 
   app.get("/api/ops/qa-audit/:id/stream", ...auth, async (req: Request, res: Response) => {
-    const auditId = parseInt(req.params.id);
+    const auditId = parseInt(String(req.params.id));
     if (isNaN(auditId)) return res.status(400).json({ error: "Invalid audit ID" });
 
     res.writeHead(200, {
@@ -298,7 +298,7 @@ export function registerQaAuditRoutes(app: Express, isAuthenticated?: RequestHan
   });
 
   app.get("/api/ops/qa-audit/:id", ...auth, async (req: Request, res: Response) => {
-    const auditId = parseInt(req.params.id);
+    const auditId = parseInt(String(req.params.id));
     if (isNaN(auditId)) return res.status(400).json({ error: "Invalid audit ID" });
 
     const [audit] = await db.select().from(qaAudits).where(eq(qaAudits.id, auditId)).limit(1);
@@ -324,7 +324,7 @@ export function registerQaAuditRoutes(app: Express, isAuthenticated?: RequestHan
   });
 
   app.get("/api/ops/qa-audit/:id/download/json", ...auth, async (req: Request, res: Response) => {
-    const auditId = parseInt(req.params.id);
+    const auditId = parseInt(String(req.params.id));
     const [audit] = await db.select().from(qaAudits).where(eq(qaAudits.id, auditId)).limit(1);
     if (!audit || !audit.reportJson) return res.status(404).json({ error: "Report not found" });
     res.setHeader("Content-Type", "application/json");
@@ -333,7 +333,7 @@ export function registerQaAuditRoutes(app: Express, isAuthenticated?: RequestHan
   });
 
   app.get("/api/ops/qa-audit/:id/download/markdown", ...auth, async (req: Request, res: Response) => {
-    const auditId = parseInt(req.params.id);
+    const auditId = parseInt(String(req.params.id));
     const [audit] = await db.select().from(qaAudits).where(eq(qaAudits.id, auditId)).limit(1);
     if (!audit || !audit.reportMarkdown) return res.status(404).json({ error: "Report not found" });
     res.setHeader("Content-Type", "text/markdown");

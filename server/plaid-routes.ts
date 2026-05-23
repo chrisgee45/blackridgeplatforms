@@ -88,7 +88,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.patch("/api/plaid/connections/:id", isAuthenticated, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { isPersonal } = req.body;
       const [updated] = await db.update(plaidConnections)
         .set({ isPersonal: !!isPersonal })
@@ -104,7 +104,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.delete("/api/plaid/connections/:id", isAuthenticated, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const [conn] = await db.select().from(plaidConnections).where(eq(plaidConnections.id, id));
       if (!conn) return res.status(404).json({ message: "Connection not found" });
 
@@ -125,7 +125,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.post("/api/plaid/sync/:connectionId", isAuthenticated, async (req, res) => {
     try {
-      const { connectionId } = req.params;
+      const connectionId = String(req.params.connectionId);
       const [conn] = await db.select().from(plaidConnections).where(eq(plaidConnections.id, connectionId));
       if (!conn) return res.status(404).json({ message: "Connection not found" });
 
@@ -265,7 +265,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.patch("/api/plaid/transactions/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { status, notes } = req.body;
       if (!["pending", "matched", "categorized", "ignored"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
@@ -295,7 +295,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.post("/api/plaid/transactions/:id/match", isAuthenticated, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { expenseId } = req.body;
 
       if (!expenseId) return res.status(400).json({ message: "expenseId required" });
@@ -317,7 +317,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.post("/api/plaid/auto-match/:connectionId", isAuthenticated, async (req, res) => {
     try {
-      const { connectionId } = req.params;
+      const connectionId = String(req.params.connectionId);
 
       const pendingTxns = await db.select().from(bankTransactions)
         .where(and(
@@ -338,7 +338,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
           sql`${bankTransactions.matchedExpenseId} IS NOT NULL`
         ));
       const usedExpenseIds = new Set(alreadyMatchedExpIds.map(r => r.matchedExpenseId));
-      const claimedThisRun = new Set<number>();
+      const claimedThisRun = new Set<string>();
 
       let matchedCount = 0;
 
@@ -407,7 +407,7 @@ export function registerPlaidRoutes(app: Express, isAuthenticated: RequestHandle
 
   app.post("/api/plaid/transactions/:id/categorize", isAuthenticated, async (req, res) => {
     try {
-      const { id } = req.params;
+      const id = String(req.params.id);
       const { accountId, description, vendorId, paymentMethod, taxDeductible, transactionType } = req.body;
       const type = transactionType || "expense";
 
