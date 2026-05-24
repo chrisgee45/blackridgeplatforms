@@ -66,7 +66,7 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
   app.post("/api/ops/journal-entries/:id/void", isAuthenticated, requireAdmin, async (req, res) => {
     try {
       const username = (req.session as any)?.adminUsername || "admin";
-      await voidJournalEntry(req.params.id, username);
+      await voidJournalEntry(String(req.params.id), username);
       res.json({ success: true });
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -77,7 +77,7 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
     try {
       const { voidV2Transaction } = await import("./gaap-compliance");
       const username = (req.session as any)?.adminUsername || "admin";
-      await voidV2Transaction(req.params.id, username);
+      await voidV2Transaction(String(req.params.id), username);
       res.json({ success: true });
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -87,7 +87,7 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
   app.post("/api/ops/expenses/:id/void", isAuthenticated, requireAdmin, async (req, res) => {
     try {
       const username = (req.session as any)?.adminUsername || "admin";
-      await voidExpense(req.params.id, username);
+      await voidExpense(String(req.params.id), username);
       res.json({ success: true });
     } catch (e: any) {
       res.status(400).json({ message: e.message });
@@ -139,7 +139,7 @@ export function registerGaapRoutes(app: Router, isAuthenticated: any) {
         return res.status(400).json({ message: "Valid role required (admin or bookkeeper)" });
       }
       const username = (req.session as any)?.adminUsername || "admin";
-      const updated = await updateAdminRole(req.params.id, role, username);
+      const updated = await updateAdminRole(String(req.params.id), role, username);
       res.json(updated);
     } catch (e: any) {
       res.status(400).json({ message: e.message });

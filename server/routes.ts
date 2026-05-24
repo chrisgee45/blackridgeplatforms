@@ -470,7 +470,7 @@ export async function registerRoutes(
       const escapeHtml = (s: string) =>
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">${
-        body.split("\n").map((line) => (line ? escapeHtml(line) : "")).join("<br/>")
+        body.split("\n").map((line: string) => (line ? escapeHtml(line) : "")).join("<br/>")
       }${buildEmailSignatureHtml()}</div>`;
 
       await resend.client.emails.send({
@@ -590,10 +590,11 @@ export async function registerRoutes(
 
   app.get("/api/ridge/conversations/:id/messages", isAuthenticated, async (req, res) => {
     try {
-      const [convo] = await db.select().from(ridgeConversations).where(eq(ridgeConversations.id, req.params.id));
+      const convoId = String(req.params.id);
+      const [convo] = await db.select().from(ridgeConversations).where(eq(ridgeConversations.id, convoId));
       if (!convo) return res.status(404).json({ error: "Conversation not found" });
       const msgs = await db.select().from(ridgeMessages)
-        .where(eq(ridgeMessages.conversationId, req.params.id))
+        .where(eq(ridgeMessages.conversationId, convoId))
         .orderBy(ridgeMessages.createdAt);
       res.json(msgs);
     } catch (err: any) {
@@ -603,10 +604,11 @@ export async function registerRoutes(
 
   app.delete("/api/ridge/conversations/:id", isAuthenticated, async (req, res) => {
     try {
-      const [convo] = await db.select().from(ridgeConversations).where(eq(ridgeConversations.id, req.params.id));
+      const convoId = String(req.params.id);
+      const [convo] = await db.select().from(ridgeConversations).where(eq(ridgeConversations.id, convoId));
       if (!convo) return res.status(404).json({ error: "Conversation not found" });
-      await db.delete(ridgeMessages).where(eq(ridgeMessages.conversationId, req.params.id));
-      await db.delete(ridgeConversations).where(eq(ridgeConversations.id, req.params.id));
+      await db.delete(ridgeMessages).where(eq(ridgeMessages.conversationId, convoId));
+      await db.delete(ridgeConversations).where(eq(ridgeConversations.id, convoId));
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

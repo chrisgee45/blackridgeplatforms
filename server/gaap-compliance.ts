@@ -187,7 +187,6 @@ async function reverseV2Transaction(referenceId: string, voidedBy: string): Prom
         memo: `REVERSAL of: ${tx.memo || tx.id}`,
         referenceType: "reversal",
         referenceId: tx.id,
-        status: "posted",
       }).returning();
       for (const line of txLines) {
         await db.insert(transactionLinesV2).values({
@@ -229,7 +228,6 @@ export async function voidV2Transaction(transactionId: string, voidedBy: string)
     memo: `REVERSAL of: ${tx.memo || tx.id}`,
     referenceType: "reversal",
     referenceId: transactionId,
-    status: "posted",
   }).returning();
 
   for (const line of txLines) {

@@ -20,7 +20,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
   app.get("/api/ops/projects/:projectId/kickoff", isAuthenticated, async (req, res) => {
     try {
       const rows = await db.select().from(kickoffSubmissions)
-        .where(eq(kickoffSubmissions.projectId, req.params.projectId));
+        .where(eq(kickoffSubmissions.projectId, String(req.params.projectId)));
       res.json(rows[0] || null);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -36,7 +36,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
   app.post("/api/ops/projects/:projectId/kickoff/send", isAuthenticated, async (req, res) => {
     try {
       const body = sendKickoffSchema.parse(req.body);
-      const projectId = req.params.projectId;
+      const projectId = String(req.params.projectId);
 
       const existing = await db.select().from(kickoffSubmissions)
         .where(eq(kickoffSubmissions.projectId, projectId));
@@ -107,7 +107,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
   app.post("/api/ops/projects/:projectId/kickoff/resend", isAuthenticated, async (req, res) => {
     try {
       const rows = await db.select().from(kickoffSubmissions)
-        .where(eq(kickoffSubmissions.projectId, req.params.projectId));
+        .where(eq(kickoffSubmissions.projectId, String(req.params.projectId)));
       if (!rows.length) return res.status(404).json({ error: "No kickoff found" });
       const submission = rows[0];
       if (submission.status === "submitted") return res.status(400).json({ error: "Already submitted" });
@@ -154,7 +154,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
     try {
       const { notes } = req.body;
       const rows = await db.select().from(kickoffSubmissions)
-        .where(eq(kickoffSubmissions.projectId, req.params.projectId));
+        .where(eq(kickoffSubmissions.projectId, String(req.params.projectId)));
       if (!rows.length) return res.status(404).json({ error: "No kickoff found" });
 
       const [updated] = await db.update(kickoffSubmissions)
@@ -170,7 +170,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
   app.get("/api/kickoff/:token", async (req, res) => {
     try {
       const rows = await db.select().from(kickoffSubmissions)
-        .where(eq(kickoffSubmissions.token, req.params.token));
+        .where(eq(kickoffSubmissions.token, String(req.params.token)));
       if (!rows.length) return res.status(404).json({ error: "Invalid or expired kickoff link." });
       const submission = rows[0];
       if (submission.status === "submitted") {
@@ -198,7 +198,7 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
   app.post("/api/kickoff/:token/submit", async (req, res) => {
     try {
       const rows = await db.select().from(kickoffSubmissions)
-        .where(eq(kickoffSubmissions.token, req.params.token));
+        .where(eq(kickoffSubmissions.token, String(req.params.token)));
       if (!rows.length) return res.status(404).json({ error: "Invalid kickoff link." });
       const submission = rows[0];
       if (submission.status === "submitted") {
@@ -277,10 +277,10 @@ export function registerKickoffRoutes(app: Express, isAuthenticated: RequestHand
   app.post("/api/kickoff/:token/upload", async (req, res) => {
     try {
       const rows = await db.select().from(kickoffSubmissions)
-        .where(eq(kickoffSubmissions.token, req.params.token));
+        .where(eq(kickoffSubmissions.token, String(req.params.token)));
       if (!rows.length) return res.status(404).json({ error: "Invalid kickoff link." });
       if (rows[0].status === "submitted") return res.status(400).json({ error: "Already submitted." });
-      res.json({ token: req.params.token });
+      res.json({ token: String(req.params.token) });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

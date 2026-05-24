@@ -208,8 +208,7 @@ Return only valid JSON.`;
     });
 
     const rawText = response.content
-      .filter((b): b is { type: "text"; text: string } => b.type === "text")
-      .map(b => b.text)
+      .map(b => (b.type === "text" ? b.text : ""))
       .join("");
     const raw = rawText.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
     const analysis = JSON.parse(raw);
@@ -581,8 +580,7 @@ export async function processGenerateReplyJob(payload: { lead_id: string; inboun
   });
 
   const replyRawText = replyResponse.content
-    .filter((b): b is { type: "text"; text: string } => b.type === "text")
-    .map(b => b.text)
+    .map(b => (b.type === "text" ? b.text : ""))
     .join("");
   const replyRaw = replyRawText.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
   const reply = JSON.parse(replyRaw);

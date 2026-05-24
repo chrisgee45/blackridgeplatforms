@@ -1452,8 +1452,11 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
             amount: payment.amount,
             revenueAccountId: revenueAcctId,
             paymentMethod: v2Method,
+            isDeposit: payment.isDeposit === true,
             occurredAt: payment.receivedDate ?? new Date(),
-            memo: `Project payment: ${payment.label} ($${payment.amount})`,
+            memo: payment.isDeposit
+              ? `Deposit (unearned): ${payment.label} ($${payment.amount})`
+              : `Project payment: ${payment.label} ($${payment.amount})`,
             referenceType: "project_payment",
             referenceId: `project_payment_${payment.id}`,
           });

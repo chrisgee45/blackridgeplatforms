@@ -21,7 +21,7 @@ function computeNextDate(current: Date, frequency: string, dayOfMonth?: number |
 }
 
 async function createChildExpense(parent: typeof expenses.$inferSelect, dueDate: Date) {
-  const newExpense = await bookkeepingStorage.createExpenseWithJournal({
+  const newExpense = await bookkeepingStorage.createExpense({
     vendorId: parent.vendorId,
     accountId: parent.accountId,
     description: parent.description,

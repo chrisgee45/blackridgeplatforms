@@ -243,6 +243,11 @@ export default function FinancialsPage() {
   const [drawAmount, setDrawAmount] = useState("");
   const [drawMemo, setDrawMemo] = useState("");
 
+  const [payoutDialogOpen, setPayoutDialogOpen] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutDate, setPayoutDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [payoutMemo, setPayoutMemo] = useState("");
+
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ["/api/accounting/income-statement"] });
     queryClient.invalidateQueries({ queryKey: ["/api/accounting/balance-sheet"] });
@@ -303,6 +308,51 @@ export default function FinancialsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err?.message || "Failed to record draw", variant: "destructive" });
+    },
+  });
+
+  const payoutMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/accounting/stripe-payout", {
+      amount: parseFloat(payoutAmount),
+      payoutDate: payoutDate || undefined,
+      memo: payoutMemo || undefined,
+    }),
+    onSuccess: () => {
+      toast({ title: "Stripe payout recorded", description: `$${parseFloat(payoutAmount).toLocaleString()} moved from Stripe Clearing to Cash` });
+      invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting/stripe-clearing-balance"] });
+      setPayoutDialogOpen(false);
+      setPayoutAmount(""); setPayoutMemo("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to record payout", variant: "destructive" });
+    },
+  });
+
+  const { data: stripeClearingBalance } = useQuery<{ balance: number }>({
+    queryKey: ["/api/accounting/stripe-clearing-balance"],
+    queryFn: async () => {
+      const res = await fetch("/api/accounting/stripe-clearing-balance");
+      return res.json();
+    },
+    enabled: payoutDialogOpen,
+  });
+
+  const trueUpMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/accounting/stripe-clearing-true-up", {}),
+    onSuccess: (res: any) => {
+      const cleared = Number(res?.cleared ?? 0);
+      if (cleared > 0) {
+        toast({ title: "Stripe Clearing trued up", description: `$${cleared.toLocaleString()} moved to Cash` });
+      } else {
+        toast({ title: "Already at zero", description: "No balance to clear" });
+      }
+      invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ["/api/accounting/stripe-clearing-balance"] });
+      setPayoutDialogOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err?.message || "Failed to true up", variant: "destructive" });
     },
   });
 
@@ -550,6 +600,96 @@ export default function FinancialsPage() {
             </DialogContent>
           </Dialog>
 
+          <Dialog open={payoutDialogOpen} onOpenChange={setPayoutDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline" data-testid="button-stripe-payout">
+                <ArrowUpRight className="w-4 h-4 mr-1" /> Stripe Payout
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Record Stripe Payout</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                When Stripe deposits funds to your bank, post a journal entry here to move the balance from
+                <strong> Stripe Clearing (1020) </strong> to <strong>Cash (1000)</strong>.
+              </p>
+              {stripeClearingBalance && stripeClearingBalance.balance > 0.005 && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 space-y-2" data-testid="stripe-clearing-balance">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs uppercase tracking-wider text-amber-400">Current Stripe Clearing balance</span>
+                    <span className="text-lg font-bold text-amber-400 tabular-nums">{formatCurrency(stripeClearingBalance.balance)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use the form below to record one specific payout, or click to clear the entire balance to Cash in one entry dated today.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={trueUpMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Move ${formatCurrency(stripeClearingBalance.balance)} from Stripe Clearing to Cash, dated today? Use this when the funds have already settled to your bank and you don't need date-by-date detail.`)) {
+                        trueUpMutation.mutate();
+                      }
+                    }}
+                    data-testid="button-trueup-stripe-clearing"
+                  >
+                    {trueUpMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Posting...</>
+                    ) : (
+                      <>True up entire balance to Cash</>
+                    )}
+                  </Button>
+                </div>
+              )}
+              <div className="space-y-4 pt-2">
+                <div>
+                  <label className="text-sm font-medium">Payout Amount ($)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={payoutAmount}
+                    onChange={(e) => setPayoutAmount(e.target.value)}
+                    data-testid="input-payout-amount"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Payout Date</label>
+                  <Input
+                    type="date"
+                    value={payoutDate}
+                    onChange={(e) => setPayoutDate(e.target.value)}
+                    data-testid="input-payout-date"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Memo (optional)</label>
+                  <Input
+                    placeholder="e.g. Stripe payout 2026-05-23"
+                    value={payoutMemo}
+                    onChange={(e) => setPayoutMemo(e.target.value)}
+                    data-testid="input-payout-memo"
+                  />
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={!payoutAmount || isNaN(parseFloat(payoutAmount)) || parseFloat(payoutAmount) <= 0 || payoutMutation.isPending}
+                  onClick={() => payoutMutation.mutate()}
+                  data-testid="button-submit-payout"
+                >
+                  {payoutMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Posting...</>
+                  ) : (
+                    <>Post to Ledger</>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Button
             size="sm"
             variant="outline"
@@ -568,7 +708,18 @@ export default function FinancialsPage() {
             disabled={incomeLoading || balanceLoading || cashFlowLoading || journalLoading || !incomeData || !balanceData || !cashFlowData}
             onClick={() => {
               if (incomeData && balanceData && cashFlowData) {
-                generateFullAccountingPdf(incomeData, balanceData, cashFlowData, journalEntries ?? [], startDate, endDate);
+                generateFullAccountingPdf(
+                  incomeData,
+                  balanceData,
+                  cashFlowData,
+                  (journalEntries ?? []).map((e) => ({
+                    ...e,
+                    totalDebits: e.totalDebits ?? 0,
+                    totalCredits: e.totalCredits ?? 0,
+                  })),
+                  startDate,
+                  endDate,
+                );
               }
             }}
             data-testid="button-export-full"

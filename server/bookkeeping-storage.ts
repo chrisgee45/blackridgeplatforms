@@ -255,23 +255,7 @@ export class BookkeepingStorage {
   }
 
   async createBill(data: InsertBill): Promise<Bill> {
-    const apAccount = await this.getAccountByNumber("2000");
-    if (!apAccount) throw new Error("AP account not found");
-
-    const expenseAccount = data.accountId ? await this.getAccount(data.accountId) : null;
-    const targetAccountId = expenseAccount?.id || (await this.getAccountByNumber("8500"))?.id;
-    if (!targetAccountId) throw new Error("No expense account found");
-
-    const { entry } = await this.createJournalEntryWithLines(
-      { date: data.dueDate, memo: data.description || "Bill", sourceType: "bill", createdBy: "admin" },
-      [
-        { accountId: targetAccountId, debit: String(data.amount), credit: "0", memo: data.description },
-        { accountId: apAccount.id, debit: "0", credit: String(data.amount), memo: data.description },
-      ]
-    );
-
-    const [bill] = await db.insert(bills).values({ ...data, journalEntryId: entry.id }).returning();
-    await db.update(journalEntries).set({ sourceId: bill.id }).where(eq(journalEntries.id, entry.id));
+    const [bill] = await db.insert(bills).values(data).returning();
     return bill;
   }
 
@@ -319,24 +303,11 @@ export class BookkeepingStorage {
     if (paymentAmount <= 0) throw new Error("Payment amount must be positive");
     if (paymentAmount > remaining + 0.01) throw new Error(`Payment ($${paymentAmount}) exceeds remaining balance ($${remaining.toFixed(2)})`);
 
-    const cashAccount = await this.getAccountByNumber("1000");
-    const apAccount = await this.getAccountByNumber("2000");
-    if (!cashAccount || !apAccount) throw new Error("Required accounts not found");
-
-    const { entry } = await this.createJournalEntryWithLines(
-      { date: new Date(), memo: memo || `Payment for bill: ${bill.description}`, sourceType: "bill_payment", sourceId: billId, createdBy: "admin" },
-      [
-        { accountId: apAccount.id, debit: String(paymentAmount), credit: "0", memo: `Bill payment` },
-        { accountId: cashAccount.id, debit: "0", credit: String(paymentAmount), memo: `Cash out` },
-      ]
-    );
-
     const [payment] = await db.insert(billPayments).values({
       billId,
       amount: String(paymentAmount),
       paymentMethod,
       memo,
-      journalEntryId: entry.id,
     }).returning();
 
     const newPaidAmount = alreadyPaid + paymentAmount;
@@ -573,7 +544,7 @@ export class BookkeepingStorage {
   async postPaymentToLedgerWithDate(amount: string, description: string, sourceType: string, sourceId: string, date: Date, isProjectRevenue: boolean = true): Promise<JournalEntry> {
     const exists = await this.hasExistingJournalForSource(sourceType, sourceId);
     if (exists) {
-      const [existing] = await database.select().from(journalEntries)
+      const [existing] = await db.select().from(journalEntries)
         .where(and(eq(journalEntries.sourceType, sourceType), eq(journalEntries.sourceId, sourceId)))
         .limit(1);
       return existing;
