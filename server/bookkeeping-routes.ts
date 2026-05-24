@@ -944,6 +944,35 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
     console.error("Failed to seed v2 accounts:", err)
   );
 
+  // Read the current Stripe Clearing (1020) balance.
+  app.get("/api/accounting/stripe-clearing-balance", isAuthenticated, async (_req, res) => {
+    try {
+      const { getStripeClearingBalance } = await import("./accounting-v2");
+      const balance = await getStripeClearingBalance();
+      res.json({ balance });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Failed to read Stripe Clearing balance" });
+    }
+  });
+
+  // One-click true-up: post the current Stripe Clearing balance to Cash.
+  app.post("/api/accounting/stripe-clearing-true-up", isAuthenticated, async (req, res) => {
+    try {
+      const { trueUpStripeClearing } = await import("./accounting-v2");
+      const result = await trueUpStripeClearing({
+        occurredAt: req.body?.occurredAt ? new Date(req.body.occurredAt) : undefined,
+        memo: req.body?.memo,
+      });
+      if (!result.transactionId) {
+        return res.json({ success: true, cleared: 0, message: "Stripe Clearing is already at zero" });
+      }
+      res.json({ success: true, cleared: result.balance, transactionId: result.transactionId });
+    } catch (error: any) {
+      console.error("Stripe clearing true-up error:", error);
+      res.status(500).json({ message: error?.message || "Failed to true up Stripe Clearing" });
+    }
+  });
+
   // Record a Stripe payout settling to the bank: DR 1000 Cash / CR 1020 Stripe Clearing.
   app.post("/api/accounting/stripe-payout", isAuthenticated, async (req, res) => {
     try {

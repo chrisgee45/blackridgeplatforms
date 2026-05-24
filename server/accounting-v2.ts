@@ -201,6 +201,34 @@ export async function getAccountIdByCode(code: string): Promise<string> {
 
 type PaymentMethod = "cash" | "credit_card" | "stripe" | "ach" | "check";
 
+export async function getStripeClearingBalance(): Promise<number> {
+  const stripeClearingId = await getAccountIdByCode("1020");
+  const [row] = await db
+    .select({
+      debit: sql<string>`COALESCE(SUM(${transactionLinesV2.debit}), 0)`,
+      credit: sql<string>`COALESCE(SUM(${transactionLinesV2.credit}), 0)`,
+    })
+    .from(transactionLinesV2)
+    .where(eq(transactionLinesV2.accountId, stripeClearingId));
+  return Number(row?.debit ?? 0) - Number(row?.credit ?? 0);
+}
+
+export async function trueUpStripeClearing(input?: {
+  occurredAt?: Date;
+  memo?: string;
+}): Promise<{ balance: number; transactionId: string | null }> {
+  const balance = await getStripeClearingBalance();
+  if (balance <= 0.005) return { balance, transactionId: null };
+
+  const tx = await recordStripePayout({
+    amount: Number(balance.toFixed(2)),
+    occurredAt: input?.occurredAt ?? new Date(),
+    memo: input?.memo ?? `Stripe clearing true-up — historical payouts not previously recorded`,
+    referenceId: `stripe_clearing_trueup_${Date.now()}`,
+  });
+  return { balance, transactionId: tx.id };
+}
+
 export async function recordStripePayout(input: {
   amount: number;
   occurredAt?: Date;
