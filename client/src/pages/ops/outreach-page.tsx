@@ -771,6 +771,30 @@ export default function OutreachPage() {
   );
 }
 
+// Insights store confidence as a string ("high"|"medium"|"low") or a fractional
+// number (0–1). The old renderer did Math.round(string * 100) — which is NaN.
+function formatConfidence(raw: unknown): string {
+  if (raw == null || raw === "") return "—";
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const pct = raw <= 1 ? raw * 100 : raw;
+    return `${Math.round(pct)}%`;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    const asNumber = Number(trimmed);
+    if (Number.isFinite(asNumber)) {
+      const pct = asNumber <= 1 ? asNumber * 100 : asNumber;
+      return `${Math.round(pct)}%`;
+    }
+    const label = trimmed.toLowerCase();
+    if (label === "high") return "High";
+    if (label === "medium" || label === "med") return "Medium";
+    if (label === "low") return "Low";
+    return trimmed;
+  }
+  return "—";
+}
+
 function StatCard({ label, value, icon: Icon, highlight }: { label: string; value: string | number; icon: React.ComponentType<{className?: string}>; highlight?: "red" }) {
   return (
     <Card className={highlight === "red" ? "border-red-500/30" : undefined}>
@@ -3338,9 +3362,9 @@ function AgentInsightsSection() {
                     <span className="text-[10px] text-muted-foreground">
                       {new Date(insight.createdAt).toLocaleDateString()}
                     </span>
-                    {(insight.metrics as any)?.confidence && (
+                    {(insight.metrics as any)?.confidence != null && (
                       <span className="text-[10px] text-muted-foreground ml-auto">
-                        {Math.round((insight.metrics as any).confidence * 100)}% conf
+                        {formatConfidence((insight.metrics as any).confidence)} conf
                       </span>
                     )}
                   </div>
@@ -3680,9 +3704,9 @@ function AgentReportView() {
                         <span className="text-[10px] text-muted-foreground">
                           {new Date(insight.createdAt).toLocaleString()}
                         </span>
-                        {(insight.metrics as any)?.confidence && (
+                        {(insight.metrics as any)?.confidence != null && (
                           <span className="text-[10px] text-muted-foreground ml-auto">
-                            {Math.round((insight.metrics as any).confidence * 100)}% confidence
+                            {formatConfidence((insight.metrics as any).confidence)} confidence
                           </span>
                         )}
                       </div>

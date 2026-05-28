@@ -7,13 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw, Brain, ShieldAlert, Lightbulb, Star, Activity } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-function getHealthColor(score: number) {
+function getHealthColor(score: number | null | undefined) {
+  if (score == null) return "text-muted-foreground";
   if (score >= 75) return "text-green-500";
   if (score >= 50) return "text-yellow-500";
   return "text-destructive";
 }
 
-function getHealthBg(score: number) {
+function getHealthBg(score: number | null | undefined) {
+  if (score == null) return "bg-muted/30 border-border";
   if (score >= 75) return "bg-green-500/10 border-green-500/30";
   if (score >= 50) return "bg-yellow-500/10 border-yellow-500/30";
   return "bg-destructive/10 border-destructive/30";
@@ -105,7 +107,7 @@ export default function AIOpsPage() {
       {report && (
         <div className="space-y-4">
           {ai?.summary && (
-            <Card className={`border ${healthScore !== undefined ? getHealthBg(healthScore) : ""}`}>
+            <Card className={`border ${getHealthBg(healthScore)}`}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Activity className="h-4 w-4" />
@@ -114,12 +116,17 @@ export default function AIOpsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-baseline gap-2 mb-3" data-testid="text-ai-health-score">
-                  <span className={`text-4xl font-bold ${healthScore !== undefined ? getHealthColor(healthScore) : ""}`}>
+                  <span className={`text-4xl font-bold ${getHealthColor(healthScore)}`}>
                     {healthScore ?? "—"}
                   </span>
                   <span className="text-sm text-muted-foreground">/100</span>
                 </div>
                 <p className="text-sm leading-relaxed" data-testid="text-ai-overview">{ai.summary.overview}</p>
+                {ai?.parse_error && (
+                  <p className="text-xs text-amber-600 mt-2" data-testid="text-ai-parse-error">
+                    Parse error: {String(ai.parse_error)}
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}

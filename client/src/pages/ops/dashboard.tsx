@@ -107,9 +107,14 @@ export default function Dashboard() {
 
   const projectMap = new Map((projects ?? []).map(p => [p.id, p]));
 
-  const avgRate = dashboard?.profitLeaderboard && dashboard.profitLeaderboard.length > 0
-    ? dashboard.profitLeaderboard.reduce((sum, p) => sum + p.effectiveRate, 0) / dashboard.profitLeaderboard.length
+  // Exclude under-logged projects (< 2h) so a single 0.5h project doesn't
+  // drag the headline rate up to $5k/hr. The leaderboard itself still shows
+  // every project — this only affects the dashboard average tile.
+  const eligibleForAvg = (dashboard?.profitLeaderboard ?? []).filter(p => p.totalHours >= 2);
+  const avgRate = eligibleForAvg.length > 0
+    ? eligibleForAvg.reduce((sum, p) => sum + p.effectiveRate, 0) / eligibleForAvg.length
     : 0;
+  const avgRateExcluded = (dashboard?.profitLeaderboard?.length ?? 0) - eligibleForAvg.length;
 
   const hasNoData = !isLoading && (!projects || projects.length === 0);
 
@@ -192,6 +197,11 @@ export default function Dashboard() {
           loading={dashLoading}
           testId="stat-avg-rate"
           className="col-span-2 lg:col-span-1"
+          subtitle={
+            avgRateExcluded > 0
+              ? `Excludes ${avgRateExcluded} project${avgRateExcluded === 1 ? "" : "s"} with < 2h logged`
+              : undefined
+          }
         />
       </div>
 
@@ -500,6 +510,7 @@ function KPICard({
   testId,
   valueClass = "",
   className = "",
+  subtitle,
 }: {
   title: string;
   value?: string | number;
@@ -508,6 +519,7 @@ function KPICard({
   testId: string;
   valueClass?: string;
   className?: string;
+  subtitle?: string;
 }) {
   return (
     <Card className={className}>
@@ -519,9 +531,14 @@ function KPICard({
         {loading ? (
           <Skeleton className="h-8 w-16" />
         ) : (
-          <div className={`text-2xl font-bold ${valueClass}`} data-testid={testId}>
-            {value ?? "—"}
-          </div>
+          <>
+            <div className={`text-2xl font-bold ${valueClass}`} data-testid={testId}>
+              {value ?? "—"}
+            </div>
+            {subtitle && (
+              <p className="text-[11px] text-muted-foreground mt-1">{subtitle}</p>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

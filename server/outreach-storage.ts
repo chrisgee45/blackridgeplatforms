@@ -11,6 +11,32 @@ import { eq, desc, asc, and, lte, gte, sql, inArray, ne } from "drizzle-orm";
 
 const STOP_STATUSES = ["engaged", "won", "lost", "do_not_contact", "converted"];
 
+function normalizeBusinessName(raw: unknown): string | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "string") return raw as any;
+  let s = raw.trim();
+  while (s.length >= 2) {
+    const first = s[0];
+    const last = s[s.length - 1];
+    const matched =
+      (first === '"' && last === '"') ||
+      (first === "'" && last === "'") ||
+      (first === "“" && last === "”") ||
+      (first === "‘" && last === "’");
+    if (!matched) break;
+    s = s.slice(1, -1).trim();
+  }
+  return s.replace(/\s{2,}/g, " ");
+}
+
+function normalizeLeadFields<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== "object") return data;
+  const out: any = { ...data };
+  if (typeof out.businessName === "string") out.businessName = normalizeBusinessName(out.businessName);
+  if (typeof out.email === "string") out.email = out.email.trim().toLowerCase();
+  return out;
+}
+
 const EVENT_PRIORITY: Record<string, number> = {
   queued: 0,
   sent: 1,
@@ -56,12 +82,12 @@ export const outreachStorage = {
   },
 
   async createLead(data: InsertOutreachLead): Promise<OutreachLead> {
-    const [lead] = await db.insert(outreachLeads).values(data).returning();
+    const [lead] = await db.insert(outreachLeads).values(normalizeLeadFields(data)).returning();
     return lead;
   },
 
   async updateLead(id: string, data: Partial<OutreachLead>): Promise<OutreachLead | undefined> {
-    const [lead] = await db.update(outreachLeads).set(data).where(eq(outreachLeads.id, id)).returning();
+    const [lead] = await db.update(outreachLeads).set(normalizeLeadFields(data)).where(eq(outreachLeads.id, id)).returning();
     return lead;
   },
 
@@ -71,8 +97,55 @@ export const outreachStorage = {
   },
 
   async deleteLead(id: string): Promise<boolean> {
+    // Cancel any queued jobs targeting this lead BEFORE we delete the row.
+    // outreach_jobs has no FK on payload.lead_id, so without this they
+    // would orphan as queued → fail-3x → "Lead not found" forever (the
+    // 50 stale send_campaign_step failures the audit flagged).
+    const queued = await db
+      .select()
+      .from(outreachJobs)
+      .where(inArray(outreachJobs.status, ["queued", "running"]));
+    const toCancel = queued.filter(j => (j.payload as any)?.lead_id === id);
+    for (const job of toCancel) {
+      await db
+        .update(outreachJobs)
+        .set({ status: "skipped", error: "Lead deleted" })
+        .where(eq(outreachJobs.id, job.id));
+    }
+
     const result = await db.delete(outreachLeads).where(eq(outreachLeads.id, id)).returning();
     return result.length > 0;
+  },
+
+  // One-off cleanup for the existing pool of permanently-failed jobs whose
+  // lead has since been deleted. Safe to call repeatedly.
+  async cleanupOrphanedJobs(): Promise<number> {
+    const failedJobs = await db
+      .select()
+      .from(outreachJobs)
+      .where(eq(outreachJobs.status, "failed"));
+
+    const orphanCandidates = failedJobs.filter(j => {
+      const leadId = (j.payload as any)?.lead_id;
+      const err = j.error || "";
+      return typeof leadId === "string" && /Lead .* not found/i.test(err);
+    });
+    if (orphanCandidates.length === 0) return 0;
+
+    const leadIds = Array.from(new Set(orphanCandidates.map(j => (j.payload as any).lead_id as string)));
+    const existing = await db
+      .select({ id: outreachLeads.id })
+      .from(outreachLeads)
+      .where(inArray(outreachLeads.id, leadIds));
+    const existingSet = new Set(existing.map(r => r.id));
+    const truly = orphanCandidates.filter(j => !existingSet.has((j.payload as any).lead_id));
+    if (truly.length === 0) return 0;
+
+    await db
+      .update(outreachJobs)
+      .set({ status: "skipped", error: "Lead deleted (cleanup)" })
+      .where(inArray(outreachJobs.id, truly.map(j => j.id)));
+    return truly.length;
   },
 
   async getCampaigns(): Promise<OutreachCampaign[]> {

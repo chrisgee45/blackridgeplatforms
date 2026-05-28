@@ -33,6 +33,36 @@ import {
 import { db } from "./db";
 import { eq, desc, asc, and, sql, inArray } from "drizzle-orm";
 
+// Strip wrapping straight/smart quotes from a name and collapse repeated
+// whitespace. Fixes the "Hometown Rock and Landscape, LLC" vs
+// '"Hometown Rock and Landscape, LLC"' mismatch surfaced in the audit.
+function normalizeBusinessName(raw: unknown): string | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "string") return raw as any;
+  let s = raw.trim();
+  // Repeatedly strip a single matching outer pair of quotes (straight or curly).
+  // Loop because some entries had been double-quoted.
+  while (s.length >= 2) {
+    const first = s[0];
+    const last = s[s.length - 1];
+    const matched =
+      (first === '"' && last === '"') ||
+      (first === "'" && last === "'") ||
+      (first === "“" && last === "”") ||
+      (first === "‘" && last === "’");
+    if (!matched) break;
+    s = s.slice(1, -1).trim();
+  }
+  return s.replace(/\s{2,}/g, " ");
+}
+
+function normalizeNameFields<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== "object") return data;
+  const out: any = { ...data };
+  if (typeof out.name === "string") out.name = normalizeBusinessName(out.name);
+  return out;
+}
+
 export class OpsStorage {
   async getCompanies(): Promise<Company[]> {
     return db.select().from(companies).orderBy(asc(companies.name));
@@ -44,12 +74,12 @@ export class OpsStorage {
   }
 
   async createCompany(data: InsertCompany): Promise<Company> {
-    const [company] = await db.insert(companies).values(data).returning();
+    const [company] = await db.insert(companies).values(normalizeNameFields(data)).returning();
     return company;
   }
 
   async updateCompany(id: string, data: Partial<InsertCompany>): Promise<Company | undefined> {
-    const [company] = await db.update(companies).set({ ...data, updatedAt: new Date() }).where(eq(companies.id, id)).returning();
+    const [company] = await db.update(companies).set({ ...normalizeNameFields(data), updatedAt: new Date() }).where(eq(companies.id, id)).returning();
     return company;
   }
 
@@ -420,12 +450,12 @@ export class OpsStorage {
   }
 
   async createClient(data: InsertClient): Promise<Client> {
-    const [client] = await db.insert(clients).values(data).returning();
+    const [client] = await db.insert(clients).values(normalizeNameFields(data)).returning();
     return client;
   }
 
   async updateClient(id: string, data: Partial<InsertClient>): Promise<Client | undefined> {
-    const [client] = await db.update(clients).set(data).where(eq(clients.id, id)).returning();
+    const [client] = await db.update(clients).set(normalizeNameFields(data)).where(eq(clients.id, id)).returning();
     return client;
   }
 

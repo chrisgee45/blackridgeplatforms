@@ -99,12 +99,48 @@ ${JSON.stringify(opsData, null, 2)}
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      const raw = response.content[0].type === "text" ? response.content[0].text : "{}";
-      let aiAnalysis: Record<string, unknown>;
+      // Concatenate all text blocks (Claude can return multiple) and strip
+      // any code fences the model added even when asked for raw JSON.
+      const rawText = response.content
+        .map(b => (b.type === "text" ? b.text : ""))
+        .join("")
+        .trim();
+      const raw = rawText.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+
+      let aiAnalysis: Record<string, unknown> | null = null;
+      let parseError: string | null = null;
       try {
-        aiAnalysis = JSON.parse(raw);
-      } catch {
-        aiAnalysis = { summary: { health_score: 0, overview: "Failed to parse AI response" }, risk_items: [], recommended_actions: [], highlights: [] };
+        const parsed = JSON.parse(raw);
+        // Minimal schema validation — accept partial reports but require a
+        // summary block so the front-end always has something to render.
+        if (parsed && typeof parsed === "object" && parsed.summary && typeof parsed.summary === "object") {
+          aiAnalysis = parsed;
+        } else {
+          parseError = "AI response is missing a summary block";
+        }
+      } catch (e: any) {
+        parseError = e?.message ?? "AI response was not valid JSON";
+      }
+
+      // On parse failure, carry forward the previous report's score and
+      // overview so the dashboard does not silently report 0/100. The new
+      // report is still saved (with the raw payload) so we can debug drift.
+      if (!aiAnalysis) {
+        console.error("AI report parse failed:", parseError);
+        console.error("Raw AI payload (first 2000 chars):", rawText.slice(0, 2000));
+        const previous = await opsStorage.getAiReports("weekly_ops").then(r => r[0]).catch(() => undefined);
+        const prevAi = (previous?.payload as any)?.ai;
+        aiAnalysis = {
+          summary: {
+            health_score: prevAi?.summary?.health_score ?? null,
+            overview: `AI response could not be parsed (${parseError}). Last known score retained from ${previous?.generatedAt ?? "previous report"}.`,
+          },
+          risk_items: prevAi?.risk_items ?? [],
+          recommended_actions: prevAi?.recommended_actions ?? [],
+          highlights: prevAi?.highlights ?? [],
+          parse_error: parseError,
+          raw_excerpt: rawText.slice(0, 500),
+        };
       }
 
       const fullPayload = {

@@ -110,7 +110,10 @@ function randomJitterMs(): number {
 
 export async function processAnalyzeLeadJob(payload: { lead_id: string }) {
   const lead = await outreachStorage.getLead(payload.lead_id);
-  if (!lead) throw new Error(`Lead ${payload.lead_id} not found`);
+  if (!lead) {
+    console.log(`Skipping analyze for missing lead ${payload.lead_id}`);
+    return;
+  }
 
   const needsContactResearch = !lead.email || !lead.contactName;
 
@@ -291,7 +294,14 @@ export async function processSendCampaignStepJob(payload: {
   lead_id: string; enrollment_id: string; campaign_id: string; step_number: number;
 }): Promise<"sent" | "rescheduled" | "skipped"> {
   const lead = await outreachStorage.getLead(payload.lead_id);
-  if (!lead) throw new Error(`Lead ${payload.lead_id} not found`);
+  if (!lead) {
+    // Lead was deleted between enqueue and run. Treat as a no-op and let the
+    // runner mark the job completed instead of retrying it three times and
+    // then failing forever (root cause of the 50 "Lead ... not found"
+    // failed jobs surfaced in the audit).
+    console.log(`Skipping campaign step for missing lead ${payload.lead_id}`);
+    return "skipped";
+  }
 
   if (!lead.email) {
     console.log(`Skipping email for lead ${lead.id}: no email address`);
@@ -537,8 +547,14 @@ const PIPELINE_STATUS_MAP: Record<string, string> = {
 
 export async function processGenerateReplyJob(payload: { lead_id: string; inbound_conversation_id: string }) {
   const lead = await outreachStorage.getLead(payload.lead_id);
-  if (!lead) throw new Error(`Lead ${payload.lead_id} not found`);
-  if (!lead.email) throw new Error(`Lead ${payload.lead_id} has no email`);
+  if (!lead) {
+    console.log(`Skipping reply for missing lead ${payload.lead_id}`);
+    return;
+  }
+  if (!lead.email) {
+    console.log(`Skipping reply for lead ${payload.lead_id} (no email)`);
+    return;
+  }
 
   const settings = await outreachStorage.getSettings();
 
@@ -787,6 +803,10 @@ Return ONLY valid JSON:
 
 export function startOutreachJobRunner() {
   console.log("Outreach job runner started (30s interval)");
+  outreachStorage.cleanupOrphanedJobs()
+    .then(n => { if (n > 0) console.log(`Outreach: cleaned up ${n} orphaned job(s) on startup`); })
+    .catch(err => console.error("Initial orphan-job cleanup error:", err));
+
   setInterval(() => {
     runOutreachJobs().catch(err => console.error("Outreach job runner error:", err));
   }, 30000);
