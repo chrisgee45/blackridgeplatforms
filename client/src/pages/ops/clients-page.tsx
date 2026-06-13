@@ -1419,8 +1419,8 @@ export default function ClientsPage() {
                 <span className="text-xs text-muted-foreground">New uploads will be filed under this category</span>
               </div>
               <ObjectUploader
-                maxNumberOfFiles={10}
-                maxFileSize={20971520}
+                maxNumberOfFiles={25}
+                maxFileSize={104857600}
                 onGetUploadParameters={async (file) => {
                   const res = await fetch("/api/uploads/request-url", {
                     method: "POST",

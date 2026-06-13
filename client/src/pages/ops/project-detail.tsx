@@ -1929,8 +1929,8 @@ export default function ProjectDetail() {
                 </Select>
               </div>
               <ObjectUploader
-                maxNumberOfFiles={5}
-                maxFileSize={20971520}
+                maxNumberOfFiles={25}
+                maxFileSize={104857600}
                 onGetUploadParameters={async (file) => {
                   const res = await fetch("/api/uploads/request-url", {
                     method: "POST",
