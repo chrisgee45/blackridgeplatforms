@@ -1661,6 +1661,52 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
     }
   });
 
+  app.get("/api/ops/clients/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const docs = await opsStorage.getClientDocuments(String(req.params.id), category);
+      res.json(docs);
+    } catch (error) {
+      console.error("Get client documents error:", error);
+      res.status(500).json({ message: "Failed to fetch documents" });
+    }
+  });
+
+  app.post("/api/ops/clients/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const doc = await opsStorage.createClientDocument({
+        ...req.body,
+        clientId: String(req.params.id),
+      });
+      res.status(201).json(doc);
+    } catch (error) {
+      console.error("Create client document error:", error);
+      res.status(500).json({ message: "Failed to create document record" });
+    }
+  });
+
+  app.patch("/api/ops/client-documents/:id", isAuthenticated, async (req, res) => {
+    try {
+      const doc = await opsStorage.updateClientDocument(String(req.params.id), req.body);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+      res.json(doc);
+    } catch (error) {
+      console.error("Update client document error:", error);
+      res.status(500).json({ message: "Failed to update document" });
+    }
+  });
+
+  app.delete("/api/ops/client-documents/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await opsStorage.deleteClientDocument(String(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Document not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete client document error:", error);
+      res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
   app.post("/api/ops/projects/:id/generate-invoice", isAuthenticated, async (req, res) => {
     try {
       const projectId = String(req.params.id);

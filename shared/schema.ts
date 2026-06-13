@@ -484,6 +484,26 @@ export const insertClientSchema = createInsertSchema(clients).omit({
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type Client = typeof clients.$inferSelect;
 
+export const clientDocuments = pgTable("client_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: varchar("client_id").references(() => clients.id, { onDelete: "cascade" }).notNull(),
+  filename: text("filename").notNull(),
+  storageKey: text("storage_key").notNull(),
+  category: text("category").notNull().default("other"),
+  fileSize: integer("file_size"),
+  contentType: text("content_type"),
+  notes: text("notes"),
+  uploadedBy: text("uploaded_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertClientDocumentSchema = createInsertSchema(clientDocuments).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertClientDocument = z.infer<typeof insertClientDocumentSchema>;
+export type ClientDocument = typeof clientDocuments.$inferSelect;
+
 export const dealStageEnum = pgEnum("deal_stage", [
   "qualification", "proposal", "negotiation", "closed_won", "closed_lost"
 ]);
