@@ -191,6 +191,7 @@ export default function TasksPage() {
                   <span
                     className={`flex-1 text-sm min-w-0 truncate ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}
                     data-testid={`text-task-title-${task.id}`}
+                    title={task.title}
                   >
                     {task.title}
                   </span>
@@ -210,14 +211,23 @@ export default function TasksPage() {
                   <Badge className={STATUS_COLORS[task.status] || ""} data-testid={`badge-status-${task.id}`}>
                     {STATUS_LABELS[task.status] || task.status}
                   </Badge>
-                  {task.dueDate && (
+                  {task.status === "done" && task.completedAt ? (
+                    <span
+                      className="text-xs whitespace-nowrap text-muted-foreground"
+                      data-testid={`text-completed-${task.id}`}
+                      title={`Completed ${new Date(task.completedAt).toLocaleString()}`}
+                    >
+                      Done {formatDate(task.completedAt)}
+                    </span>
+                  ) : task.dueDate ? (
                     <span
                       className={`text-xs whitespace-nowrap ${overdue ? "text-red-400" : dueToday ? "text-amber-400" : "text-muted-foreground"}`}
                       data-testid={`text-due-${task.id}`}
+                      title={`Due ${new Date(task.dueDate).toLocaleDateString()}`}
                     >
-                      {formatDate(task.dueDate)}
+                      Due {formatDate(task.dueDate)}
                     </span>
-                  )}
+                  ) : null}
                   {task.assignedTo && (
                     <span className="text-xs text-muted-foreground whitespace-nowrap" data-testid={`text-assignee-${task.id}`}>
                       {task.assignedTo}

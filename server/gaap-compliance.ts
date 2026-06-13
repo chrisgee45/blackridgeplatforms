@@ -86,7 +86,44 @@ export async function reopenFiscalPeriod(year: number, month: number, reopenedBy
 
 export async function createAuditLog(data: InsertAuditLog): Promise<AuditLog> {
   const [log] = await db.insert(auditLogs).values(data).returning();
+  if (data.action === "void" && data.performedBy) {
+    // Fire-and-forget — never block the caller on the bulk-void check.
+    checkBulkVoidThreshold(data.performedBy).catch(err =>
+      console.error("Bulk-void check error:", err)
+    );
+  }
   return log;
+}
+
+const BULK_VOID_THRESHOLD = 3;
+const BULK_VOID_WINDOW_MS = 5 * 60 * 1000;
+
+async function checkBulkVoidThreshold(user: string): Promise<void> {
+  const since = new Date(Date.now() - BULK_VOID_WINDOW_MS);
+  const recent = await db.select({ id: auditLogs.id }).from(auditLogs).where(and(
+    eq(auditLogs.performedBy, user),
+    eq(auditLogs.action, "void"),
+    gte(auditLogs.performedAt, since),
+  ));
+  if (recent.length < BULK_VOID_THRESHOLD) return;
+
+  // Avoid alert storms — only one alert per user per window.
+  const recentAlert = await db.select({ id: auditLogs.id }).from(auditLogs).where(and(
+    eq(auditLogs.action, "bulk_void_alert"),
+    eq(auditLogs.recordType, "audit_policy"),
+    eq(auditLogs.performedBy, user),
+    gte(auditLogs.performedAt, since),
+  ));
+  if (recentAlert.length > 0) return;
+
+  await db.insert(auditLogs).values({
+    action: "bulk_void_alert",
+    recordType: "audit_policy",
+    recordId: `bulk_void_${user}_${Date.now()}`,
+    description: `Bulk-void threshold hit: ${recent.length} voids by ${user} in the last ${BULK_VOID_WINDOW_MS / 60000} minutes.`,
+    performedBy: "system",
+  });
+  console.warn(`AUDIT ALERT: ${user} voided ${recent.length} entries in the last ${BULK_VOID_WINDOW_MS / 60000} min`);
 }
 
 export async function getAuditLogs(filters?: {

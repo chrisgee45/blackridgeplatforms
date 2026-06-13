@@ -91,6 +91,9 @@ export default function PipelinePage() {
         </h1>
         <p className="text-muted-foreground text-sm mt-1" data-testid="text-page-subtitle">
           Project stage pipeline overview
+          <span className="md:inline hidden text-xs ml-2 opacity-70">
+            — scroll horizontally for Completed / Archived
+          </span>
         </p>
       </div>
 
@@ -177,6 +180,7 @@ export default function PipelinePage() {
                                 <span
                                   className="font-semibold text-sm leading-tight"
                                   data-testid={`text-project-name-${project.id}`}
+                                  title={project.name}
                                 >
                                   {project.name}
                                 </span>
@@ -194,6 +198,7 @@ export default function PipelinePage() {
                                   <span
                                     className="truncate"
                                     data-testid={`text-company-${project.id}`}
+                                    title={companyMap.get(project.companyId) ?? undefined}
                                   >
                                     {companyMap.get(project.companyId)}
                                   </span>

@@ -36,6 +36,7 @@ const ACTION_ICONS: Record<string, any> = {
   reverse: ArrowLeftRight,
   close: Lock,
   reopen: Unlock,
+  bulk_void_alert: Shield,
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -45,6 +46,7 @@ const ACTION_COLORS: Record<string, string> = {
   reverse: "bg-orange-50 text-orange-700",
   close: "bg-purple-50 text-purple-700",
   reopen: "bg-yellow-50 text-yellow-700",
+  bulk_void_alert: "bg-amber-100 text-amber-800",
 };
 
 export default function AuditTrailPage() {

@@ -29,6 +29,8 @@ interface BackupStats {
   totalSizeBytes: number;
   recentFailures: number;
   maxBackups: number;
+  health?: "protected" | "at_risk" | "critical" | "unknown";
+  healthReason?: string;
 }
 
 function formatBytes(bytes: number | null): string {
@@ -77,9 +79,29 @@ export default function BackupsPage() {
     }
   }
 
-  const hasRecentBackup = stats?.lastBackup
-    ? (Date.now() - new Date(stats.lastBackup.createdAt).getTime()) < 25 * 3600000
-    : false;
+  const health = stats?.health ?? (stats?.lastBackup
+    ? ((Date.now() - new Date(stats.lastBackup.createdAt).getTime()) < 25 * 3600000 ? "protected" : "at_risk")
+    : "critical");
+
+  const statusLabel = health === "protected"
+    ? "Protected"
+    : health === "at_risk"
+      ? "At Risk"
+      : health === "critical"
+        ? "Critical"
+        : "Unknown";
+
+  const statusColor = health === "protected"
+    ? "text-emerald-600"
+    : health === "at_risk"
+      ? "text-amber-600"
+      : "text-red-600";
+
+  const statusIcon = health === "protected"
+    ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+    : health === "critical"
+      ? <XCircle className="h-3.5 w-3.5 text-red-500" />
+      : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />;
 
   return (
     <div className="p-6 space-y-6">
@@ -111,18 +133,14 @@ export default function BackupsPage() {
             <Card data-testid="card-backup-status">
               <CardContent className="pt-4 pb-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                  {hasRecentBackup ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                  {statusIcon}
                   Backup Status
                 </div>
                 <div className="text-lg font-bold" data-testid="text-backup-status">
-                  {hasRecentBackup ? (
-                    <span className="text-emerald-600">Protected</span>
-                  ) : (
-                    <span className="text-amber-600">Needs Backup</span>
-                  )}
+                  <span className={statusColor}>{statusLabel}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats?.lastBackup ? timeAgo(stats.lastBackup.createdAt) : "No backups yet"}
+                <p className="text-xs text-muted-foreground mt-1" title={stats?.healthReason}>
+                  {stats?.healthReason ?? (stats?.lastBackup ? timeAgo(stats.lastBackup.createdAt) : "No backups yet")}
                 </p>
               </CardContent>
             </Card>

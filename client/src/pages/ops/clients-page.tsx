@@ -21,11 +21,12 @@ import {
   ArrowRight, Mail, Phone, Globe, Building2, FileText, Clock,
   ChevronRight, ChevronDown, ChevronUp, CreditCard, BarChart3, Edit, Trash2, X, AlertTriangle,
   Loader2, Lock, CheckCircle, Link2, Copy, ExternalLink, Receipt, Calendar, Hash, RefreshCw,
-  PauseCircle, PlayCircle,
+  PauseCircle, PlayCircle, Upload, Download,
 } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import type { Client, Deal, Subscription, Project, StripePayment, ContactSubmission } from "@shared/schema";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import type { Client, ClientDocument, Deal, Subscription, Project, StripePayment, ContactSubmission } from "@shared/schema";
 
 const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
@@ -462,6 +463,22 @@ export default function ClientsPage() {
     queryKey: ["/api/ops/clients", selectedClientId, "payments"],
     enabled: !!selectedClientId,
   });
+  const { data: clientDocuments = [] } = useQuery<ClientDocument[]>({
+    queryKey: ["/api/ops/clients", selectedClientId, "documents"],
+    enabled: !!selectedClientId,
+  });
+  const [docCategory, setDocCategory] = useState("other");
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (docId: string) => {
+      const res = await apiRequest("DELETE", `/api/ops/client-documents/${docId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", selectedClientId, "documents"] });
+      toast({ title: "Document deleted" });
+    },
+    onError: (e: Error) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+  });
 
   const { data: crmLeads } = useQuery<ContactSubmission[]>({
     queryKey: ["/api/leads"],
@@ -736,6 +753,7 @@ export default function ClientsPage() {
             <TabsTrigger value="subscriptions" data-testid="tab-subscriptions">Subscriptions ({(clientSubs ?? []).length})</TabsTrigger>
             <TabsTrigger value="projects" data-testid="tab-projects">Projects ({(clientProjects ?? []).length})</TabsTrigger>
             <TabsTrigger value="payments" data-testid="tab-payments">Payments ({(clientPayments ?? []).length})</TabsTrigger>
+            <TabsTrigger value="documents" data-testid="tab-documents">Documents ({clientDocuments.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="deals" className="space-y-3 mt-4">
@@ -1379,6 +1397,149 @@ export default function ClientsPage() {
                   </CardContent>
                 </Card>
               ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="documents" className="space-y-4 mt-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Select value={docCategory} onValueChange={setDocCategory}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-client-doc-category">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="contract">Contract</SelectItem>
+                    <SelectItem value="invoice">Invoice</SelectItem>
+                    <SelectItem value="proposal">Proposal</SelectItem>
+                    <SelectItem value="tax">Tax / W-9</SelectItem>
+                    <SelectItem value="onboarding">Onboarding</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground">New uploads will be filed under this category</span>
+              </div>
+              <ObjectUploader
+                maxNumberOfFiles={10}
+                maxFileSize={20971520}
+                onGetUploadParameters={async (file) => {
+                  const res = await fetch("/api/uploads/request-url", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      name: file.name,
+                      size: file.size,
+                      contentType: file.type,
+                    }),
+                  });
+                  const data = await res.json();
+                  (file as any)._objectPath = data.objectPath;
+                  return { method: "PUT" as const, url: data.uploadURL };
+                }}
+                onComplete={async (result) => {
+                  const successful = result.successful || [];
+                  let savedCount = 0;
+                  for (const file of successful) {
+                    const objectPath = (file as any)._objectPath;
+                    if (!objectPath) continue;
+                    try {
+                      await apiRequest("POST", `/api/ops/clients/${selectedClientId}/documents`, {
+                        filename: file.name,
+                        storageKey: objectPath,
+                        category: docCategory,
+                        fileSize: file.size,
+                        contentType: file.type,
+                        uploadedBy: "admin",
+                      });
+                      savedCount++;
+                    } catch {
+                      toast({ title: "Upload error", description: `Failed to save record for ${file.name}`, variant: "destructive" });
+                    }
+                  }
+                  queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", selectedClientId, "documents"] });
+                  if (savedCount > 0) {
+                    toast({ title: `${savedCount} file${savedCount === 1 ? "" : "s"} uploaded` });
+                  }
+                }}
+              >
+                <Upload className="w-4 h-4 mr-1" />
+                Upload Files
+              </ObjectUploader>
+            </div>
+
+            {clientDocuments.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-8 text-center" data-testid="text-no-client-documents">
+                No documents uploaded yet
+              </p>
+            ) : (
+              ["contract", "invoice", "proposal", "tax", "onboarding", "other"].map((cat) => {
+                const catDocs = clientDocuments.filter((d) => d.category === cat);
+                if (catDocs.length === 0) return null;
+                const catLabels: Record<string, string> = {
+                  contract: "Contracts",
+                  invoice: "Invoices",
+                  proposal: "Proposals",
+                  tax: "Tax / W-9",
+                  onboarding: "Onboarding",
+                  other: "Other",
+                };
+                return (
+                  <div key={cat}>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2" data-testid={`text-client-doc-section-${cat}`}>
+                      {catLabels[cat]}
+                    </h4>
+                    <div className="space-y-1">
+                      {catDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center gap-3 py-2 px-3 rounded-md border border-border/30 hover-elevate"
+                          data-testid={`client-doc-${doc.id}`}
+                        >
+                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <span
+                              className="text-sm font-medium truncate block"
+                              data-testid={`text-client-doc-name-${doc.id}`}
+                              title={doc.filename}
+                            >
+                              {doc.filename}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {doc.fileSize ? `${(doc.fileSize / 1024).toFixed(1)} KB` : ""}
+                              {doc.createdAt ? ` · ${new Date(doc.createdAt).toLocaleDateString()}` : ""}
+                            </span>
+                          </div>
+                          {doc.notes && (
+                            <span className="text-xs text-muted-foreground/70 max-w-[200px] truncate" title={doc.notes}>
+                              {doc.notes}
+                            </span>
+                          )}
+                          <a
+                            href={doc.storageKey}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0"
+                          >
+                            <Button variant="ghost" size="icon" data-testid={`button-download-client-doc-${doc.id}`}>
+                              <Download className="w-3.5 h-3.5" />
+                            </Button>
+                          </a>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm(`Delete "${doc.filename}"?`)) deleteDocumentMutation.mutate(doc.id);
+                            }}
+                            disabled={deleteDocumentMutation.isPending}
+                            data-testid={`button-delete-client-doc-${doc.id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </TabsContent>
         </Tabs>

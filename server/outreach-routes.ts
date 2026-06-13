@@ -745,6 +745,16 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
     }
   });
 
+  app.post("/api/outreach/jobs/cleanup-orphans", isAuthenticated, async (_req, res) => {
+    try {
+      const cleaned = await outreachStorage.cleanupOrphanedJobs();
+      res.json({ success: true, cleaned });
+    } catch (error: any) {
+      console.error("Cleanup orphan jobs error:", error);
+      res.status(500).json({ message: error?.message ?? "Failed to clean up orphan jobs" });
+    }
+  });
+
   app.post("/api/outreach/process-jobs", isAuthenticated, async (_req, res) => {
     try {
       const { processAnalyzeLeadJob, processSendCampaignStepJob, processGenerateReplyJob } = await import("./outreach-jobs");

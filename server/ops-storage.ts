@@ -3,7 +3,7 @@ import {
   timeEntries, activityLogs, projectTemplates, templateStages,
   templateGates, templateMilestones, templateTasks, scheduledFollowups,
   projectPayments, aiReports, projectDocuments,
-  clients, deals, subscriptions, stripePayments, stripeEvents, paymentLinks, expenses,
+  clients, clientDocuments, deals, subscriptions, stripePayments, stripeEvents, paymentLinks, expenses,
   qaTemplates, qaChecklists, qaAuditLog, invoiceCounter,
   kickoffSubmissions, welcomeSequences,
   type InsertCompany, type Company,
@@ -21,6 +21,7 @@ import {
   type InsertAiReport, type AiReport,
   type InsertProjectDocument, type ProjectDocument,
   type InsertClient, type Client,
+  type InsertClientDocument, type ClientDocument,
   type InsertDeal, type Deal,
   type InsertSubscription, type Subscription,
   type InsertStripePayment, type StripePayment,
@@ -33,6 +34,36 @@ import {
 import { db } from "./db";
 import { eq, desc, asc, and, sql, inArray } from "drizzle-orm";
 
+// Strip wrapping straight/smart quotes from a name and collapse repeated
+// whitespace. Fixes the "Hometown Rock and Landscape, LLC" vs
+// '"Hometown Rock and Landscape, LLC"' mismatch surfaced in the audit.
+function normalizeBusinessName(raw: unknown): string | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== "string") return raw as any;
+  let s = raw.trim();
+  // Repeatedly strip a single matching outer pair of quotes (straight or curly).
+  // Loop because some entries had been double-quoted.
+  while (s.length >= 2) {
+    const first = s[0];
+    const last = s[s.length - 1];
+    const matched =
+      (first === '"' && last === '"') ||
+      (first === "'" && last === "'") ||
+      (first === "“" && last === "”") ||
+      (first === "‘" && last === "’");
+    if (!matched) break;
+    s = s.slice(1, -1).trim();
+  }
+  return s.replace(/\s{2,}/g, " ");
+}
+
+function normalizeNameFields<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== "object") return data;
+  const out: any = { ...data };
+  if (typeof out.name === "string") out.name = normalizeBusinessName(out.name);
+  return out;
+}
+
 export class OpsStorage {
   async getCompanies(): Promise<Company[]> {
     return db.select().from(companies).orderBy(asc(companies.name));
@@ -44,12 +75,12 @@ export class OpsStorage {
   }
 
   async createCompany(data: InsertCompany): Promise<Company> {
-    const [company] = await db.insert(companies).values(data).returning();
+    const [company] = await db.insert(companies).values(normalizeNameFields(data)).returning();
     return company;
   }
 
   async updateCompany(id: string, data: Partial<InsertCompany>): Promise<Company | undefined> {
-    const [company] = await db.update(companies).set({ ...data, updatedAt: new Date() }).where(eq(companies.id, id)).returning();
+    const [company] = await db.update(companies).set({ ...normalizeNameFields(data), updatedAt: new Date() }).where(eq(companies.id, id)).returning();
     return company;
   }
 
@@ -420,12 +451,12 @@ export class OpsStorage {
   }
 
   async createClient(data: InsertClient): Promise<Client> {
-    const [client] = await db.insert(clients).values(data).returning();
+    const [client] = await db.insert(clients).values(normalizeNameFields(data)).returning();
     return client;
   }
 
   async updateClient(id: string, data: Partial<InsertClient>): Promise<Client | undefined> {
-    const [client] = await db.update(clients).set(data).where(eq(clients.id, id)).returning();
+    const [client] = await db.update(clients).set(normalizeNameFields(data)).where(eq(clients.id, id)).returning();
     return client;
   }
 
@@ -437,7 +468,41 @@ export class OpsStorage {
     await db.update(stripeEvents).set({ clientId: null }).where(eq(stripeEvents.clientId, id));
     await db.update(expenses).set({ clientId: null }).where(eq(expenses.clientId, id));
     await db.update(projects).set({ clientId: null }).where(eq(projects.clientId, id));
+    // client_documents has ON DELETE CASCADE, but kept explicit for clarity
+    // in case the migration hasn't been applied yet.
+    await db.delete(clientDocuments).where(eq(clientDocuments.clientId, id));
     const result = await db.delete(clients).where(eq(clients.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getClientDocuments(clientId: string, category?: string): Promise<ClientDocument[]> {
+    if (category) {
+      return db.select().from(clientDocuments)
+        .where(and(eq(clientDocuments.clientId, clientId), eq(clientDocuments.category, category)))
+        .orderBy(desc(clientDocuments.createdAt));
+    }
+    return db.select().from(clientDocuments)
+      .where(eq(clientDocuments.clientId, clientId))
+      .orderBy(desc(clientDocuments.createdAt));
+  }
+
+  async getClientDocument(id: string): Promise<ClientDocument | undefined> {
+    const [doc] = await db.select().from(clientDocuments).where(eq(clientDocuments.id, id));
+    return doc;
+  }
+
+  async createClientDocument(data: InsertClientDocument): Promise<ClientDocument> {
+    const [doc] = await db.insert(clientDocuments).values(data).returning();
+    return doc;
+  }
+
+  async updateClientDocument(id: string, data: Partial<InsertClientDocument>): Promise<ClientDocument | undefined> {
+    const [doc] = await db.update(clientDocuments).set(data).where(eq(clientDocuments.id, id)).returning();
+    return doc;
+  }
+
+  async deleteClientDocument(id: string): Promise<boolean> {
+    const result = await db.delete(clientDocuments).where(eq(clientDocuments.id, id)).returning();
     return result.length > 0;
   }
 

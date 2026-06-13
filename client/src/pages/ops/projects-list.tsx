@@ -613,13 +613,18 @@ export default function ProjectsList() {
                     <h3
                       className="font-semibold text-sm truncate"
                       data-testid={`text-project-name-${project.id}`}
+                      title={project.name}
                     >
                       {project.name}
                     </h3>
                     {project.companyId && companyMap.has(project.companyId) && (
                       <div className="flex items-center gap-1.5 mt-1 text-muted-foreground text-xs">
                         <Building2 className="w-3 h-3 shrink-0" />
-                        <span className="truncate" data-testid={`text-company-${project.id}`}>
+                        <span
+                          className="truncate"
+                          data-testid={`text-company-${project.id}`}
+                          title={companyMap.get(project.companyId) ?? undefined}
+                        >
                           {companyMap.get(project.companyId)}
                         </span>
                       </div>

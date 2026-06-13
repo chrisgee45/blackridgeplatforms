@@ -8,13 +8,28 @@ const BACKUP_HOUR = 3;
 const MAX_BACKUPS_KEPT = 30;
 const S3_PREFIX = "backups";
 
-function getS3Client() {
-  const region = process.env.AWS_S3_REGION;
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+// Catches typos like "us-east-2-an" (was breaking outbound DNS to S3).
+// Accepts forms like us-east-2, eu-west-1, ap-southeast-3.
+const AWS_REGION_PATTERN = /^[a-z]{2}-[a-z]+-\d+$/;
 
-  if (!region || !accessKeyId || !secretAccessKey) {
-    throw new Error("AWS S3 credentials not configured (AWS_S3_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)");
+function normalizeRegion(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!AWS_REGION_PATTERN.test(trimmed)) return null;
+  return trimmed;
+}
+
+function getS3Client() {
+  const region = normalizeRegion(process.env.AWS_S3_REGION);
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim();
+
+  if (!region) {
+    const raw = process.env.AWS_S3_REGION || "<unset>";
+    throw new Error(`AWS_S3_REGION is invalid (got "${raw}"). Expected format like "us-east-2".`);
+  }
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("AWS S3 credentials not configured (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)");
   }
 
   return new S3Client({
@@ -24,7 +39,7 @@ function getS3Client() {
 }
 
 function getS3Bucket(): string {
-  const bucket = process.env.AWS_S3_BUCKET;
+  const bucket = process.env.AWS_S3_BUCKET?.trim();
   if (!bucket) throw new Error("AWS_S3_BUCKET not configured");
   return bucket;
 }
@@ -39,10 +54,29 @@ function sanitizeErrorMessage(msg: string): string {
     .slice(0, 500);
 }
 
+function sanitizeDatabaseUrl(raw: string): string {
+  // Strip whole-string whitespace and a trailing-space-in-path typo
+  // like "postgres://host/postgres " that caused dumps to fail with
+  // 'database "postgres " does not exist'.
+  const trimmed = raw.trim();
+  try {
+    const u = new URL(trimmed);
+    const dbName = decodeURIComponent(u.pathname.replace(/^\//, ""));
+    const cleanDbName = dbName.trim();
+    if (cleanDbName !== dbName) {
+      u.pathname = "/" + encodeURIComponent(cleanDbName);
+      return u.toString();
+    }
+  } catch {
+    // Not a parseable URL — leave it; pg_dump will surface the real error.
+  }
+  return trimmed;
+}
+
 function runPgDump(): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const rawUrl = process.env.DATABASE_URL || "";
-    const dbUrl = rawUrl.trim();
+    const dbUrl = sanitizeDatabaseUrl(rawUrl);
     if (!dbUrl) {
       reject(new Error("DATABASE_URL is not set"));
       return;
@@ -70,7 +104,15 @@ function runPgDump(): Promise<Buffer> {
         resolve(buf);
       } else {
         const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
-        const detail = stderr ? `: ${stderr.slice(0, 400)}` : "";
+        let detail = stderr ? `: ${stderr.slice(0, 400)}` : "";
+        // Surface a clearer hint for the very common
+        // "aborting because of server version mismatch" failure.
+        if (/server version mismatch/i.test(stderr)) {
+          detail += " — install a matching pg_dump (the server is newer than the client).";
+        }
+        if (/pg_dump: command not found|pg_dump:.*not found/i.test(stderr) || code === 127) {
+          detail = `: pg_dump binary not found on the backup runner. Install postgresql-client matching the server version.`;
+        }
         reject(new Error(`pg_dump exited ${code}${detail}`));
       }
     });
@@ -184,6 +226,33 @@ export async function getBackupStats() {
 
   const failedRecent = await db.select().from(backups)
     .where(sql`${backups.status} = 'failed' AND ${backups.createdAt} > now() - interval '7 days'`);
+  const recentFailures = failedRecent.length;
+
+  const lastCompletedAgeHours = lastBackup
+    ? (Date.now() - new Date(lastBackup.createdAt).getTime()) / 3600000
+    : Infinity;
+
+  // "Protected" only when we have a recent successful backup AND no failures
+  // in the last 7 days. Any recent failure flips us to "At Risk" so the green
+  // pill stops masking an actually-broken pipeline.
+  let health: "protected" | "at_risk" | "critical" | "unknown";
+  let healthReason: string;
+  if (!lastBackup) {
+    health = "critical";
+    healthReason = "No successful backups on record";
+  } else if (lastCompletedAgeHours > 48) {
+    health = "critical";
+    healthReason = `Last successful backup was ${Math.floor(lastCompletedAgeHours / 24)}d ago`;
+  } else if (recentFailures > 0) {
+    health = "at_risk";
+    healthReason = `${recentFailures} backup failure${recentFailures === 1 ? "" : "s"} in the last 7 days`;
+  } else if (lastCompletedAgeHours > 25) {
+    health = "at_risk";
+    healthReason = "Last successful backup is more than 25 hours old";
+  } else {
+    health = "protected";
+    healthReason = "Recent backups completed successfully";
+  }
 
   return {
     lastBackup: lastBackup ? {
@@ -193,8 +262,10 @@ export async function getBackupStats() {
     } : null,
     totalBackups,
     totalSizeBytes,
-    recentFailures: failedRecent.length,
+    recentFailures,
     maxBackups: MAX_BACKUPS_KEPT,
+    health,
+    healthReason,
   };
 }
 
