@@ -5,9 +5,10 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/auth-utils";
 import { MfaSettingsDialog } from "@/components/MfaSettings";
-import CrmCalendar, { EventDialog, styleFor } from "@/components/crm/crm-calendar";
+import CrmCalendar from "@/components/crm/crm-calendar";
+import { Calendar as OpsCalendar } from "@/pages/ops/calendar-page";
 import { format } from "date-fns";
-import type { ContactSubmission, UpdateLead, CreateLead, ProjectTemplate, Project, LeadActivity, CrmEvent, Proposal } from "@shared/schema";
+import type { ContactSubmission, UpdateLead, CreateLead, ProjectTemplate, Project, LeadActivity, Proposal } from "@shared/schema";
 import { createLeadSchema } from "@shared/schema";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -1299,86 +1300,11 @@ function LeadEmailComposer({ lead }: { lead: ContactSubmission }) {
 }
 
 function LeadEventsSection({ lead }: { lead: ContactSubmission }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<CrmEvent | null>(null);
-
-  const { data: events = [], isLoading } = useQuery<CrmEvent[]>({
-    queryKey: ["/api/crm/events", lead.id],
-    queryFn: async () => {
-      const res = await fetch(`/api/crm/events?leadId=${lead.id}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch events");
-      return res.json();
-    },
-  });
-
-  const sorted = [...events].sort(
-    (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
-  );
-
-  const openNew = () => { setEditing(null); setDialogOpen(true); };
-  const openEdit = (ev: CrmEvent) => { setEditing(ev); setDialogOpen(true); };
-
+  // Uses the same multi-view calendar as /admin/ops/calendar, scoped to
+  // this lead's CRM events. Click-to-create auto-populates the lead.
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Meetings &amp; Calls</span>
-        </div>
-        <Button size="sm" variant="outline" onClick={openNew} data-testid="button-schedule-lead-event">
-          <Plus className="h-4 w-4 mr-1" /> Schedule
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-4">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        </div>
-      ) : sorted.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-lead-events">
-          Nothing scheduled with this lead yet.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {sorted.map((ev) => {
-            const st = styleFor(ev.type);
-            const Icon = st.icon;
-            const cancelled = ev.status === "cancelled" || ev.status === "no_show";
-            return (
-              <button
-                key={ev.id}
-                onClick={() => openEdit(ev)}
-                className={`w-full flex items-center gap-3 p-2.5 rounded-lg border border-border/50 hover-elevate transition-colors text-left ${cancelled ? "opacity-60" : ""}`}
-                data-testid={`lead-event-${ev.id}`}
-              >
-                <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${st.soft}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-medium truncate ${cancelled ? "line-through" : ""}`}>{ev.title}</div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {format(new Date(ev.startAt), "EEE, MMM d · h:mm a")}
-                    {ev.location ? ` · ${ev.location}` : ""}
-                  </div>
-                </div>
-                <Badge variant="outline" className="text-[10px] shrink-0 capitalize">
-                  {ev.status === "no_show" ? "no-show" : ev.status}
-                </Badge>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <EventDialog
-        key={dialogOpen ? (editing?.id ?? "new") : "closed"}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        event={editing}
-        presetDate={null}
-        presetLeadId={lead.id}
-        leads={[lead]}
-      />
+    <div data-testid="lead-events-section">
+      <OpsCalendar leadId={lead.id} compact />
     </div>
   );
 }

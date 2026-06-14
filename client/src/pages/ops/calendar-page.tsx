@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { enablePush, pushPermission, pushSupported } from "@/lib/push";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,8 @@ import {
   AlertTriangle,
   Trash2,
   Save,
+  BellOff,
+  BellRing,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -223,11 +226,28 @@ function layoutColumns(items: { start: Date; end: Date; id: string }[]) {
 // Component
 // ---------------------------------------------------------------------------
 
+export interface CalendarProps {
+  /** When set, scopes the calendar to a single lead's CRM events and
+   *  auto-populates leadId on newly created events. */
+  leadId?: string;
+  /** Hide the page-level chrome (today strip, kbd hints). Use when embedded
+   *  in a drawer / detail panel. */
+  compact?: boolean;
+  /** Initial view. Defaults to "week" at the top level, "agenda" when
+   *  compact (works better in narrow containers). */
+  defaultView?: ViewMode;
+}
+
+/** Thin wrapper used by the /admin/ops/calendar route. */
 export default function CalendarPage() {
+  return <Calendar />;
+}
+
+export function Calendar({ leadId, compact, defaultView }: CalendarProps = {}) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const today = useMemo(() => new Date(), []);
-  const [view, setView] = useState<ViewMode>("week");
+  const [view, setView] = useState<ViewMode>(defaultView ?? (compact ? "agenda" : "week"));
   const [cursor, setCursor] = useState<Date>(startOfDay(today));
   const [search, setSearch] = useState("");
   const [hiddenTypes, setHiddenTypes] = useState<Set<EventType>>(new Set());
@@ -237,14 +257,17 @@ export default function CalendarPage() {
     eventId: string | null;
     initial: Partial<CrmEventDraft>;
   } | null>(null);
+  const [pushStatus, setPushStatus] = useState<NotificationPermission | "unsupported">(pushPermission());
+  const [pushBusy, setPushBusy] = useState(false);
 
   // Pull a wide enough window to cover whichever view we're in.
   const { rangeStart, rangeEnd } = useMemo(() => computeRange(view, cursor), [view, cursor]);
 
+  const eventsUrl = `/api/ops/calendar-events?startDate=${isoDate(rangeStart)}&endDate=${isoDate(rangeEnd)}${leadId ? `&leadId=${encodeURIComponent(leadId)}` : ""}`;
   const { data: events = [], isLoading } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/ops/calendar-events", isoDate(rangeStart), isoDate(rangeEnd)],
+    queryKey: ["/api/ops/calendar-events", isoDate(rangeStart), isoDate(rangeEnd), leadId ?? null],
     queryFn: async () => {
-      const res = await fetch(`/api/ops/calendar-events?startDate=${isoDate(rangeStart)}&endDate=${isoDate(rangeEnd)}`);
+      const res = await fetch(eventsUrl);
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
@@ -269,8 +292,10 @@ export default function CalendarPage() {
   }, [events, hiddenTypes, search]);
 
   // Keyboard nav: T → today, ←/→ → step, D/W/M/A → switch view, / → focus search.
+  // Disabled in compact / embedded mode so the host page's shortcuts win.
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
+    if (compact) return;
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -292,12 +317,12 @@ export default function CalendarPage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view]);
+  }, [view, compact]);
 
   // ── Mutations: create / update / delete CRM events
   const saveMutation = useMutation({
     mutationFn: async (draft: CrmEventDraft & { id?: string }) => {
-      const body = {
+      const body: Record<string, unknown> = {
         title: draft.title,
         type: draft.type,
         startAt: draft.startAt.toISOString(),
@@ -307,6 +332,11 @@ export default function CalendarPage() {
         reminderMinutes: draft.reminderMinutes ?? null,
         status: "scheduled",
       };
+      // Inherit lead binding when the calendar is scoped to a lead, but
+      // only on create — don't reassign an existing event's lead silently.
+      if (!draft.id && leadId) {
+        body.leadId = leadId;
+      }
       if (draft.id) {
         const res = await apiRequest("PATCH", `/api/crm/events/${draft.id}`, body);
         return res.json();
@@ -376,47 +406,109 @@ export default function CalendarPage() {
     });
   }
 
-  return (
-    <div className="p-3 sm:p-6 space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Calendar</h1>
-          <p className="text-muted-foreground text-xs mt-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mr-1">T</kbd> today
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">D W M A</kbd> view
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">←</kbd>
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">→</kbd> step
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">/</kbd> search
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search events…"
-              className="pl-8 h-9 w-56"
-              data-testid="input-calendar-search"
-            />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => openCreatePopover(
-              { x: window.innerWidth / 2 - 180, y: 120 },
-              nextHalfHour(),
-            )}
-            data-testid="button-new-event"
-          >
-            <Plus className="w-4 h-4 mr-1" /> New event
-          </Button>
-        </div>
-      </div>
+  async function handleEnablePush() {
+    setPushBusy(true);
+    try {
+      const result = await enablePush();
+      setPushStatus(pushPermission());
+      toast({ title: result.ok ? "Push enabled" : "Push not enabled", description: result.message, variant: result.ok ? "default" : "destructive" });
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
-      {/* Today strip */}
-      {todayBand && (
+  async function handleTestPush() {
+    try {
+      const res = await fetch("/api/push/test", { method: "POST", credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Test push failed");
+      }
+      toast({ title: "Test push sent" });
+    } catch (e: any) {
+      toast({ title: "Test push failed", description: e.message, variant: "destructive" });
+    }
+  }
+
+  const containerCls = compact ? "space-y-3" : "p-3 sm:p-6 space-y-4";
+
+  return (
+    <div className={containerCls}>
+      {/* Header — hidden when embedded; the host page renders its own. */}
+      {!compact && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Calendar</h1>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mr-1">T</kbd> today
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">D W M A</kbd> view
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">←</kbd>
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">→</kbd> step
+              <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] mx-1">/</kbd> search
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search events…"
+                className="pl-8 h-9 w-56"
+                data-testid="input-calendar-search"
+              />
+            </div>
+            <PushControl
+              status={pushStatus}
+              busy={pushBusy}
+              onEnable={handleEnablePush}
+              onTest={handleTestPush}
+              supported={pushSupported()}
+            />
+            <Button
+              size="sm"
+              onClick={() => openCreatePopover(
+                { x: window.innerWidth / 2 - 180, y: 120 },
+                nextHalfHour(),
+              )}
+              data-testid="button-new-event"
+            >
+              <Plus className="w-4 h-4 mr-1" /> New event
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Compact-mode mini toolbar (lead drawer) */}
+      {compact && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-sm font-semibold">Meetings &amp; Calls</span>
+          <div className="flex items-center gap-2">
+            <PushControl
+              status={pushStatus}
+              busy={pushBusy}
+              onEnable={handleEnablePush}
+              onTest={handleTestPush}
+              supported={pushSupported()}
+              compact
+            />
+            <Button
+              size="sm"
+              onClick={() => openCreatePopover(
+                { x: window.innerWidth / 2 - 180, y: 120 },
+                nextHalfHour(),
+              )}
+              data-testid="button-new-event"
+            >
+              <Plus className="w-4 h-4 mr-1" /> Schedule
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Today strip — page-level only */}
+      {!compact && todayBand && (
         <TodayStrip
           band={todayBand}
           onClick={(evt) => handleEventClick(evt)}
@@ -1481,5 +1573,82 @@ function EventDetailDrawer({
         )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Push control
+// ---------------------------------------------------------------------------
+
+function PushControl({
+  status,
+  busy,
+  onEnable,
+  onTest,
+  supported,
+  compact,
+}: {
+  status: NotificationPermission | "unsupported";
+  busy: boolean;
+  onEnable: () => void;
+  onTest: () => void;
+  supported: boolean;
+  compact?: boolean;
+}) {
+  if (!supported) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-9 text-xs"
+        title="On iPhone, add this site to your Home Screen first, then open it from there to enable push."
+        data-testid="button-push-unsupported"
+      >
+        <BellOff className="w-3.5 h-3.5 mr-1" /> {compact ? "Push" : "Push (PWA only)"}
+      </Button>
+    );
+  }
+  if (status === "granted") {
+    return (
+      <div className="inline-flex rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 h-9 items-center" data-testid="push-granted">
+        <span className="px-2 inline-flex items-center gap-1 text-xs">
+          <BellRing className="w-3.5 h-3.5" /> {compact ? "On" : "Push on"}
+        </span>
+        <button
+          onClick={onTest}
+          className="border-l border-emerald-500/30 px-2 text-xs hover:bg-emerald-500/20 h-full"
+          data-testid="button-push-test"
+          title="Send a test push to this device"
+        >
+          Test
+        </button>
+      </div>
+    );
+  }
+  if (status === "denied") {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-9 text-xs border-amber-500/40 text-amber-300"
+        title="Notification permission is denied. Re-enable it in your browser/site settings."
+        data-testid="button-push-denied"
+      >
+        <BellOff className="w-3.5 h-3.5 mr-1" /> {compact ? "Blocked" : "Push blocked"}
+      </Button>
+    );
+  }
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-9 text-xs"
+      onClick={onEnable}
+      disabled={busy}
+      data-testid="button-push-enable"
+    >
+      <Bell className="w-3.5 h-3.5 mr-1" />
+      {busy ? "…" : compact ? "Enable push" : "Enable push alerts"}
+    </Button>
   );
 }

@@ -72,6 +72,7 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
     label: "Overview",
     items: [
       { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
+      { title: "AI Insights", href: "/admin/ops/ai", icon: Brain },
     ],
   },
   {
