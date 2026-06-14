@@ -12,6 +12,7 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const AdminPortal = lazy(() => import("@/pages/admin"));
 const OpsLayout = lazy(() => import("@/pages/ops/ops-layout"));
 const OverviewPage = lazy(() => import("@/pages/ops/overview-page"));
+const AiOpsPage = lazy(() => import("@/pages/ops/ai-ops-page"));
 const ProjectDetail = lazy(() => import("@/pages/ops/project-detail"));
 const ProjectsList = lazy(() => import("@/pages/ops/projects-list"));
 const TasksPage = lazy(() => import("@/pages/ops/tasks-page"));
@@ -107,7 +108,7 @@ function Router() {
           {() => <OpsPage component={OverviewPage} />}
         </Route>
         <Route path="/admin/ops/ai">
-          {() => <OpsPage component={OverviewPage} />}
+          {() => <OpsPage component={AiOpsPage} />}
         </Route>
         <Route path="/admin/ops/outreach/audits/test">
           {() => <OpsPage component={AuditTestPage} />}

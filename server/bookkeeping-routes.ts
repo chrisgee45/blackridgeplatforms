@@ -808,6 +808,7 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
     try {
       const startStr = req.query.startDate as string || req.query.start as string;
       const endStr = req.query.endDate as string || req.query.end as string;
+      const leadId = (req.query.leadId as string) || null;
       if (!startStr || !endStr) {
         return res.json([]);
       }
@@ -818,6 +819,36 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
       }
       const { db: database } = await import("./db");
       const { sql } = await import("drizzle-orm");
+
+      // When scoped to a single lead, only CRM events make sense — tasks /
+      // milestones / bills / taxes aren't lead-owned. Return just crm_events.
+      if (leadId) {
+        const crmEvts = await database.execute(sql`
+          SELECT e.id, e.title, e.start_at as start, e.end_at as "end", e.type as crm_type,
+                 e.location, e.notes, e.status as detail, e.reminder_minutes,
+                 cs.name as lead_name, cs.id as lead_id
+          FROM crm_events e LEFT JOIN contact_submissions cs ON cs.id = e.lead_id
+          WHERE e.lead_id = ${leadId}
+            AND e.start_at >= ${startDate} AND e.start_at <= ${endDate}
+        `);
+        return res.json(crmEvts.rows.map((r: any) => ({
+          id: r.id,
+          title: r.title,
+          event_type: "crm_event",
+          crm_type: r.crm_type,
+          start: r.start,
+          end: r.end ?? r.start,
+          all_day: false,
+          location: r.location,
+          notes: r.notes,
+          detail: r.detail,
+          lead_name: r.lead_name,
+          lead_id: r.lead_id,
+          reminder_minutes: r.reminder_minutes,
+          color: r.crm_type === "call" ? "#06b6d4" : r.crm_type === "demo" ? "#a855f7" : r.crm_type === "follow_up" ? "#f59e0b" : "#22c55e",
+          date: r.start,
+        })));
+      }
 
       const [leadFollowups, taskDueDates, milestoneDueDates, billDueDates, taxPayments, crmEvts] = await Promise.all([
         database.execute(sql`
