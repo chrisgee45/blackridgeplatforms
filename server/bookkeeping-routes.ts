@@ -819,19 +819,19 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
       const { db: database } = await import("./db");
       const { sql } = await import("drizzle-orm");
 
-      const [leadFollowups, taskDueDates, milestoneDueDates, billDueDates, taxPayments] = await Promise.all([
+      const [leadFollowups, taskDueDates, milestoneDueDates, billDueDates, taxPayments, crmEvts] = await Promise.all([
         database.execute(sql`
           SELECT id, name as title, follow_up_date as date, 'follow_up' as event_type, status as detail
           FROM contact_submissions
           WHERE follow_up_date >= ${startDate} AND follow_up_date <= ${endDate} AND follow_up_date IS NOT NULL
         `),
         database.execute(sql`
-          SELECT t.id, t.title, t.due_date as date, 'task' as event_type, t.status as detail, p.name as project_name
+          SELECT t.id, t.title, t.due_date as date, 'task' as event_type, t.status as detail, p.name as project_name, t.project_id
           FROM tasks t LEFT JOIN projects p ON p.id = t.project_id
           WHERE t.due_date >= ${startDate} AND t.due_date <= ${endDate} AND t.due_date IS NOT NULL
         `),
         database.execute(sql`
-          SELECT m.id, m.title, m.due_date as date, 'milestone' as event_type, p.name as project_name
+          SELECT m.id, m.title, m.due_date as date, 'milestone' as event_type, p.name as project_name, m.project_id
           FROM milestones m LEFT JOIN projects p ON p.id = m.project_id
           WHERE m.due_date >= ${startDate} AND m.due_date <= ${endDate} AND m.due_date IS NOT NULL
         `),
@@ -845,20 +845,72 @@ export function registerBookkeepingRoutes(app: Express, isAuthenticated: Request
           FROM quarterly_tax_payments
           WHERE due_date >= ${startDate} AND due_date <= ${endDate}
         `),
+        database.execute(sql`
+          SELECT e.id, e.title, e.start_at as start, e.end_at as "end", e.type as crm_type,
+                 e.location, e.notes, e.status as detail, e.reminder_minutes,
+                 cs.name as lead_name, cs.id as lead_id
+          FROM crm_events e LEFT JOIN contact_submissions cs ON cs.id = e.lead_id
+          WHERE e.start_at >= ${startDate} AND e.start_at <= ${endDate}
+        `),
       ]);
 
       const events = [
-        ...leadFollowups.rows.map((r: any) => ({ ...r, event_type: "follow_up", color: "#f59e0b" })),
-        ...taskDueDates.rows.map((r: any) => ({ ...r, event_type: "task", color: "#3b82f6" })),
-        ...milestoneDueDates.rows.map((r: any) => ({ ...r, event_type: "milestone", color: "#8b5cf6" })),
-        ...billDueDates.rows.map((r: any) => ({ ...r, event_type: "bill", color: "#ef4444" })),
-        ...taxPayments.rows.map((r: any) => ({ ...r, event_type: "tax_payment", color: "#10b981" })),
+        ...leadFollowups.rows.map((r: any) => ({ ...r, event_type: "follow_up", all_day: true, color: "#f59e0b", start: r.date, end: r.date })),
+        ...taskDueDates.rows.map((r: any) => ({ ...r, event_type: "task", all_day: true, color: "#3b82f6", start: r.date, end: r.date })),
+        ...milestoneDueDates.rows.map((r: any) => ({ ...r, event_type: "milestone", all_day: true, color: "#8b5cf6", start: r.date, end: r.date })),
+        ...billDueDates.rows.map((r: any) => ({ ...r, event_type: "bill", all_day: true, color: "#ef4444", start: r.date, end: r.date })),
+        ...taxPayments.rows.map((r: any) => ({ ...r, event_type: "tax_payment", all_day: true, color: "#10b981", start: r.date, end: r.date })),
+        ...crmEvts.rows.map((r: any) => ({
+          id: r.id,
+          title: r.title,
+          event_type: "crm_event",
+          crm_type: r.crm_type,
+          start: r.start,
+          end: r.end ?? r.start,
+          all_day: false,
+          location: r.location,
+          notes: r.notes,
+          detail: r.detail,
+          lead_name: r.lead_name,
+          lead_id: r.lead_id,
+          reminder_minutes: r.reminder_minutes,
+          color: r.crm_type === "call" ? "#06b6d4" : r.crm_type === "demo" ? "#a855f7" : r.crm_type === "follow_up" ? "#f59e0b" : "#22c55e",
+          date: r.start,
+        })),
       ];
 
       res.json(events);
     } catch (error) {
       console.error("Calendar events error:", error);
       res.status(500).json({ message: "Failed to fetch calendar events" });
+    }
+  });
+
+  // Conflict check used by the inline create/edit popover before committing.
+  app.get("/api/ops/calendar-events/conflicts", isAuthenticated, async (req, res) => {
+    try {
+      const startStr = req.query.start as string;
+      const endStr = req.query.end as string;
+      const excludeId = (req.query.excludeId as string) || null;
+      const startDate = new Date(startStr);
+      const endDate = new Date(endStr);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ message: "Invalid start/end" });
+      }
+      const { db: database } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const result = await database.execute(sql`
+        SELECT id, title, start_at as start, end_at as "end", type
+        FROM crm_events
+        WHERE status = 'scheduled'
+          AND start_at < ${endDate}
+          AND COALESCE(end_at, start_at + interval '30 minutes') > ${startDate}
+          ${excludeId ? sql`AND id <> ${excludeId}` : sql``}
+      `);
+      res.json({ conflicts: result.rows });
+    } catch (error) {
+      console.error("Calendar conflicts error:", error);
+      res.status(500).json({ message: "Failed to check conflicts" });
     }
   });
 
