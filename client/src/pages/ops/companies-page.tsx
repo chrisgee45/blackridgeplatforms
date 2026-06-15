@@ -12,9 +12,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   Building2, Plus, ExternalLink, MapPin, Briefcase,
-  ChevronDown, ChevronUp, Users, FolderKanban, Globe, X, Edit, Trash2,
+  ChevronDown, ChevronUp, Users, FolderKanban, Globe, X, Edit, Trash2, UserCircle,
 } from "lucide-react";
-import type { Company, Project, ContactPerson } from "@shared/schema";
+import type { Client, Company, Project, ContactPerson } from "@shared/schema";
 
 const SIZE_COLORS: Record<string, string> = {
   "1-10": "bg-muted text-muted-foreground",
@@ -35,6 +35,7 @@ function formatDate(date: string | Date | null | undefined): string {
 
 interface CompanyWithContacts extends Company {
   contacts?: ContactPerson[];
+  clients?: Client[];
 }
 
 export default function CompaniesPage() {
@@ -497,6 +498,43 @@ export default function CompaniesPage() {
                             </div>
                           )}
                         </div>
+                      </div>
+
+                      <div className="mt-6">
+                        <h4 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
+                          <UserCircle className="w-4 h-4" />
+                          Linked Clients
+                        </h4>
+                        {detailLoading ? (
+                          <Skeleton className="h-4 w-3/4" />
+                        ) : (expandedCompany?.clients ?? []).length === 0 ? (
+                          <p className="text-muted-foreground text-xs" data-testid="text-no-linked-clients">
+                            No clients linked yet. Open a client and pick this company from the Links card.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(expandedCompany?.clients ?? []).map((client) => (
+                              <div
+                                key={client.id}
+                                className="flex items-center justify-between gap-2 text-sm"
+                                data-testid={`linked-client-${client.id}`}
+                              >
+                                <div className="min-w-0">
+                                  <span className="font-medium truncate">{client.name}</span>
+                                  {client.email && (
+                                    <span className="text-muted-foreground text-xs ml-2">{client.email}</span>
+                                  )}
+                                </div>
+                                <Badge
+                                  variant="secondary"
+                                  className="no-default-hover-elevate no-default-active-elevate text-[10px] capitalize shrink-0"
+                                >
+                                  {client.status}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {company.notes && (
