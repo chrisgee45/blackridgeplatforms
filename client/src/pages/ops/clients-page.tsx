@@ -754,6 +754,7 @@ export default function ClientsPage() {
             <TabsTrigger value="projects" data-testid="tab-projects">Projects ({(clientProjects ?? []).length})</TabsTrigger>
             <TabsTrigger value="payments" data-testid="tab-payments">Payments ({(clientPayments ?? []).length})</TabsTrigger>
             <TabsTrigger value="documents" data-testid="tab-documents">Documents ({clientDocuments.length})</TabsTrigger>
+            <TabsTrigger value="jake" data-testid="tab-jake">Jake</TabsTrigger>
           </TabsList>
 
           <TabsContent value="deals" className="space-y-3 mt-4">
@@ -1542,6 +1543,10 @@ export default function ClientsPage() {
               })
             )}
           </TabsContent>
+
+          <TabsContent value="jake" className="space-y-3 mt-4">
+            <ClientJakeSection clientId={selectedClient.id} />
+          </TabsContent>
         </Tabs>
 
         {selectedClient.notes && (
@@ -1769,6 +1774,74 @@ export default function ClientsPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+interface ProjectConversation {
+  id: string;
+  projectId: string;
+  clientId: string | null;
+  direction: "inbound" | "outbound";
+  subject: string | null;
+  body: string;
+  aiGenerated: boolean;
+  classification: string | null;
+  handoffTriggered: boolean;
+  createdAt: string;
+}
+
+function ClientJakeSection({ clientId }: { clientId: string }) {
+  const { data: conversations = [], isLoading } = useQuery<ProjectConversation[]>({
+    queryKey: ["/api/ops/clients", clientId, "jake/conversations"],
+    queryFn: async () => {
+      const res = await fetch(`/api/ops/clients/${clientId}/jake/conversations`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: projects = [] } = useQuery<Project[]>({
+    queryKey: ["/api/ops/clients", clientId, "projects"],
+  });
+  const projectName = (id: string) => projects.find(p => p.id === id)?.name ?? "Project";
+
+  if (isLoading) {
+    return <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+  }
+  if (conversations.length === 0) {
+    return (
+      <div className="text-center py-10 text-muted-foreground text-sm" data-testid="text-no-jake-convos">
+        No Jake conversations on file for this client yet. Activate Jake from a project to start the conversation.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">All Jake correspondence across this client's projects, newest first.</p>
+      {conversations.map(c => (
+        <div
+          key={c.id}
+          className={`rounded-md border p-3 ${c.direction === "outbound" ? "border-cyan-500/30 bg-cyan-500/5" : "border-border/40"}`}
+          data-testid={`client-jake-msg-${c.id}`}
+        >
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <Badge variant="secondary" className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${c.direction === "outbound" ? "bg-cyan-500/15 text-cyan-300" : "bg-muted text-muted-foreground"}`}>
+              {c.direction === "outbound" ? (c.aiGenerated ? "Jake" : "Chris") : "Client"}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">{projectName(c.projectId)}</span>
+            {c.handoffTriggered && (
+              <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-300">Handoff</Badge>
+            )}
+            <span className="text-[11px] text-muted-foreground ml-auto">
+              {new Date(c.createdAt).toLocaleString()}
+            </span>
+          </div>
+          {c.subject && <div className="text-xs font-medium text-muted-foreground mb-1">{c.subject}</div>}
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">{c.body}</p>
+        </div>
+      ))}
     </div>
   );
 }
