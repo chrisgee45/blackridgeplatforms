@@ -21,8 +21,17 @@ const JAKE_FROM_EMAIL = process.env.JAKE_FROM_EMAIL || "jake@blackridgeplatforms
 const JAKE_FROM_NAME = process.env.JAKE_FROM_NAME || "Jake at BlackRidge";
 
 export const JAKE_SYSTEM_PROMPT = `You are Jake, Chris Gee's personal assistant at BlackRidge Platforms.
-You handle email correspondence with active project clients on Chris's behalf.
-You are NOT Chris. You are his assistant. Always sign emails as "Jake".
+You handle email correspondence on Chris's behalf with both active project
+clients (during a build) and recurring clients (hosting / monthly
+maintenance after launch).
+You are NOT Chris. You are his assistant. Your title is "Client Relations
+Specialist". Every email MUST end with this exact four-line signature,
+no variations:
+
+Sincerely,
+Jake
+Client Relations Specialist
+BlackRidge Platforms
 
 ABOUT BLACKRIDGE
 BlackRidge Platforms is Chris's company. We build custom websites, client portals, CRM systems, project management tools, accounting/invoicing platforms, and AI tools — all hand-built for the specific business. No WordPress, no Wix, no templates. The client owns what we build.
@@ -67,7 +76,7 @@ OUTPUT FORMAT
 Return ONLY valid JSON, no commentary:
 {
   "classification": "STATUS_QUESTION|GENERAL_QUESTION|REQUEST|SCHEDULING|REASSURANCE|HANDOFF",
-  "reply": "<the email body to send, using \\n for paragraph breaks, signed 'Jake'>",
+  "reply": "<the email body to send, using \\n for paragraph breaks, ending with the four-line signature exactly as specified above>",
   "handoff": false,
   "handoffReason": null
 }
@@ -258,9 +267,36 @@ export async function disableJakeForProject(projectId: string): Promise<{ ok: bo
   return { ok: true };
 }
 
+const JAKE_SIGNATURE =
+`Sincerely,
+Jake
+Client Relations Specialist
+BlackRidge Platforms`;
+
 function renderIntroEmail(ctx: ClientContext): { subject: string; body: string } {
   const greeting = firstName(ctx.contactName ?? ctx.clientName);
   const projectLabel = ctx.project.name;
+  const stage = ctx.project.stage ?? "";
+  const isMaintenance = stage === "completed" || stage === "archived";
+
+  if (isMaintenance) {
+    // Recurring / hosting client — the build is done, Jake is the new
+    // point of contact for ongoing changes, hosting questions, etc.
+    const subject = `Quick hello from BlackRidge — ${projectLabel}`;
+    const body =
+`Hey ${greeting},
+
+Jake here, Chris's assistant at BlackRidge. Wanted to reach out and thank you for sticking with us as a recurring client. Having you continue to trust us with your hosting and ongoing work means a lot to all of us.
+
+Going forward I'll be your day-to-day point of contact. If you ever need anything, hosting questions, content updates, a small change, a new idea, or just a quick check-in, hit reply on this thread and I'll get back to you fast. I'll loop Chris in whenever something needs his eyes.
+
+No question is too small. We're glad to keep building with you.
+
+${JAKE_SIGNATURE}`;
+    return { subject, body };
+  }
+
+  // Active build — the original intro for in-flight projects.
   const subject = `Quick hello — ${projectLabel}`;
   const body =
 `Hey ${greeting},
@@ -271,9 +307,7 @@ Chris is heads-down on the work, so I'll be your day-to-day point of contact. If
 
 Anything you'd love to see in the final build that we haven't talked about yet, send it over. Easier to bake it in now than bolt it on later.
 
-Talk soon,
-Jake
-BlackRidge Platforms`;
+${JAKE_SIGNATURE}`;
   return { subject, body };
 }
 
@@ -427,8 +461,14 @@ ${renderTimelineForPrompt(timeline)}`;
     return;
   }
 
-  const replyBody = parsed.reply?.trim();
+  let replyBody = parsed.reply?.trim();
   if (!replyBody) return;
+  // Belt-and-suspenders: even though the system prompt mandates the
+  // signature, append it if the model forgot or shortened it. Skip when
+  // the title line is already present so we don't double-stamp.
+  if (!/client\s+relations\s+specialist/i.test(replyBody)) {
+    replyBody = `${replyBody.replace(/\s+$/, "")}\n\n${JAKE_SIGNATURE}`;
+  }
 
   // Pull the latest inbound to thread the reply.
   const lastInbound = history.filter(c => c.direction === "inbound").slice(-1)[0];
