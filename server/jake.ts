@@ -61,10 +61,13 @@ WHAT YOU CAN HANDLE YOURSELF
 - Sharing what tech / approach we're using if asked
 - Reassurance, expectation-setting, pointing them to the next milestone
 
+USING THE PROJECT BRIEF
+The user message includes a PROJECT BRIEF section with description / notes / contract terms for THIS specific project. Treat the brief as authoritative. If the client asks about something the brief covers (pricing structure, what's included, upfront vs. subscription, scope), answer directly using the brief. Do NOT hand off just because the topic is sensitive — only hand off when the brief does NOT cover the question.
+
 WHAT YOU MUST HAND OFF TO CHRIS (set handoff: true, do NOT reply yourself)
-- Anything about money: price, fees, invoices, billing, payment, upfront costs, deposits, subscription costs
-- Anything about the contract, scope, or what's included
-- Timeline shifts or deadline negotiations
+- Money / pricing / scope questions WHERE the project brief does NOT contain the answer
+- Renegotiating terms that are already set (e.g., client asks for a discount on a price the brief states)
+- Timeline shifts or deadline negotiations not addressed by the brief
 - Complaints, frustration, anger, or anything that hints at unhappiness
 - Requests for a call or meeting with Chris specifically
 - Anything you don't know with confidence
@@ -73,6 +76,7 @@ CRITICAL RULES
 - Read the client's MOST RECENT message carefully and respond to what they actually said. Never send a generic "checking in" or follow-up unless the client explicitly asked for a status check.
 - If the latest client message is empty, unreadable, or you cannot tell what they're asking, set handoff: true with a handoffReason explaining that Chris should open the email directly.
 - Do NOT send a reply that ignores the client's question.
+- Do NOT invent details that aren't in the project brief. If the brief says "no upfront, subscription only", say exactly that — don't add caveats Chris didn't authorize.
 
 WHEN HANDING OFF
 Do not draft a reply. Just set handoff: true and write a short handoffReason explaining what the client needs. Chris will take over.
@@ -99,6 +103,7 @@ interface ClientContext {
   contactEmail: string | null;
   companyName: string | null;
   clientName: string | null;
+  clientNotes: string | null;
 }
 
 interface TimelineSnapshot {
@@ -172,6 +177,7 @@ async function gatherContext(projectId: string): Promise<ClientContext | null> {
   let contactEmail: string | null = null;
   let companyName: string | null = null;
   let clientName: string | null = null;
+  let clientNotes: string | null = null;
 
   if (proj.contactId) {
     const [c] = await db.select().from(contacts).where(eq(contacts.id, proj.contactId));
@@ -188,12 +194,13 @@ async function gatherContext(projectId: string): Promise<ClientContext | null> {
     const [cl] = await db.select().from(clients).where(eq(clients.id, proj.clientId));
     if (cl) {
       clientName = cl.name ?? null;
+      clientNotes = cl.notes ?? null;
       // Use the client's email as a fallback if no project contact exists.
       if (!contactEmail) contactEmail = cl.email ?? null;
     }
   }
 
-  return { project: proj, contactName, contactEmail, companyName, clientName };
+  return { project: proj, contactName, contactEmail, companyName, clientName, clientNotes };
 }
 
 function firstName(full: string | null | undefined): string {
@@ -432,12 +439,36 @@ export async function processJakeReplyJob(payload: { project_id: string }): Prom
 
   const stageLabel = ctx.project.stage?.replace(/_/g, " ") ?? "in progress";
   const timeline = await gatherTimeline(projectId);
+
+  // Pricing / scope / billing answers come from this section. Jake is told
+  // to treat it as the source of truth — answer directly when it covers
+  // the client's question, hand off only when it doesn't.
+  const projectBriefSections: string[] = [];
+  if (ctx.project.description?.trim()) {
+    projectBriefSections.push(`Project description / notes:\n${ctx.project.description.trim()}`);
+  }
+  if (ctx.clientNotes?.trim()) {
+    projectBriefSections.push(`Client-level notes:\n${ctx.clientNotes.trim()}`);
+  }
+  if (ctx.project.contractValue != null) {
+    projectBriefSections.push(`Contract value on record: $${ctx.project.contractValue.toLocaleString()}`);
+  }
+  if (ctx.project.hourlyRate != null) {
+    projectBriefSections.push(`Hourly rate on record: $${ctx.project.hourlyRate}/hr`);
+  }
+  const projectBrief = projectBriefSections.length
+    ? projectBriefSections.join("\n\n")
+    : "(no project-specific notes are recorded)";
+
   const projectContext = `Project: ${ctx.project.name}
 Current stage: ${stageLabel}
 Client: ${ctx.clientName ?? ctx.companyName ?? "the client"}
 Contact: ${ctx.contactName ?? "the client"}
 
-PROJECT TIMELINE (use this to give accurate status updates — only mention specifics if the client asks or it's directly relevant)
+PROJECT BRIEF (treat this as authoritative for this project — when it answers the client's question, answer using it; only hand off if it does NOT cover the question)
+${projectBrief}
+
+PROJECT TIMELINE (use to give accurate status updates — only mention specifics if the client asks or it's directly relevant)
 ${renderTimelineForPrompt(timeline)}`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
