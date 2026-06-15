@@ -33,7 +33,9 @@ export async function captureScreenshot(url: string): Promise<string | null> {
     const file = bucket.file(objectName);
     await file.save(buffer, { contentType: "image/png" });
 
-    return `/objects/${entityId}`;
+    // The returned URL must include the bucket+privateDir prefix so
+    // GET /objects/<path> resolves to the file we just wrote.
+    return `/objects${fullPath}`.replace(/\/+/g, "/");
   } catch (err: any) {
     console.warn(`Screenshot capture failed for ${url}: ${err.message}`);
     return null;
