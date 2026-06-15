@@ -16,6 +16,7 @@ import {
   SidebarFooter,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
@@ -327,11 +328,19 @@ function useDebounce(value: string, delay: number): string {
 
 function OpsSidebar({ setMfaOpen }: { setMfaOpen: (open: boolean) => void }) {
   const [location] = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  // On mobile / sheet view, clicking a menu item should both navigate AND
+  // close the sidebar. The default sidebar behavior leaves it open over
+  // the destination page until the user dismisses it manually.
+  const closeOnMobile = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/admin/ops">
+        <Link href="/admin/ops" onClick={closeOnMobile}>
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center">
               <Mountain className="w-4 h-4 text-primary" />
@@ -355,7 +364,11 @@ function OpsSidebar({ setMfaOpen }: { setMfaOpen: (open: boolean) => void }) {
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild data-active={isActive}>
-                        <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <Link
+                          href={item.href}
+                          onClick={closeOnMobile}
+                          data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
                           <item.icon className="w-4 h-4" />
                           <span>{item.title}</span>
                         </Link>
@@ -371,14 +384,17 @@ function OpsSidebar({ setMfaOpen }: { setMfaOpen: (open: boolean) => void }) {
       <SidebarFooter className="p-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setMfaOpen?.(true)} data-testid="nav-mfa-settings">
+            <SidebarMenuButton
+              onClick={() => { closeOnMobile(); setMfaOpen?.(true); }}
+              data-testid="nav-mfa-settings"
+            >
               <ShieldCheck className="w-4 h-4" />
               <span>MFA Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
-              <Link href="/admin" data-testid="nav-back-crm">
+              <Link href="/admin" onClick={closeOnMobile} data-testid="nav-back-crm">
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back to CRM</span>
               </Link>

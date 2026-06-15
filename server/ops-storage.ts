@@ -435,6 +435,10 @@ export class OpsStorage {
     return db.select().from(clients).orderBy(desc(clients.createdAt));
   }
 
+  async getClientsByCompany(companyId: string): Promise<Client[]> {
+    return db.select().from(clients).where(eq(clients.companyId, companyId)).orderBy(desc(clients.createdAt));
+  }
+
   async getClient(id: string): Promise<Client | undefined> {
     const [client] = await db.select().from(clients).where(eq(clients.id, id));
     return client;

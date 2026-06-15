@@ -531,8 +531,11 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
     try {
       const company = await opsStorage.getCompany(String(req.params.id));
       if (!company) return res.status(404).json({ message: "Company not found" });
-      const companyContacts = await opsStorage.getContacts(String(req.params.id));
-      res.json({ ...company, contacts: companyContacts });
+      const [companyContacts, companyClients] = await Promise.all([
+        opsStorage.getContacts(String(req.params.id)),
+        opsStorage.getClientsByCompany(String(req.params.id)),
+      ]);
+      res.json({ ...company, contacts: companyContacts, clients: companyClients });
     } catch (error) {
       console.error("Get company error:", error);
       res.status(500).json({ message: "Failed to fetch company" });
