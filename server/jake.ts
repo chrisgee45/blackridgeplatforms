@@ -72,22 +72,11 @@ WHAT YOU MUST HAND OFF TO CHRIS (set handoff: true, do NOT reply yourself)
 WHEN HANDING OFF
 Do not draft a reply. Just set handoff: true and write a short handoffReason explaining what the client needs. Chris will take over.
 
-OUTPUT FORMAT
-Return ONLY valid JSON, no commentary:
-{
-  "classification": "STATUS_QUESTION|GENERAL_QUESTION|REQUEST|SCHEDULING|REASSURANCE|HANDOFF",
-  "reply": "<the email body to send, using \\n for paragraph breaks, ending with the four-line signature exactly as specified above>",
-  "handoff": false,
-  "handoffReason": null
-}
-
-If handoff is true:
-{
-  "classification": "HANDOFF",
-  "reply": "",
-  "handoff": true,
-  "handoffReason": "<one sentence: what does Chris need to address>"
-}`;
+OUTPUT
+Call the respond_to_client tool. Put the email body in 'reply' with real
+newlines for paragraph breaks. End the reply with the four-line signature
+above unless you're handing off (in that case leave reply empty, set
+handoff true, and write a one-sentence handoffReason for Chris).`;
 
 function getResendClient(): { client: Resend; fromEmail: string; fromName: string } | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -421,23 +410,61 @@ ${renderTimelineForPrompt(timeline)}`;
     model: "claude-sonnet-4-6",
     max_tokens: 2000,
     system: JAKE_SYSTEM_PROMPT,
+    // Force a tool call with a typed schema. This sidesteps the
+    // JSON-in-text fragility (Claude occasionally emits raw newlines
+    // inside strings, breaking JSON.parse and triggering the safety
+    // handoff). With a tool, the SDK returns input as a real object.
+    tools: [{
+      name: "respond_to_client",
+      description: "Produce Jake's reply to the client, or hand the conversation off to Chris when the topic is sensitive.",
+      input_schema: {
+        type: "object",
+        properties: {
+          classification: {
+            type: "string",
+            enum: ["STATUS_QUESTION", "GENERAL_QUESTION", "REQUEST", "SCHEDULING", "REASSURANCE", "HANDOFF"],
+            description: "Category of the client's latest message.",
+          },
+          reply: {
+            type: "string",
+            description: "The email body Jake will send. Use actual newlines for paragraph breaks. End with the four-line signature (Sincerely / Jake / Client Relations Specialist / BlackRidge Platforms). Leave empty when handing off.",
+          },
+          handoff: {
+            type: "boolean",
+            description: "True when the topic must be escalated to Chris (pricing, contract, scope, complaints, anything you're not sure about). When true, do not draft a reply.",
+          },
+          handoffReason: {
+            type: "string",
+            description: "One sentence explaining what Chris needs to address. Required when handoff is true.",
+          },
+        },
+        required: ["classification", "reply", "handoff"],
+      },
+    }],
+    tool_choice: { type: "tool", name: "respond_to_client" },
     messages: [{
       role: "user",
       content: `${projectContext}\n\nConversation so far:\n\n${threadText}\n\nThe client's most recent message is at the bottom. Respond to it as Jake.`,
     }],
   });
 
-  const raw = response.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const toolBlock = response.content.find(b => b.type === "tool_use") as
+    | { type: "tool_use"; name: string; input: Record<string, unknown> }
+    | undefined;
 
-  let parsed: { classification?: string; reply?: string; handoff?: boolean; handoffReason?: string } = {};
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    console.error("Jake reply parse failed:", err);
-    // Belt-and-suspenders: treat unparseable output as a handoff so we never
-    // send garbage to a paying client.
-    parsed = { handoff: true, handoffReason: "Jake's response could not be parsed; needs human review." };
+  let parsed: { classification?: string; reply?: string; handoff?: boolean; handoffReason?: string };
+  if (toolBlock && typeof toolBlock.input === "object") {
+    parsed = {
+      classification: typeof toolBlock.input.classification === "string" ? toolBlock.input.classification : undefined,
+      reply: typeof toolBlock.input.reply === "string" ? toolBlock.input.reply : undefined,
+      handoff: !!toolBlock.input.handoff,
+      handoffReason: typeof toolBlock.input.handoffReason === "string" ? toolBlock.input.handoffReason : undefined,
+    };
+  } else {
+    // Refusal or malformed tool use — fall back to a handoff so we never
+    // ship something we couldn't verify.
+    console.error("Jake reply tool-use missing:", JSON.stringify(response.content).slice(0, 1000));
+    parsed = { handoff: true, handoffReason: "Jake didn't return a usable response; needs human review." };
   }
 
   if (parsed.handoff) {
