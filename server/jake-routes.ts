@@ -95,10 +95,14 @@ export function registerJakeRoutes(app: Express, isAuthenticated: RequestHandler
   });
 
   // Public inbound webhook: Resend forwards email sent to jake@ here.
-  // Same Svix signature verification as the outreach inbound webhook.
+  // Uses a Jake-specific signing secret so it can coexist with the
+  // outreach webhook (which has its own secret in RESEND_WEBHOOK_SECRET).
+  // Falls back to RESEND_WEBHOOK_SECRET only when JAKE_RESEND_WEBHOOK_SECRET
+  // isn't set, which is fine for dev environments where only one Resend
+  // webhook exists.
   app.post("/api/jake/inbound", async (req, res) => {
     try {
-      const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+      const webhookSecret = process.env.JAKE_RESEND_WEBHOOK_SECRET || process.env.RESEND_WEBHOOK_SECRET;
       if (webhookSecret) {
         const svixId = req.headers["svix-id"] as string;
         const svixTimestamp = req.headers["svix-timestamp"] as string;
