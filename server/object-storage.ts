@@ -1,32 +1,71 @@
 /**
- * Local-disk object storage, a drop-in replacement for the old
- * Replit/Google Cloud Storage client used throughout the codebase.
+ * Object storage with two interchangeable backends:
  *
- * This preserves the surface the rest of the app relies on:
- *   - objectStorageClient.bucket(name).file(path).save(buffer, { contentType })
- *   - new ObjectStorageService().getPrivateObjectDir()
- *   - registerObjectStorageRoutes(app) serving /objects/:path(*)
- *   - ObjectNotFoundError
+ *   - **S3**     (production) — chosen when AWS_S3_BUCKET (or the override
+ *                  AWS_S3_DOCUMENTS_BUCKET) and AWS region/keys are set.
+ *                  Survives container restarts; this is the "documents
+ *                  cannot be lost" requirement.
+ *   - **local**  (dev) — falls back to disk under STORAGE_ROOT when no
+ *                  S3 bucket is configured.
  *
- * Files are written under `<STORAGE_ROOT>/<bucketName>/<path>` with a sidecar
- * `.meta.json` for contentType so downloads can set the right header.
+ * The surface the rest of the app consumes is identical in either mode:
  *
- * Configuration (env):
- *   STORAGE_ROOT           base directory for all buckets (default: ./storage)
- *   PRIVATE_OBJECT_DIR     logical "/<bucket>/<prefix>" used for private uploads
- *                          (e.g. "/blackridge/private")
+ *   objectStorageClient.bucket(name).file(path).save(buffer, { contentType })
+ *   new ObjectStorageService().getPrivateObjectDir()
+ *   service.getObjectEntityUploadURL()
+ *   service.normalizeObjectEntityPath(rawPath)
+ *   service.getObjectEntityFile(requestPath)        // throws ObjectNotFoundError
+ *   service.downloadObject(file, res, cacheTtlSec?)
+ *   registerObjectStorageRoutes(app)                // /api/uploads/* + /objects/*
+ *
+ * Environment:
+ *   AWS_S3_DOCUMENTS_BUCKET  S3 bucket for app uploads. Falls back to
+ *                            AWS_S3_BUCKET (the same one used for backups)
+ *                            when not set. Different prefixes keep
+ *                            backups/ and the document tree separated.
+ *   AWS_S3_REGION            e.g. "us-east-2"
+ *   AWS_ACCESS_KEY_ID
+ *   AWS_SECRET_ACCESS_KEY
+ *   PRIVATE_OBJECT_DIR       Logical path prefix used for private uploads
+ *                            (e.g. "/blackridge/private"). Translates to
+ *                            an S3 key prefix in S3 mode and a directory
+ *                            tree under STORAGE_ROOT locally.
  *   PUBLIC_OBJECT_SEARCH_PATHS
- *                          comma-separated list of "/<bucket>/<prefix>" for
- *                          public lookups (optional)
- *
- * Swap this for S3/GCS later by re-implementing the same exported surface.
+ *                            Comma-separated logical paths consulted for
+ *                            public lookups (optional).
+ *   STORAGE_ROOT             Local-only — base dir for buckets when S3
+ *                            isn't configured (default: ./storage).
  */
 import type { Express, Response } from "express";
 import { promises as fs, createReadStream } from "fs";
 import path from "path";
+import { Readable } from "stream";
 import { randomUUID } from "crypto";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+} from "@aws-sdk/client-s3";
 
 const STORAGE_ROOT = path.resolve(process.env.STORAGE_ROOT || "./storage");
+
+const S3_DOC_BUCKET = (process.env.AWS_S3_DOCUMENTS_BUCKET || process.env.AWS_S3_BUCKET || "").trim();
+const S3_REGION = (process.env.AWS_S3_REGION || "").trim();
+const S3_ACCESS_KEY = (process.env.AWS_ACCESS_KEY_ID || "").trim();
+const S3_SECRET_KEY = (process.env.AWS_SECRET_ACCESS_KEY || "").trim();
+const USE_S3 = !!(S3_DOC_BUCKET && S3_REGION && S3_ACCESS_KEY && S3_SECRET_KEY);
+
+let s3Client: S3Client | null = null;
+function getS3(): S3Client {
+  if (!s3Client) {
+    s3Client = new S3Client({
+      region: S3_REGION,
+      credentials: { accessKeyId: S3_ACCESS_KEY, secretAccessKey: S3_SECRET_KEY },
+    });
+  }
+  return s3Client;
+}
 
 async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true });
@@ -36,6 +75,14 @@ function resolveFsPath(bucketName: string, objectName: string): string {
   const safeBucket = bucketName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const safeObject = objectName.replace(/\.\.(\/|\\|$)/g, "");
   return path.join(STORAGE_ROOT, safeBucket, safeObject);
+}
+
+function toS3Key(bucketName: string, objectName: string): string {
+  // The "bucketName" from the logical hierarchy becomes a prefix inside
+  // the single real S3 bucket. Strip any leading slashes that could land
+  // an object at "//path".
+  const safeObject = objectName.replace(/^\/+/, "");
+  return `${bucketName}/${safeObject}`;
 }
 
 export class ObjectNotFoundError extends Error {
@@ -50,7 +97,20 @@ interface SaveOptions {
   contentType?: string;
 }
 
-class LocalFile {
+/** Behavioral surface every file backend must provide. */
+interface StorageFile {
+  name: string;
+  save(data: Buffer, options?: SaveOptions): Promise<void>;
+  exists(): Promise<[boolean]>;
+  getMetadata(): Promise<[{ contentType?: string; size: number }]>;
+  download(res: Response, cacheTtlSec?: number): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Local disk implementation (dev fallback)
+// ---------------------------------------------------------------------------
+
+class LocalFile implements StorageFile {
   constructor(private bucketName: string, public name: string) {}
 
   private get fsPath(): string {
@@ -89,13 +149,24 @@ class LocalFile {
       const raw = await fs.readFile(this.metaPath, "utf8");
       contentType = JSON.parse(raw).contentType;
     } catch {
-      // no sidecar — best-effort
+      /* no sidecar — best-effort */
     }
     return [{ contentType, size: stat.size }];
   }
 
-  createReadStream() {
-    return createReadStream(this.fsPath);
+  async download(res: Response, cacheTtlSec = 3600): Promise<void> {
+    const [metadata] = await this.getMetadata();
+    res.set({
+      "Content-Type": metadata.contentType || "application/octet-stream",
+      "Content-Length": String(metadata.size),
+      "Cache-Control": `private, max-age=${cacheTtlSec}`,
+    });
+    const stream = createReadStream(this.fsPath);
+    stream.on("error", (err) => {
+      console.error("Stream error:", err);
+      if (!res.headersSent) res.status(500).json({ error: "Error streaming file" });
+    });
+    stream.pipe(res);
   }
 }
 
@@ -112,7 +183,95 @@ class LocalStorageClient {
   }
 }
 
-export const objectStorageClient = new LocalStorageClient();
+// ---------------------------------------------------------------------------
+// S3 implementation (production)
+// ---------------------------------------------------------------------------
+
+function isS3NotFound(err: any): boolean {
+  return (
+    err?.name === "NotFound" ||
+    err?.Code === "NoSuchKey" ||
+    err?.$metadata?.httpStatusCode === 404
+  );
+}
+
+class S3File implements StorageFile {
+  constructor(private bucketName: string, public name: string) {}
+
+  private get key(): string {
+    return toS3Key(this.bucketName, this.name);
+  }
+
+  async save(data: Buffer, options: SaveOptions = {}): Promise<void> {
+    await getS3().send(new PutObjectCommand({
+      Bucket: S3_DOC_BUCKET,
+      Key: this.key,
+      Body: data,
+      ContentType: options.contentType || "application/octet-stream",
+      ServerSideEncryption: "AES256",
+    }));
+  }
+
+  async exists(): Promise<[boolean]> {
+    try {
+      await getS3().send(new HeadObjectCommand({ Bucket: S3_DOC_BUCKET, Key: this.key }));
+      return [true];
+    } catch (err: any) {
+      if (isS3NotFound(err)) return [false];
+      throw err;
+    }
+  }
+
+  async getMetadata(): Promise<[{ contentType?: string; size: number }]> {
+    const head = await getS3().send(new HeadObjectCommand({ Bucket: S3_DOC_BUCKET, Key: this.key }));
+    return [{ contentType: head.ContentType, size: head.ContentLength ?? 0 }];
+  }
+
+  async download(res: Response, cacheTtlSec = 3600): Promise<void> {
+    const result = await getS3().send(new GetObjectCommand({ Bucket: S3_DOC_BUCKET, Key: this.key }));
+    const headers: Record<string, string> = {
+      "Content-Type": result.ContentType || "application/octet-stream",
+      "Cache-Control": `private, max-age=${cacheTtlSec}`,
+    };
+    if (typeof result.ContentLength === "number") {
+      headers["Content-Length"] = String(result.ContentLength);
+    }
+    res.set(headers);
+
+    const body = result.Body;
+    if (!body) {
+      if (!res.headersSent) res.status(500).json({ error: "Empty S3 response body" });
+      return;
+    }
+    // AWS SDK v3 returns a Node Readable on Node runtimes.
+    const stream = body as Readable;
+    stream.on("error", (err) => {
+      console.error("S3 stream error:", err);
+      if (!res.headersSent) res.status(500).json({ error: "Error streaming file" });
+    });
+    stream.pipe(res);
+  }
+}
+
+class S3Bucket {
+  constructor(private bucketName: string) {}
+  file(objectName: string): S3File {
+    return new S3File(this.bucketName, objectName);
+  }
+}
+
+class S3StorageClient {
+  bucket(bucketName: string): S3Bucket {
+    return new S3Bucket(bucketName);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public exports
+// ---------------------------------------------------------------------------
+
+export const objectStorageClient: { bucket: (n: string) => { file: (o: string) => StorageFile } } =
+  USE_S3 ? new S3StorageClient() : new LocalStorageClient();
 
 function parseLogicalPath(logical: string): { bucketName: string; objectName: string } {
   const cleaned = logical.replace(/^\/+/, "");
@@ -150,14 +309,17 @@ export class ObjectStorageService {
   }
 
   /**
-   * Generates a new opaque object path for a direct upload. In this local
-   * implementation we don't do presigned URLs — the caller uploads via the
-   * POST /api/uploads endpoint below.
+   * Allocate a new opaque object path the client will PUT to.
+   *
+   * In both S3 and local modes the client uploads through our server (the
+   * PUT route below). We could swap this for S3 presigned URLs later — but
+   * presigned uploads require browser-CORS on the S3 bucket. Server-relay
+   * works out of the box with zero S3 config beyond what backups already
+   * needs.
    */
   async getObjectEntityUploadURL(): Promise<string> {
     const privateDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
-    // The "URL" we return is actually a relative API path the client POSTs to.
     return `/api/uploads/${encodeURIComponent(privateDir)}/${objectId}`;
   }
 
@@ -171,34 +333,23 @@ export class ObjectStorageService {
 
   /**
    * Resolve a request path like "/objects/blackridge/private/uploads/abc"
-   * to a LocalFile handle, throwing ObjectNotFoundError if absent.
+   * to a file handle. Throws ObjectNotFoundError if absent.
    */
-  async getObjectEntityFile(requestPath: string): Promise<LocalFile> {
+  async getObjectEntityFile(requestPath: string): Promise<StorageFile> {
     if (!requestPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();
     }
     const logical = requestPath.replace(/^\/objects/, "");
     const { bucketName, objectName } = parseLogicalPath(logical);
-    const file = new LocalBucket(bucketName).file(objectName);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     return file;
   }
 
-  async downloadObject(file: LocalFile, res: Response, cacheTtlSec = 3600) {
+  async downloadObject(file: StorageFile, res: Response, cacheTtlSec = 3600) {
     try {
-      const [metadata] = await file.getMetadata();
-      res.set({
-        "Content-Type": metadata.contentType || "application/octet-stream",
-        "Content-Length": String(metadata.size),
-        "Cache-Control": `private, max-age=${cacheTtlSec}`,
-      });
-      const stream = file.createReadStream();
-      stream.on("error", (err) => {
-        console.error("Stream error:", err);
-        if (!res.headersSent) res.status(500).json({ error: "Error streaming file" });
-      });
-      stream.pipe(res);
+      await file.download(res, cacheTtlSec);
     } catch (error) {
       console.error("Error downloading file:", error);
       if (!res.headersSent) res.status(500).json({ error: "Error downloading file" });
@@ -207,9 +358,9 @@ export class ObjectStorageService {
 }
 
 /**
- * Register object-storage HTTP routes:
- *   POST /api/uploads/request-url   — allocate a path the client will PUT/POST to
- *   PUT  /api/uploads/:dir/:id      — receive raw body bytes, store on disk
+ * HTTP routes:
+ *   POST /api/uploads/request-url   — allocate a path the client will PUT to
+ *   PUT  /api/uploads/:dir/:id      — receive raw body bytes, persist them
  *   GET  /objects/<path>            — stream a stored object back
  */
 export function registerObjectStorageRoutes(app: Express): void {
@@ -230,26 +381,33 @@ export function registerObjectStorageRoutes(app: Express): void {
 
   app.put(/^\/api\/uploads\/([^/]+)\/([^/]+)$/, async (req, res) => {
     try {
-      const [, privateDirEncoded, objectId] = req.path.match(/^\/api\/uploads\/([^/]+)\/([^/]+)$/)!;
+      const match = req.path.match(/^\/api\/uploads\/([^/]+)\/([^/]+)$/)!;
+      const privateDirEncoded = match[1];
+      const objectId = match[2];
       const privateDir = decodeURIComponent(privateDirEncoded);
       const logical = `${privateDir}/${objectId}`;
       const { bucketName, objectName } = parseLogicalPath(logical);
       const chunks: Buffer[] = [];
       req.on("data", (c: Buffer) => chunks.push(c));
       req.on("end", async () => {
-        const buf = Buffer.concat(chunks);
-        await new LocalBucket(bucketName).file(objectName).save(buf, {
-          contentType: String(req.headers["content-type"] || "application/octet-stream"),
-        });
-        res.status(200).json({ ok: true, path: `/objects${logical}` });
+        try {
+          const buf = Buffer.concat(chunks);
+          await objectStorageClient.bucket(bucketName).file(objectName).save(buf, {
+            contentType: String(req.headers["content-type"] || "application/octet-stream"),
+          });
+          res.status(200).json({ ok: true, path: `/objects${logical}` });
+        } catch (err: any) {
+          console.error("Upload save error:", err);
+          if (!res.headersSent) res.status(500).json({ error: "Upload failed" });
+        }
       });
       req.on("error", (err) => {
         console.error("Upload error:", err);
-        res.status(500).json({ error: "Upload failed" });
+        if (!res.headersSent) res.status(500).json({ error: "Upload failed" });
       });
     } catch (error) {
       console.error("Error handling upload:", error);
-      res.status(500).json({ error: "Failed to handle upload" });
+      if (!res.headersSent) res.status(500).json({ error: "Failed to handle upload" });
     }
   });
 
@@ -265,4 +423,6 @@ export function registerObjectStorageRoutes(app: Express): void {
       return res.status(500).json({ error: "Failed to serve object" });
     }
   });
+
+  console.log(`Object storage backend: ${USE_S3 ? `S3 (${S3_DOC_BUCKET}, ${S3_REGION})` : `local (${STORAGE_ROOT})`}`);
 }
