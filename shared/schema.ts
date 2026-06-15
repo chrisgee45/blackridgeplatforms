@@ -134,9 +134,34 @@ export const projects = pgTable("projects", {
   blocker: text("blocker"),
   blockerSince: timestamp("blocker_since"),
   templateId: varchar("template_id"),
+  jakeEnabled: boolean("jake_enabled").notNull().default(false),
+  jakeStartedAt: timestamp("jake_started_at", { withTimezone: true }),
+  jakeAwaitingHandoff: boolean("jake_awaiting_handoff").notNull().default(false),
+  jakeHandoffReason: text("jake_handoff_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const projectConversations = pgTable("project_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  clientId: varchar("client_id"),
+  direction: text("direction").notNull(),
+  fromEmail: text("from_email"),
+  toEmail: text("to_email"),
+  subject: text("subject"),
+  body: text("body").notNull(),
+  aiGenerated: boolean("ai_generated").notNull().default(false),
+  resendMessageId: text("resend_message_id"),
+  inReplyToMessageId: text("in_reply_to_message_id"),
+  classification: text("classification"),
+  handoffTriggered: boolean("handoff_triggered").notNull().default(false),
+  handoffReason: text("handoff_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ProjectConversation = typeof projectConversations.$inferSelect;
+export type InsertProjectConversation = typeof projectConversations.$inferInsert;
 
 export const stageGates = pgTable("stage_gates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

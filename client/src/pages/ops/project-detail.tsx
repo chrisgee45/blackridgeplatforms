@@ -28,7 +28,7 @@ import {
   Plus, Loader2, ChevronRight, Activity,
   CalendarDays, Flag, ListChecks, FileText,
   PauseCircle, PlayCircle, Bell, X, AlertCircle, Rocket,
-  CreditCard, Trash2, Receipt, Upload, Download, FolderOpen, Send, Copy, Mail, ExternalLink,
+  CreditCard, Trash2, Receipt, Upload, Download, FolderOpen, Send, Copy, Mail, MailCheck, ExternalLink, Sparkles, MessageCircle,
   ClipboardCheck, ChevronDown, ChevronUp, History, Undo2, EyeOff,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -102,7 +102,7 @@ export default function ProjectDetail() {
   const projectId = params?.id;
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"tasks" | "time" | "milestones" | "payments" | "documents" | "activity" | "qa" | "kickoff" | "sequence">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "time" | "milestones" | "payments" | "documents" | "activity" | "qa" | "kickoff" | "sequence" | "jake">("tasks");
 
   const [showQaInitDialog, setShowQaInitDialog] = useState(false);
   const [qaInitProjectType, setQaInitProjectType] = useState("marketing_website");
@@ -674,6 +674,7 @@ export default function ProjectDetail() {
     { key: "kickoff" as const, label: "Kickoff", icon: Rocket, count: kickoff?.status === "submitted" ? undefined : kickoff ? 1 : undefined },
     { key: "sequence" as const, label: "Sequence", icon: Mail, count: welcomeSeq?.status === "running" ? undefined : undefined },
     { key: "activity" as const, label: "Activity", icon: Activity },
+    { key: "jake" as const, label: "Jake", icon: Sparkles, count: project?.jakeAwaitingHandoff ? 1 : undefined },
   ];
 
   return (
@@ -2886,6 +2887,10 @@ export default function ProjectDetail() {
             })}
           </div>
         )}
+
+        {activeTab === "jake" && projectId && (
+          <JakeTab projectId={projectId} jakeEnabled={!!project?.jakeEnabled} awaitingHandoff={!!project?.jakeAwaitingHandoff} handoffReason={project?.jakeHandoffReason ?? null} />
+        )}
       </div>
 
       <Dialog open={showQaInitDialog} onOpenChange={setShowQaInitDialog}>
@@ -3182,6 +3187,191 @@ export default function ProjectDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Jake tab — toggle, conversation timeline, handoff banner
+// ---------------------------------------------------------------------------
+
+interface ProjectConversation {
+  id: string;
+  projectId: string;
+  clientId: string | null;
+  direction: "inbound" | "outbound";
+  fromEmail: string | null;
+  toEmail: string | null;
+  subject: string | null;
+  body: string;
+  aiGenerated: boolean;
+  classification: string | null;
+  handoffTriggered: boolean;
+  handoffReason: string | null;
+  createdAt: string;
+}
+
+function JakeTab({
+  projectId,
+  jakeEnabled,
+  awaitingHandoff,
+  handoffReason,
+}: {
+  projectId: string;
+  jakeEnabled: boolean;
+  awaitingHandoff: boolean;
+  handoffReason: string | null;
+}) {
+  const { toast } = useToast();
+  const { data: conversations = [], isLoading } = useQuery<ProjectConversation[]>({
+    queryKey: ["/api/ops/projects", projectId, "jake/conversations"],
+    queryFn: async () => {
+      const res = await fetch(`/api/ops/projects/${projectId}/jake/conversations`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    refetchInterval: jakeEnabled ? 15000 : false,
+  });
+
+  const enableMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ops/projects/${projectId}/jake/enable`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId, "jake/conversations"] });
+      toast({ title: "Jake activated", description: data?.message });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't activate Jake", description: e.message, variant: "destructive" }),
+  });
+
+  const disableMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ops/projects/${projectId}/jake/disable`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId] });
+      toast({ title: "Jake paused on this project" });
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ops/projects/${projectId}/jake/resolve-handoff`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId] });
+      toast({ title: "Handoff cleared — Jake will reply on the next inbound." });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="pt-4 pb-3 flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-md bg-cyan-500/15 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-cyan-300" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">Jake</span>
+                <Badge variant="secondary" className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${jakeEnabled ? "bg-emerald-500/15 text-emerald-300" : "bg-muted text-muted-foreground"}`}>
+                  {jakeEnabled ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Chris's assistant. Sends an intro to the project's client, handles their replies, escalates anything sensitive.
+              </p>
+            </div>
+          </div>
+          {jakeEnabled ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => disableMutation.mutate()}
+              disabled={disableMutation.isPending}
+              data-testid="button-jake-disable"
+            >
+              Pause Jake
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => enableMutation.mutate()}
+              disabled={enableMutation.isPending}
+              data-testid="button-jake-enable"
+            >
+              {enableMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+              Activate Jake
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {awaitingHandoff && (
+        <Card className="border-amber-500/40 bg-amber-500/10">
+          <CardContent className="pt-3 pb-3 flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-2 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-amber-300">Jake handed off to you</div>
+                <p className="text-xs text-amber-200/80 mt-0.5">{handoffReason ?? "Needs your attention."}</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => resolveMutation.mutate()}
+              disabled={resolveMutation.isPending}
+              data-testid="button-jake-resolve"
+            >
+              I handled it
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!jakeEnabled && conversations.length === 0 ? (
+        <div className="text-center py-12">
+          <MessageCircle className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
+          <p className="text-sm text-muted-foreground">No conversations yet. Activate Jake to send the intro email.</p>
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {conversations.map(c => (
+            <div
+              key={c.id}
+              className={`rounded-md border p-3 ${c.direction === "outbound" ? "border-cyan-500/30 bg-cyan-500/5" : "border-border/40"}`}
+              data-testid={`jake-msg-${c.id}`}
+            >
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <Badge variant="secondary" className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${c.direction === "outbound" ? "bg-cyan-500/15 text-cyan-300" : "bg-muted text-muted-foreground"}`}>
+                  {c.direction === "outbound" ? (c.aiGenerated ? "Jake" : "Chris") : "Client"}
+                </Badge>
+                {c.classification && (
+                  <Badge variant="outline" className="text-[10px]">{c.classification}</Badge>
+                )}
+                {c.handoffTriggered && (
+                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-300">Handoff</Badge>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  {new Date(c.createdAt).toLocaleString()}
+                </span>
+              </div>
+              {c.subject && <div className="text-xs font-medium text-muted-foreground mb-1">{c.subject}</div>}
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{c.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

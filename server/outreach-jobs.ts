@@ -451,6 +451,9 @@ export async function runOutreachJobs() {
         await processAnalyzeLeadJob(job.payload as any);
       } else if (job.type === "generate_reply") {
         await processGenerateReplyJob(job.payload as any);
+      } else if (job.type === "generate_jake_reply") {
+        const { processJakeReplyJob } = await import("./jake");
+        await processJakeReplyJob(job.payload as any);
       } else if (job.type === "send_campaign_step") {
         const result = await processSendCampaignStepJob(job.payload as any);
         if (result === "rescheduled") {
