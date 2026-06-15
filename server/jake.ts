@@ -62,12 +62,17 @@ WHAT YOU CAN HANDLE YOURSELF
 - Reassurance, expectation-setting, pointing them to the next milestone
 
 WHAT YOU MUST HAND OFF TO CHRIS (set handoff: true, do NOT reply yourself)
-- Anything about money: price, fees, invoices, billing, payment
+- Anything about money: price, fees, invoices, billing, payment, upfront costs, deposits, subscription costs
 - Anything about the contract, scope, or what's included
 - Timeline shifts or deadline negotiations
 - Complaints, frustration, anger, or anything that hints at unhappiness
 - Requests for a call or meeting with Chris specifically
 - Anything you don't know with confidence
+
+CRITICAL RULES
+- Read the client's MOST RECENT message carefully and respond to what they actually said. Never send a generic "checking in" or follow-up unless the client explicitly asked for a status check.
+- If the latest client message is empty, unreadable, or you cannot tell what they're asking, set handoff: true with a handoffReason explaining that Chris should open the email directly.
+- Do NOT send a reply that ignores the client's question.
 
 WHEN HANDING OFF
 Do not draft a reply. Just set handoff: true and write a short handoffReason explaining what the client needs. Chris will take over.
@@ -309,7 +314,27 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   const toEmail = Array.isArray(data?.to) ? data.to[0] : (data?.to || "");
   const subject = data?.subject || "";
   const messageId = data?.message_id || data?.email_id || null;
+  const emailId = data?.email_id || null;
   let textBody = data?.text || data?.html?.replace(/<[^>]*>/g, " ").trim() || "";
+
+  // Resend webhooks frequently omit the body — especially for mobile-client
+  // replies that are HTML-only with quoted history. When the inbound arrives
+  // with no usable text, fetch the full email by ID from the Resend API so
+  // Jake actually has something to respond to.
+  if (emailId && (!textBody || textBody.trim().length < 5)) {
+    try {
+      const apiKey = process.env.RESEND_API_KEY;
+      if (apiKey) {
+        const full = await new Resend(apiKey).emails.get(emailId);
+        const fetched = (full as any)?.text || (full as any)?.html?.replace(/<[^>]*>/g, " ").trim() || "";
+        if (fetched && fetched.trim().length > 0) textBody = fetched;
+      }
+    } catch (err: any) {
+      console.error(`Jake: Resend get(${emailId}) failed:`, err?.message);
+    }
+  }
+
+  console.log(`Jake inbound: from=${fromEmail} subject="${subject}" bodyLen=${textBody.length} emailId=${emailId}`);
 
   if (!fromEmail) return { ok: true };
 
@@ -327,7 +352,7 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
     fromEmail,
     toEmail: toEmail || JAKE_FROM_EMAIL,
     subject,
-    body: textBody,
+    body: textBody || "(empty)",
     aiGenerated: false,
     resendMessageId: messageId,
   });
@@ -335,6 +360,16 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   if (project.jakeAwaitingHandoff) {
     console.log(`Jake: project ${project.id} already awaiting handoff — notifying Chris`);
     await notifyHandoff(project.id, "Client replied while awaiting handoff");
+    return { ok: true };
+  }
+
+  // If we still couldn't get a body, hand off rather than have Jake
+  // respond to nothing.
+  if (!textBody || textBody.trim().length < 5) {
+    await db.update(projects)
+      .set({ jakeAwaitingHandoff: true, jakeHandoffReason: "Client replied but the email body was empty. Open the email directly to read it." })
+      .where(eq(projects.id, project.id));
+    await notifyHandoff(project.id, "Client replied with an empty/unreadable body");
     return { ok: true };
   }
 
