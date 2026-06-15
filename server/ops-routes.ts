@@ -1953,7 +1953,11 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
       const file = bucket.file(filePath);
       await file.save(pdfBuffer, { contentType: "application/pdf" });
 
-      const storageKey = `/objects/uploads/${fileId}`;
+      // storageKey must mirror the on-disk layout so GET /objects/<path>
+      // resolves to the file we just wrote. The previous value of
+      // "/objects/uploads/<id>" dropped the bucket + privateDir prefix and
+      // 404'd every generated invoice on download.
+      const storageKey = `/objects/${objectName}`;
       const filename = `${invNum}_${project.name.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
 
       const document = await opsStorage.createProjectDocument({
