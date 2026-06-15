@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -21,12 +21,12 @@ import {
   ArrowRight, Mail, Phone, Globe, Building2, FileText, Clock,
   ChevronRight, ChevronDown, ChevronUp, CreditCard, BarChart3, Edit, Trash2, X, AlertTriangle,
   Loader2, Lock, CheckCircle, Link2, Copy, ExternalLink, Receipt, Calendar, Hash, RefreshCw,
-  PauseCircle, PlayCircle, Upload, Download,
+  PauseCircle, PlayCircle, Upload, Download, FolderKanban,
 } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import type { Client, ClientDocument, Deal, Subscription, Project, StripePayment, ContactSubmission } from "@shared/schema";
+import type { Client, ClientDocument, Company, Deal, Subscription, Project, StripePayment, ContactSubmission } from "@shared/schema";
 
 const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
@@ -374,7 +374,7 @@ export default function ClientsPage() {
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
   const [editSubForm, setEditSubForm] = useState({ name: "", amount: "", interval: "monthly", status: "active", notes: "", nextBillingDate: "" });
-  const [formData, setFormData] = useState({ name: "", email: "", phone: "", website: "", status: "active", notes: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "", website: "", status: "active", notes: "", companyId: "" });
   const [dealForm, setDealForm] = useState({ name: "", value: "", stage: "qualification", probability: "50", notes: "" });
   const [subForm, setSubForm] = useState({ name: "", amount: "", interval: "monthly", notes: "", startDate: "" });
   const [showCollectPayment, setShowCollectPayment] = useState(false);
@@ -442,6 +442,7 @@ export default function ClientsPage() {
   }, []);
 
   const { data: clientsList, isLoading } = useQuery<Client[]>({ queryKey: ["/api/ops/clients"] });
+  const { data: allCompanies = [] } = useQuery<Company[]>({ queryKey: ["/api/ops/companies"] });
   const { data: summary } = useQuery<RevenueSummary>({ queryKey: ["/api/ops/revenue/summary"] });
   const { data: selectedClient } = useQuery<Client>({
     queryKey: ["/api/ops/clients", selectedClientId],
@@ -484,9 +485,8 @@ export default function ClientsPage() {
     queryKey: ["/api/leads"],
     enabled: showCreateClient && createMode === "crm",
   });
-  const { data: allProjects } = useQuery<Project[]>({
+  const { data: allProjects = [] } = useQuery<Project[]>({
     queryKey: ["/api/ops/projects"],
-    enabled: showCreateClient && createMode === "projects",
   });
 
   const createClientMutation = useMutation({
@@ -496,6 +496,7 @@ export default function ClientsPage() {
       if (data.phone) body.phone = data.phone;
       if (data.website) body.website = data.website;
       if (data.notes) body.notes = data.notes;
+      if (data.companyId) body.companyId = data.companyId;
       const res = await apiRequest("POST", "/api/ops/clients", body);
       return res.json();
     },
@@ -503,7 +504,7 @@ export default function ClientsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/ops/clients"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ops/revenue/summary"] });
       setShowCreateClient(false);
-      setFormData({ name: "", email: "", phone: "", website: "", status: "active", notes: "" });
+      setFormData({ name: "", email: "", phone: "", website: "", status: "active", notes: "", companyId: "" });
       toast({ title: "Client created" });
     },
     onError: () => { toast({ title: "Failed to create client", variant: "destructive" }); },
@@ -725,6 +726,12 @@ export default function ClientsPage() {
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
+
+        <ClientLinksCard
+          client={selectedClient}
+          companies={allCompanies}
+          projects={allProjects}
+        />
 
         {(clientSubs ?? []).some(s => s.status === "past_due") && (
           <Card className="border-red-500/50 bg-red-500/10" data-testid="alert-past-due">
@@ -1643,6 +1650,17 @@ export default function ClientsPage() {
                   <Input placeholder="Email" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} data-testid="input-client-email" />
                   <Input placeholder="Phone" value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))} data-testid="input-client-phone" />
                   <Input placeholder="Website" value={formData.website} onChange={e => setFormData(p => ({ ...p, website: e.target.value }))} data-testid="input-client-website" />
+                  <Select value={formData.companyId || "none"} onValueChange={v => setFormData(p => ({ ...p, companyId: v === "none" ? "" : v }))}>
+                    <SelectTrigger data-testid="select-client-company">
+                      <SelectValue placeholder="Link to a company (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— No company —</SelectItem>
+                      {allCompanies.map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={formData.status} onValueChange={v => setFormData(p => ({ ...p, status: v }))}>
                     <SelectTrigger data-testid="select-client-status"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1818,6 +1836,122 @@ interface ProjectConversation {
   classification: string | null;
   handoffTriggered: boolean;
   createdAt: string;
+}
+
+function ClientLinksCard({
+  client,
+  companies,
+  projects,
+}: {
+  client: Client;
+  companies: Company[];
+  projects: Project[];
+}) {
+  const { toast } = useToast();
+  const linkedProjectIds = useMemo(
+    () => new Set(projects.filter(p => p.clientId === client.id).map(p => p.id)),
+    [projects, client.id],
+  );
+
+  const linkCompanyMutation = useMutation({
+    mutationFn: async (companyId: string | null) => {
+      const res = await apiRequest("PATCH", `/api/ops/clients/${client.id}`, { companyId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", client.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients"] });
+      toast({ title: "Company link updated" });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't update company", description: e.message, variant: "destructive" }),
+  });
+
+  const linkProjectMutation = useMutation({
+    mutationFn: async ({ projectId, attach }: { projectId: string; attach: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/ops/projects/${projectId}`, { clientId: attach ? client.id : null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", client.id, "projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients"] });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't update project link", description: e.message, variant: "destructive" }),
+  });
+
+  const [projectsExpanded, setProjectsExpanded] = useState(false);
+
+  return (
+    <Card className="bg-card/60 border-border/40">
+      <CardContent className="pt-4 pb-3 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company</span>
+          <Select
+            value={client.companyId ?? "none"}
+            onValueChange={v => linkCompanyMutation.mutate(v === "none" ? null : v)}
+          >
+            <SelectTrigger className="h-8 text-sm w-[260px]" data-testid="select-link-company">
+              <SelectValue placeholder="No company linked" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— No company —</SelectItem>
+              {companies.map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {linkCompanyMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+        </div>
+
+        <div className="border-t border-border/30 pt-2">
+          <button
+            onClick={() => setProjectsExpanded(v => !v)}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+            data-testid="btn-toggle-link-projects"
+          >
+            {projectsExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            <FolderKanban className="w-3.5 h-3.5" />
+            <span className="font-semibold uppercase tracking-wide">Projects</span>
+            <span className="text-[11px]">({linkedProjectIds.size} linked)</span>
+          </button>
+          {projectsExpanded && (
+            <div className="mt-2 space-y-1 max-h-64 overflow-y-auto pr-2">
+              {projects.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">No projects in the system yet.</p>
+              ) : (
+                projects.map(p => {
+                  const isLinked = linkedProjectIds.has(p.id);
+                  const linkedElsewhere = !!p.clientId && p.clientId !== client.id;
+                  return (
+                    <label
+                      key={p.id}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover-elevate cursor-pointer"
+                      data-testid={`link-project-row-${p.id}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-primary"
+                        checked={isLinked}
+                        onChange={(e) => linkProjectMutation.mutate({ projectId: p.id, attach: e.target.checked })}
+                      />
+                      <span className="flex-1 truncate" title={p.name}>{p.name}</span>
+                      {linkedElsewhere && !isLinked && (
+                        <Badge variant="outline" className="text-[10px]">linked elsewhere</Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] no-default-hover-elevate no-default-active-elevate capitalize">
+                        {p.stage?.replace(/_/g, " ")}
+                      </Badge>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function ClientJakeSection({ clientId }: { clientId: string }) {
