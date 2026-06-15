@@ -777,6 +777,65 @@ export function registerStripeRoutes(app: Express, isAuthenticated: RequestHandl
     }
   });
 
+  // Pull every paid Stripe invoice for a client and write any that aren't
+  // already in stripe_payments. Used to backfill periods where the webhook
+  // wasn't configured (or was misrouted). Idempotent — re-running it is
+  // a no-op once everything is in sync.
+  app.post("/api/ops/clients/:clientId/sync-stripe-invoices", isAuthenticated, async (req, res) => {
+    try {
+      const stripe = getStripe();
+      if (!stripe) return res.status(500).json({ message: "Stripe is not configured." });
+      const clientId = String(req.params.clientId);
+
+      const client = await opsStorage.getClient(clientId);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+      if (!client.stripeCustomerId) {
+        return res.status(400).json({ message: "Client has no Stripe customer linked." });
+      }
+
+      // Walk every invoice on this customer. Defaults to up to 100; bump
+      // if a client has more than that and we ever need to.
+      const list = await stripe.invoices.list({ customer: client.stripeCustomerId, limit: 100 });
+
+      const existing = await opsStorage.getStripePayments(clientId);
+      const haveByInvoiceId = new Set(existing.map(p => p.stripeInvoiceId).filter(Boolean) as string[]);
+      const haveByPaymentIntent = new Set(existing.map(p => p.stripePaymentIntentId).filter(Boolean) as string[]);
+
+      let added = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const inv of list.data) {
+        if (inv.status !== "paid") { skipped++; continue; }
+        if (inv.id && haveByInvoiceId.has(inv.id)) { skipped++; continue; }
+        const pi = typeof (inv as any).payment_intent === "string" ? (inv as any).payment_intent : (inv as any).payment_intent?.id;
+        if (pi && haveByPaymentIntent.has(pi)) { skipped++; continue; }
+
+        try {
+          await handleInvoicePaid(stripe, inv as any);
+          added++;
+        } catch (err: any) {
+          errors.push(`${inv.number || inv.id}: ${err?.message || "unknown error"}`);
+        }
+      }
+
+      if (added > 0) {
+        await opsStorage.recalculateClientMrr(clientId);
+      }
+
+      res.json({
+        added,
+        skipped,
+        scanned: list.data.length,
+        hasMore: list.has_more,
+        errors,
+      });
+    } catch (error: any) {
+      console.error("Sync Stripe invoices error:", error);
+      res.status(500).json({ message: error?.message || "Failed to sync invoices" });
+    }
+  });
+
   app.post("/api/stripe/webhook", async (req, res) => {
     const stripe = getStripe();
     if (!stripe) return res.status(500).json({ message: "Stripe not configured" });
@@ -899,7 +958,13 @@ async function handleCheckoutCompleted(stripe: Stripe, session: any) {
 }
 
 async function handleInvoicePaid(stripe: Stripe, invoice: any) {
-  const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+  // Stripe moved invoice.subscription on newer API versions. Fall back to
+  // the new shapes so this works across account upgrades.
+  const subId = (typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id)
+    || invoice.parent?.subscription_details?.subscription
+    || invoice.lines?.data?.[0]?.subscription
+    || invoice.lines?.data?.[0]?.parent?.subscription_item_details?.subscription
+    || null;
   if (!subId) return;
 
   const sub = await opsStorage.findSubscriptionByStripeId(subId);

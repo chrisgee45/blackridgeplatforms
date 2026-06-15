@@ -562,6 +562,24 @@ export default function ClientsPage() {
     onError: () => { toast({ title: "Failed to delete client", variant: "destructive" }); },
   });
 
+  const syncStripeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ops/clients/${selectedClientId}/sync-stripe-invoices`);
+      return res.json() as Promise<{ added: number; skipped: number; scanned: number; hasMore: boolean; errors: string[] }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", selectedClientId, "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients", selectedClientId, "subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/revenue/summary"] });
+      const msg = result.added === 0
+        ? `Already in sync — scanned ${result.scanned}, nothing new.`
+        : `Added ${result.added} payment${result.added === 1 ? "" : "s"} from Stripe (scanned ${result.scanned}).`;
+      toast({ title: "Stripe sync complete", description: result.errors.length ? `${msg} ${result.errors.length} error(s) — check server logs.` : msg });
+    },
+    onError: (e: Error) => toast({ title: "Stripe sync failed", description: e.message, variant: "destructive" }),
+  });
+
   const importFromCrmMutation = useMutation({
     mutationFn: async (lead: ContactSubmission) => {
       const res = await apiRequest("POST", `/api/ops/leads/${lead.id}/convert-to-client`);
@@ -1265,6 +1283,17 @@ export default function ClientsPage() {
             <div className="flex justify-between items-center">
               <h3 className="font-semibold">Payments</h3>
               <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => syncStripeMutation.mutate()}
+                disabled={syncStripeMutation.isPending}
+                data-testid="btn-sync-stripe"
+                title="Pulls every paid Stripe invoice for this client into BlackRidge. Safe to re-run."
+              >
+                {syncStripeMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                Sync from Stripe
+              </Button>
               <Dialog open={showPayLink} onOpenChange={(open) => { setShowPayLink(open); if (!open) resetPayLinkDialog(); }}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline" data-testid="btn-payment-link"><Link2 className="h-4 w-4 mr-1" /> Payment Link</Button>
