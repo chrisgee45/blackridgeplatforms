@@ -886,11 +886,24 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
                 style={{
                   width: 32, height: 32, borderRadius: "50%",
                   border: "2px solid #C9A840", backgroundColor: "#0A0A0A",
+                  overflow: "hidden", flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontFamily: "Georgia, serif", color: "#C9A840", fontSize: 16, fontWeight: "bold",
                 }}
               >
-                R
+                <img
+                  src="/ridge-avatar.png"
+                  alt="Ridge"
+                  width={28}
+                  height={28}
+                  style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", display: "block" }}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                    const next = (e.currentTarget as HTMLImageElement).nextElementSibling as HTMLElement | null;
+                    if (next) next.style.display = "inline";
+                  }}
+                />
+                <span style={{ display: "none" }}>R</span>
               </div>
               <div>
                 <div style={{ fontFamily: "Georgia, serif", color: "#C9A840", fontSize: 15, fontWeight: "bold", lineHeight: 1.2 }}>RIDGE</div>
@@ -977,9 +990,24 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
                   width: 64, height: 64, borderRadius: "50%",
                   border: "3px solid #C9A840", backgroundColor: "#0A0A0A",
                   display: "flex", alignItems: "center", justifyContent: "center",
+                  overflow: "hidden",
                   fontFamily: "Georgia, serif", color: "#C9A840", fontSize: 28, fontWeight: "bold",
                   animation: "ridge-pulse 2s ease-in-out infinite",
-                }}>R</div>
+                }}>
+                  <img
+                    src="/ridge-avatar.png"
+                    alt="Ridge"
+                    width={58}
+                    height={58}
+                    style={{ width: 58, height: 58, borderRadius: "50%", objectFit: "cover", display: "block" }}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                      const next = (e.currentTarget as HTMLImageElement).nextElementSibling as HTMLElement | null;
+                      if (next) next.style.display = "inline";
+                    }}
+                  />
+                  <span style={{ display: "none" }}>R</span>
+                </div>
                 <div style={{ color: "#C9A840", fontSize: 13, fontFamily: "Georgia, serif", letterSpacing: "0.05em" }}>RIDGE is speaking...</div>
               </div>
             )}
@@ -1150,8 +1178,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
           width: 58, height: 58, borderRadius: "50%",
           border: "2px solid #C9A840", backgroundColor: "#0A0A0A",
           display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", fontFamily: "Georgia, serif",
-          color: "#C9A840", fontSize: 24, fontWeight: "bold",
+          cursor: "pointer", padding: 0, overflow: "hidden",
           position: "relative", boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
           marginLeft: "auto", transition: "transform 0.2s, box-shadow 0.2s",
         }}
@@ -1159,7 +1186,20 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
         onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.5)"; }}
         data-testid="button-ridge-toggle"
       >
-        R
+        <img
+          src="/ridge-avatar.png"
+          alt="Ridge"
+          width={54}
+          height={54}
+          style={{ width: 54, height: 54, borderRadius: "50%", objectFit: "cover", display: "block" }}
+          onError={(e) => {
+            // Fallback to the original "R" mark if the photo isn't there.
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+            const next = (e.currentTarget as HTMLImageElement).nextElementSibling as HTMLElement | null;
+            if (next) next.style.display = "block";
+          }}
+        />
+        <span style={{ display: "none", fontFamily: "Georgia, serif", color: "#C9A840", fontSize: 24, fontWeight: "bold" }}>R</span>
         {hasNotification && (
           <div style={{
             position: "absolute", top: -2, right: -2,
