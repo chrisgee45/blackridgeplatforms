@@ -1599,65 +1599,13 @@ ${contextBlock}`;
         return res.status(400).json({ message: "No leads provided" });
       }
 
-      const LEAD_ENRICHMENT_PROMPT = `You are a lead research specialist for BlackRidge Platforms. Given a business website URL, find and return all available contact and business information.
-
-Search the website and any publicly available sources to find:
-- Owner or decision maker name
-- Direct email address
-- Phone number
-- Physical address
-- Industry/niche
-- Number of employees if findable
-- LinkedIn profile of owner if findable
-- Any signals about their current tech stack (what platform their site is on)
-
-Return ONLY valid JSON:
-{
-  "owner_name": "name or null",
-  "email": "email or null",
-  "phone": "phone or null",
-  "address": "address or null",
-  "industry": "specific industry niche",
-  "employee_count": "estimate or null",
-  "linkedin": "url or null",
-  "tech_stack": "WordPress/Wix/Squarespace/Custom/Unknown"
-}`;
-
-      const discoverEmailForImport = async (bizUrl: string, businessName: string): Promise<{ email: string | null; contactName: string | null; method: string }> => {
-        const apiKey = process.env.ANTHROPIC_API_KEY;
-        if (!apiKey) return { email: null, contactName: null, method: "none" };
-
-        try {
-          const anthropic = new Anthropic({ apiKey });
-          const enrichResponse = await anthropic.messages.create({
-            model: "claude-sonnet-4-6",
-            max_tokens: 2000,
-            system: LEAD_ENRICHMENT_PROMPT,
-            messages: [{ role: "user", content: `Find contact information for "${businessName}" at ${bizUrl}` }],
-            tools: [{ type: "web_search_20250305", name: "web_search" }],
-          });
-
-          const enrichText = extractClaudeText(enrichResponse);
-          const jsonMatch = enrichText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const data = JSON.parse(jsonMatch[0]);
-            const email = data.email && data.email !== "null" ? data.email : null;
-            const contactName = data.owner_name && data.owner_name !== "null" ? data.owner_name : null;
-            return { email, contactName, method: email ? "ai-web-search" : "none" };
-          }
-        } catch (err) {
-          console.error(`Email discovery failed for ${businessName}:`, err);
-        }
-
-        let domain: string;
-        try {
-          domain = new URL(bizUrl.startsWith("http") ? bizUrl : `https://${bizUrl}`).hostname.replace(/^www\./, "");
-        } catch {
-          return { email: null, contactName: null, method: "none" };
-        }
-        return { email: `info@${domain}`, contactName: null, method: "pattern (info@)" };
-      };
-
+      // Important: we do NOT call Claude with web_search inside this
+      // request handler. Each web-search call takes 10-30 seconds and
+      // a batch of 6+ leads reliably trips Railway's 100s HTTP timeout
+      // with a 502. Instead, we just create the lead rows fast and
+      // enqueue an analyze_lead job for each — that background worker
+      // already does AI contact discovery AND auto-enrolls the lead in
+      // the active campaign once it finds an email.
       let created = 0;
       let skipped = 0;
       const errors: string[] = [];
@@ -1677,16 +1625,8 @@ Return ONLY valid JSON:
             continue;
           }
 
-          const emailResult = await discoverEmailForImport(leadData.url, bizName);
-          const discoveredEmail = emailResult.email;
-          const leadStatus = discoveredEmail ? "new" : "needs_review";
-
           const noteLines = [`Bad Website Finder scan. Bad Site Score: ${leadData.badSiteScore}/100.`];
-          if (discoveredEmail) {
-            noteLines.push(`Email found via: ${emailResult.method}`);
-          } else {
-            noteLines.push("Email not found — requires manual research");
-          }
+          noteLines.push("Contact discovery queued — Travis will run it in the background.");
           if (leadData.topProblems?.length > 0) {
             noteLines.push(`Top problems: ${leadData.topProblems.join("; ")}`);
           }
@@ -1696,14 +1636,14 @@ Return ONLY valid JSON:
             websiteUrl: leadData.url,
             industry: null,
             location: null,
-            email: discoveredEmail,
-            contactName: leadData.contactName || emailResult.contactName || null,
+            email: null,
+            contactName: leadData.contactName || null,
             phone: leadData.phone || null,
             notes: noteLines.join("\n"),
           });
 
           await outreachStorage.updateLead(lead.id, {
-            status: leadStatus,
+            status: "needs_review",
             badSiteScore: leadData.badSiteScore,
             redesignWorthy: leadData.redesignWorthy ?? false,
             topProblems: leadData.topProblems || [],
@@ -1715,29 +1655,14 @@ Return ONLY valid JSON:
             openingLine: leadData.openingLine || null,
           });
 
+          // analyze_lead does web-search-based contact discovery AND
+          // auto-enrolls the lead in the active campaign if it finds
+          // an email. Stagger the runAt so we don't slam Anthropic.
           await outreachStorage.createJob({
             type: "analyze_lead",
             payload: { lead_id: lead.id },
-            runAt: new Date(),
+            runAt: new Date(Date.now() + created * 3000),
           });
-
-          const settings = await outreachStorage.getSettings();
-          if (!settings.enrollmentsPaused && discoveredEmail) {
-            const campaign = await outreachStorage.getActiveCampaign();
-            if (campaign) {
-              const enrollment = await outreachStorage.createEnrollment(lead.id, campaign.id);
-              await outreachStorage.createJob({
-                type: "send_campaign_step",
-                payload: {
-                  lead_id: lead.id,
-                  enrollment_id: enrollment.id,
-                  campaign_id: campaign.id,
-                  step_number: 1,
-                },
-                runAt: new Date(Date.now() + 5000 + created * 2000),
-              });
-            }
-          }
 
           created++;
         } catch (err: any) {
@@ -1746,7 +1671,7 @@ Return ONLY valid JSON:
         }
       }
 
-      res.json({ created, skipped, errors });
+      res.json({ created, skipped, errors, queued: true });
     } catch (error) {
       console.error("Bad site import error:", error);
       res.status(500).json({ message: "Failed to import leads" });
