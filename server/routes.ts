@@ -327,6 +327,7 @@ export async function registerRoutes(
   startDailyBackupScheduler();
   startWelcomeSequenceRunner();
   startEventReminderRunner();
+  import("./jake").then(m => m.startJakeRunners()).catch(err => console.error("Failed to start Jake runners:", err));
 
   app.post("/api/contact", async (req, res) => {
     try {

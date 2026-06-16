@@ -14,7 +14,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { db } from "./db";
 import { projects, projectConversations, clients, contacts, companies, outreachJobs, tasks, milestones } from "@shared/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, gte } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
 
 const JAKE_FROM_EMAIL = process.env.JAKE_FROM_EMAIL || "jake@blackridgeplatforms.com";
@@ -64,28 +64,31 @@ WHAT YOU CAN HANDLE YOURSELF
 USING THE PROJECT BRIEF
 The user message includes a PROJECT BRIEF section with description / notes / contract terms for THIS specific project. Treat the brief as authoritative. If the client asks about something the brief covers (pricing structure, what's included, upfront vs. subscription, scope), answer directly using the brief. Do NOT hand off just because the topic is sensitive — only hand off when the brief does NOT cover the question.
 
-WHAT YOU MUST HAND OFF TO CHRIS (set handoff: true, do NOT reply yourself)
-- Money / pricing / scope questions WHERE the project brief does NOT contain the answer
-- Renegotiating terms that are already set (e.g., client asks for a discount on a price the brief states)
-- Timeline shifts or deadline negotiations not addressed by the brief
-- Complaints, frustration, anger, or anything that hints at unhappiness
-- Requests for a call or meeting with Chris specifically
-- Anything you don't know with confidence
+THREE WAYS TO RESPOND — pick exactly one per inbound
+
+A) REPLY ALONE — the default. You answer the client directly. Use this when you can fully address their message yourself, even on sensitive topics that the project brief covers.
+
+B) REPLY + NOTIFY CHRIS — you still reply to the client, AND set notifyChris true with notifyReason. Use this whenever the client is asking Chris to DO something (add a feature, add content, change copy, send something over, make a call, schedule a meeting), or relaying anything Chris should know about even though it isn't urgent. You acknowledge the request in your reply ("I'll let Chris know — he'll handle it from here"), and a push notification goes to Chris with your notifyReason summarizing what's needed. This is the default for client requests.
+
+C) HANDOFF — set handoff true, leave reply empty. ONLY use this when you genuinely cannot or should not answer. Examples that warrant a true handoff:
+- Complaints, anger, frustration, or anything that hints at the client being unhappy
+- A renegotiation of terms the brief explicitly states (client asks for a discount on a price the brief locks in)
+- Money / scope questions the brief does NOT cover at all
+- The client's message is empty, unreadable, or you cannot tell what they're asking
+- Anything you genuinely don't know with confidence
+
+Default behavior: pick (B) — REPLY + NOTIFY CHRIS — whenever the client is asking Chris to do something. Reserve (C) handoff for the short list above. Most messages will be (A) or (B), few will be (C).
 
 CRITICAL RULES
 - Read the client's MOST RECENT message carefully and respond to what they actually said. Never send a generic "checking in" or follow-up unless the client explicitly asked for a status check.
-- If the latest client message is empty, unreadable, or you cannot tell what they're asking, set handoff: true with a handoffReason explaining that Chris should open the email directly.
 - Do NOT send a reply that ignores the client's question.
 - Do NOT invent details that aren't in the project brief. If the brief says "no upfront, subscription only", say exactly that — don't add caveats Chris didn't authorize.
-
-WHEN HANDING OFF
-Do not draft a reply. Just set handoff: true and write a short handoffReason explaining what the client needs. Chris will take over.
+- When notifying Chris, write notifyReason as a short one-liner Chris can act on without re-reading the thread — e.g. "Wants to add a contact form to the homepage" or "Asking for a Zoom this Friday".
 
 OUTPUT
 Call the respond_to_client tool. Put the email body in 'reply' with real
-newlines for paragraph breaks. End the reply with the four-line signature
-above unless you're handing off (in that case leave reply empty, set
-handoff true, and write a one-sentence handoffReason for Chris).`;
+newlines for paragraph breaks. End every reply with the four-line signature
+above (unless handing off, in which case leave reply empty).`;
 
 function getResendClient(): { client: Resend; fromEmail: string; fromName: string } | null {
   const apiKey = process.env.RESEND_API_KEY;
@@ -281,17 +284,24 @@ function renderIntroEmail(ctx: ClientContext): { subject: string; body: string }
   const isMaintenance = stage === "completed" || stage === "archived";
 
   if (isMaintenance) {
-    // Recurring / hosting client — the build is done, Jake is the new
-    // point of contact for ongoing changes, hosting questions, etc.
-    const subject = `Quick hello from BlackRidge — ${projectLabel}`;
+    // Recurring / hosting client — the build is done. Introduce Jake as a
+    // new addition to the BlackRidge team who'll be handling ongoing
+    // client comms going forward.
+    const subject = `Quick intro from BlackRidge — ${projectLabel}`;
     const body =
 `Hey ${greeting},
 
-Jake here, Chris's assistant at BlackRidge. Wanted to reach out and thank you for sticking with us as a recurring client. Having you continue to trust us with your hosting and ongoing work means a lot to all of us.
+Jake here, a new addition to the BlackRidge team. Chris brought me on to handle the day-to-day with our clients, and that includes you. Wanted to introduce myself so the name and address are familiar the next time you need something.
 
-Going forward I'll be your day-to-day point of contact. If you ever need anything, hosting questions, content updates, a small change, a new idea, or just a quick check-in, hit reply on this thread and I'll get back to you fast. I'll loop Chris in whenever something needs his eyes.
+A few quick things:
 
-No question is too small. We're glad to keep building with you.
+1. Save this address: ${JAKE_FROM_EMAIL}. Any time you want to make a change, add something to your site, ask a question, or just check in, hit reply on this thread. You'll hear back from me fast.
+
+2. If you ever bring up something Chris needs to handle personally, I'll loop him in right away so nothing gets dropped.
+
+3. I'll also be checking in periodically just to make sure your site is humming along the way you want it to.
+
+Thanks for sticking with us. We're glad you're still here, and I'm looking forward to getting to know you.
 
 ${JAKE_SIGNATURE}`;
     return { subject, body };
@@ -307,6 +317,21 @@ Jake here, Chris's assistant at BlackRidge. Wanted to say thanks for putting you
 Chris is heads-down on the work, so I'll be your day-to-day point of contact. If you ever have a question, a comment, an idea, or just want a status check, hit reply on this thread and you'll hear back from me fast. No question is too small.
 
 Anything you'd love to see in the final build that we haven't talked about yet, send it over. Easier to bake it in now than bolt it on later.
+
+${JAKE_SIGNATURE}`;
+  return { subject, body };
+}
+
+function renderCheckinEmail(ctx: ClientContext): { subject: string; body: string } {
+  const greeting = firstName(ctx.contactName ?? ctx.clientName);
+  const projectLabel = ctx.project.name;
+  const subject = `Quick check-in — ${projectLabel}`;
+  const body =
+`Hey ${greeting},
+
+Jake here, just a quick check-in. Everything running smoothly on your end? Any small changes you've been meaning to ask about, content updates, or anything that's been on your mind?
+
+If yes, hit reply with whatever it is and I'll take care of it (or loop Chris in if it needs his hands). If everything's good, no need to reply, I'll touch base again in a couple weeks.
 
 ${JAKE_SIGNATURE}`;
   return { subject, body };
@@ -493,7 +518,7 @@ ${renderTimelineForPrompt(timeline)}`;
     // handoff). With a tool, the SDK returns input as a real object.
     tools: [{
       name: "respond_to_client",
-      description: "Produce Jake's reply to the client, or hand the conversation off to Chris when the topic is sensitive.",
+      description: "Produce Jake's reply to the client. Optionally notify Chris (he gets a push) while still replying. Reserve handoff for cases Jake genuinely can't answer.",
       input_schema: {
         type: "object",
         properties: {
@@ -504,15 +529,23 @@ ${renderTimelineForPrompt(timeline)}`;
           },
           reply: {
             type: "string",
-            description: "The email body Jake will send. Use actual newlines for paragraph breaks. End with the four-line signature (Sincerely / Jake / Client Relations Specialist / BlackRidge Platforms). Leave empty when handing off.",
+            description: "The email body Jake will send. Use actual newlines for paragraph breaks. End with the four-line signature (Sincerely / Jake / Client Relations Specialist / BlackRidge Platforms). Leave empty ONLY when handoff is true.",
+          },
+          notifyChris: {
+            type: "boolean",
+            description: "True when Chris needs to know something but Jake is still replying. Use whenever the client requests something for Chris to do (add a feature, schedule a call, send something, change copy). Jake's reply still goes out; Chris gets a push with notifyReason.",
+          },
+          notifyReason: {
+            type: "string",
+            description: "Required when notifyChris is true. One short sentence Chris can act on without re-reading the thread (e.g. 'Wants a contact form on the homepage', 'Asking for a Zoom Friday').",
           },
           handoff: {
             type: "boolean",
-            description: "True when the topic must be escalated to Chris (pricing, contract, scope, complaints, anything you're not sure about). When true, do not draft a reply.",
+            description: "True ONLY for complaints, frustration, renegotiation of brief terms, messages Jake can't read, or topics he genuinely doesn't know. When true, leave reply empty.",
           },
           handoffReason: {
             type: "string",
-            description: "One sentence explaining what Chris needs to address. Required when handoff is true.",
+            description: "Required when handoff is true. One sentence explaining what Chris needs to address.",
           },
         },
         required: ["classification", "reply", "handoff"],
@@ -529,13 +562,22 @@ ${renderTimelineForPrompt(timeline)}`;
     | { type: "tool_use"; name: string; input: Record<string, unknown> }
     | undefined;
 
-  let parsed: { classification?: string; reply?: string; handoff?: boolean; handoffReason?: string };
+  let parsed: {
+    classification?: string;
+    reply?: string;
+    handoff?: boolean;
+    handoffReason?: string;
+    notifyChris?: boolean;
+    notifyReason?: string;
+  };
   if (toolBlock && typeof toolBlock.input === "object") {
     parsed = {
       classification: typeof toolBlock.input.classification === "string" ? toolBlock.input.classification : undefined,
       reply: typeof toolBlock.input.reply === "string" ? toolBlock.input.reply : undefined,
       handoff: !!toolBlock.input.handoff,
       handoffReason: typeof toolBlock.input.handoffReason === "string" ? toolBlock.input.handoffReason : undefined,
+      notifyChris: !!toolBlock.input.notifyChris,
+      notifyReason: typeof toolBlock.input.notifyReason === "string" ? toolBlock.input.notifyReason : undefined,
     };
   } else {
     // Refusal or malformed tool use — fall back to a handoff so we never
@@ -545,8 +587,16 @@ ${renderTimelineForPrompt(timeline)}`;
   }
 
   if (parsed.handoff) {
+    // Jake doesn't know the answer. Push Chris IMMEDIATELY so he can type
+    // a response in the OPS portal; Jake will relay it back to the client
+    // when Chris submits it.
+    const lastInboundForHandoff = history.filter(c => c.direction === "inbound").slice(-1)[0];
+    const clientQuestion = lastInboundForHandoff?.body?.slice(0, 220) ?? "";
     await db.update(projects)
-      .set({ jakeAwaitingHandoff: true, jakeHandoffReason: parsed.handoffReason || "Needs Chris" })
+      .set({
+        jakeAwaitingHandoff: true,
+        jakeHandoffReason: parsed.handoffReason || "Jake needs your answer to relay back to the client.",
+      })
       .where(eq(projects.id, projectId));
     await db.insert(projectConversations).values({
       projectId,
@@ -561,7 +611,10 @@ ${renderTimelineForPrompt(timeline)}`;
       handoffTriggered: true,
       handoffReason: parsed.handoffReason ?? null,
     });
-    await notifyHandoff(projectId, parsed.handoffReason ?? "Jake flagged a handoff");
+    await notifyHandoff(
+      projectId,
+      `${parsed.handoffReason ?? "Needs your answer"}${clientQuestion ? ` — they asked: "${clientQuestion}"` : ""}`,
+    );
     return;
   }
 
@@ -623,6 +676,31 @@ ${renderTimelineForPrompt(timeline)}`;
   });
 
   console.log(`Jake replied to ${ctx.contactEmail} re: ${ctx.project.name}`);
+
+  // FYI push — client asked for something Chris needs to do. Jake already
+  // sent the reply; this just makes sure Chris doesn't have to hunt for it.
+  if (parsed.notifyChris) {
+    await notifyChris(
+      projectId,
+      parsed.notifyReason ?? "Client request worth your attention",
+      ctx.clientName ?? ctx.companyName,
+    );
+  }
+}
+
+async function notifyChris(projectId: string, reason: string, clientLabel?: string | null): Promise<void> {
+  if (!isPushConfigured()) return;
+  try {
+    const [p] = await db.select().from(projects).where(eq(projects.id, projectId));
+    const label = clientLabel ? `${clientLabel} via Jake` : `Jake — ${p?.name ?? "client request"}`;
+    await sendPushToAll({
+      title: label,
+      body: reason,
+      url: `/admin/ops/projects/${projectId}`,
+    });
+  } catch (err) {
+    console.error("Jake notify-chris push failed:", err);
+  }
 }
 
 async function notifyHandoff(projectId: string, reason: string): Promise<void> {
@@ -659,4 +737,399 @@ export async function resolveHandoff(projectId: string) {
   await db.update(projects)
     .set({ jakeAwaitingHandoff: false, jakeHandoffReason: null })
     .where(eq(projects.id, projectId));
+}
+
+// Chris typed an answer in the handoff banner. Jake wraps it in his voice
+// and sends it to the client in the existing thread, then clears the
+// handoff so the next inbound flows normally.
+export async function relayHandoffAnswer(projectId: string, chrisAnswer: string): Promise<{ ok: boolean; message?: string }> {
+  const ctx = await gatherContext(projectId);
+  if (!ctx) return { ok: false, message: "Project not found" };
+  if (!ctx.contactEmail) return { ok: false, message: "No client email on file" };
+
+  const history = await db
+    .select()
+    .from(projectConversations)
+    .where(eq(projectConversations.projectId, projectId))
+    .orderBy(projectConversations.createdAt);
+  const lastInbound = history.filter(c => c.direction === "inbound").slice(-1)[0];
+  const threadText = history.slice(-6).map(c => {
+    const who = c.direction === "outbound" ? "JAKE" : "CLIENT";
+    return `${who}:\n${c.body}`;
+  }).join("\n\n---\n\n");
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1500,
+    system: `You are Jake, ${JAKE_FROM_NAME}, relaying Chris's answer back to a client. You are NOT Chris — you're his assistant translating his shorthand into a warm, polished email in Jake's voice.
+
+Voice rules: warm but efficient, direct sentences, no corporate filler, no em dashes, no "I hope this finds you well". End with the exact four-line signature:
+
+${JAKE_SIGNATURE}
+
+Output ONLY the email body. No JSON, no preamble. Use real newlines.`,
+    messages: [{
+      role: "user",
+      content: `Recent thread on the ${ctx.project.name} project with ${ctx.contactName ?? ctx.clientName ?? "the client"}:\n\n${threadText}\n\n---\n\nChris just sent you this answer for you to pass along to the client. Translate Chris's shorthand into a complete, polished email in Jake's voice. Don't add caveats Chris didn't authorize. Don't claim authority Jake doesn't have — phrase it as Chris's response that Jake is sharing.\n\nChris's answer:\n${chrisAnswer.trim()}`,
+    }],
+  });
+
+  let body = response.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+  if (!body) {
+    return { ok: false, message: "Jake couldn't generate a relay. Try again." };
+  }
+  if (!/client\s+relations\s+specialist/i.test(body)) {
+    body = `${body.replace(/\s+$/, "")}\n\n${JAKE_SIGNATURE}`;
+  }
+
+  const subject = lastInbound?.subject
+    ? lastInbound.subject.startsWith("Re:") ? lastInbound.subject : `Re: ${lastInbound.subject}`
+    : `Re: ${ctx.project.name}`;
+
+  let messageId: string | undefined;
+  const resend = getResendClient();
+  if (resend) {
+    try {
+      const payload: any = {
+        from: `${resend.fromName} <${resend.fromEmail}>`,
+        to: ctx.contactEmail,
+        replyTo: resend.fromEmail,
+        subject,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${body.replace(/\n/g, "<br>")}</div>`,
+        tags: [
+          { name: "projectId", value: projectId },
+          { name: "agent", value: "jake" },
+          { name: "kind", value: "handoff_relay" },
+        ],
+      };
+      if (lastInbound?.resendMessageId) {
+        payload.headers = { "In-Reply-To": lastInbound.resendMessageId };
+      }
+      const result = await resend.client.emails.send(payload);
+      messageId = (result as any)?.data?.id;
+    } catch (err: any) {
+      return { ok: false, message: `Send failed: ${err?.message ?? "unknown"}` };
+    }
+  }
+
+  await db.insert(projectConversations).values({
+    projectId,
+    clientId: ctx.project.clientId ?? null,
+    direction: "outbound",
+    fromEmail: JAKE_FROM_EMAIL,
+    toEmail: ctx.contactEmail,
+    subject,
+    body,
+    aiGenerated: true,
+    resendMessageId: messageId ?? null,
+    inReplyToMessageId: lastInbound?.resendMessageId ?? null,
+    classification: "HANDOFF_RELAY",
+  });
+
+  await db.update(projects)
+    .set({ jakeAwaitingHandoff: false, jakeHandoffReason: null })
+    .where(eq(projects.id, projectId));
+
+  return { ok: true, message: "Relayed via Jake and handoff cleared." };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Periodic outreach for archived/completed projects
+// Target cadence: minimum 3 contacts per month per active maintenance
+// client, i.e. one outbound every ~10 days. Welcome lands on enable, then
+// check-ins on the cadence.
+// ─────────────────────────────────────────────────────────────────────────
+
+const MAINTENANCE_CADENCE_DAYS = 10;
+
+export async function runMaintenanceCadence(): Promise<{ scanned: number; queued: number }> {
+  // Every Jake-enabled, completed/archived project gets a check-in if the
+  // last outbound from Jake on that project was more than the cadence ago.
+  const candidates = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.jakeEnabled, true));
+
+  let scanned = 0;
+  let queued = 0;
+  const cadenceCutoff = new Date(Date.now() - MAINTENANCE_CADENCE_DAYS * 86400000);
+
+  for (const p of candidates) {
+    if (p.stage !== "completed" && p.stage !== "archived") continue;
+    if (p.jakeAwaitingHandoff) continue;
+    scanned++;
+
+    const [lastOutbound] = await db
+      .select()
+      .from(projectConversations)
+      .where(eq(projectConversations.projectId, p.id))
+      .orderBy(desc(projectConversations.createdAt))
+      .limit(1);
+
+    const lastTouched = lastOutbound?.createdAt ? new Date(lastOutbound.createdAt) : null;
+    if (lastTouched && lastTouched > cadenceCutoff) continue;
+
+    await db.insert(outreachJobs).values({
+      type: "generate_jake_checkin",
+      payload: { project_id: p.id },
+      runAt: new Date(Date.now() + 30000),
+    });
+    queued++;
+  }
+  if (queued > 0) console.log(`Jake maintenance cadence: scanned ${scanned}, queued ${queued} check-in(s)`);
+  return { scanned, queued };
+}
+
+export async function processJakeCheckinJob(payload: { project_id: string }): Promise<void> {
+  const ctx = await gatherContext(payload.project_id);
+  if (!ctx || !ctx.project.jakeEnabled) return;
+  if (ctx.project.jakeAwaitingHandoff) return;
+  if (!ctx.contactEmail) return;
+  if (ctx.project.stage !== "completed" && ctx.project.stage !== "archived") return;
+
+  // Re-check cadence in case multiple jobs got queued for the same project.
+  const [lastOutbound] = await db
+    .select()
+    .from(projectConversations)
+    .where(eq(projectConversations.projectId, payload.project_id))
+    .orderBy(desc(projectConversations.createdAt))
+    .limit(1);
+  const cadenceCutoff = new Date(Date.now() - MAINTENANCE_CADENCE_DAYS * 86400000);
+  if (lastOutbound?.createdAt && new Date(lastOutbound.createdAt) > cadenceCutoff) return;
+
+  const hasPriorContact = !!lastOutbound;
+  const email = hasPriorContact ? renderCheckinEmail(ctx) : renderIntroEmail(ctx);
+
+  let messageId: string | undefined;
+  const resend = getResendClient();
+  if (resend) {
+    try {
+      const result = await resend.client.emails.send({
+        from: `${resend.fromName} <${resend.fromEmail}>`,
+        to: ctx.contactEmail,
+        replyTo: resend.fromEmail,
+        subject: email.subject,
+        html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${email.body.replace(/\n/g, "<br>")}</div>`,
+        tags: [
+          { name: "projectId", value: ctx.project.id },
+          { name: "agent", value: "jake" },
+          { name: "kind", value: hasPriorContact ? "checkin" : "welcome" },
+        ],
+      });
+      messageId = (result as any)?.data?.id;
+    } catch (err: any) {
+      console.error(`Jake check-in send failed for ${ctx.project.id}:`, err?.message);
+      return;
+    }
+  }
+
+  await db.insert(projectConversations).values({
+    projectId: ctx.project.id,
+    clientId: ctx.project.clientId ?? null,
+    direction: "outbound",
+    fromEmail: JAKE_FROM_EMAIL,
+    toEmail: ctx.contactEmail,
+    subject: email.subject,
+    body: email.body,
+    aiGenerated: true,
+    resendMessageId: messageId ?? null,
+    classification: hasPriorContact ? "CHECKIN" : "WELCOME",
+  });
+  console.log(`Jake ${hasPriorContact ? "check-in" : "welcome"} sent for ${ctx.project.name} (${ctx.contactEmail})`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Daily report — runs at 8am, summarises Jake's last 24h activity, sends
+// Chris a single push digest, and exposes the data for the in-app page.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface JakeDailyReport {
+  windowStart: string;
+  windowEnd: string;
+  totals: {
+    inbound: number;
+    replies: number;
+    welcomes: number;
+    checkins: number;
+    notifies: number;
+    openHandoffs: number;
+  };
+  projects: {
+    projectId: string;
+    projectName: string;
+    clientName: string | null;
+    inbound: number;
+    replies: number;
+    notifies: number;
+    awaitingHandoff: boolean;
+    handoffReason: string | null;
+  }[];
+  recentHandoffs: { projectId: string; projectName: string; reason: string | null }[];
+}
+
+export async function buildJakeDailyReport(hoursBack = 24): Promise<JakeDailyReport> {
+  const windowEnd = new Date();
+  const windowStart = new Date(windowEnd.getTime() - hoursBack * 3600000);
+
+  const recent = await db
+    .select()
+    .from(projectConversations)
+    .where(gte(projectConversations.createdAt, windowStart))
+    .orderBy(desc(projectConversations.createdAt));
+
+  const allProjects = await db.select().from(projects);
+  const projectMap = new Map(allProjects.map(p => [p.id, p]));
+
+  type PerProject = {
+    projectId: string;
+    projectName: string;
+    clientName: string | null;
+    inbound: number;
+    replies: number;
+    notifies: number;
+    awaitingHandoff: boolean;
+    handoffReason: string | null;
+  };
+  const byProject = new Map<string, PerProject>();
+  const totals = { inbound: 0, replies: 0, welcomes: 0, checkins: 0, notifies: 0, openHandoffs: 0 };
+
+  for (const c of recent) {
+    const proj = projectMap.get(c.projectId);
+    if (!proj) continue;
+    const row = byProject.get(c.projectId) ?? {
+      projectId: c.projectId,
+      projectName: proj.name,
+      clientName: null,
+      inbound: 0,
+      replies: 0,
+      notifies: 0,
+      awaitingHandoff: !!proj.jakeAwaitingHandoff,
+      handoffReason: proj.jakeHandoffReason ?? null,
+    };
+    if (c.direction === "inbound") {
+      row.inbound++;
+      totals.inbound++;
+    } else {
+      if (c.classification === "WELCOME") totals.welcomes++;
+      else if (c.classification === "CHECKIN") totals.checkins++;
+      else if (c.classification === "HANDOFF") { /* a handoff log row */ }
+      else if (c.classification === "HANDOFF_RELAY" || c.classification === "INTRO" || /^[A-Z_]+$/.test(c.classification ?? "")) {
+        row.replies++;
+        totals.replies++;
+      } else {
+        row.replies++;
+        totals.replies++;
+      }
+    }
+    byProject.set(c.projectId, row);
+  }
+
+  for (const p of allProjects) {
+    if (!p.jakeEnabled) continue;
+    if (p.jakeAwaitingHandoff) {
+      totals.openHandoffs++;
+      const row = byProject.get(p.id) ?? {
+        projectId: p.id,
+        projectName: p.name,
+        clientName: null,
+        inbound: 0,
+        replies: 0,
+        notifies: 0,
+        awaitingHandoff: true,
+        handoffReason: p.jakeHandoffReason ?? null,
+      };
+      row.awaitingHandoff = true;
+      row.handoffReason = p.jakeHandoffReason ?? row.handoffReason;
+      byProject.set(p.id, row);
+    }
+  }
+
+  // Enrich with client names.
+  for (const row of byProject.values()) {
+    const proj = projectMap.get(row.projectId);
+    if (proj?.clientId) {
+      const [cl] = await db.select().from(clients).where(eq(clients.id, proj.clientId)).limit(1);
+      if (cl) row.clientName = cl.name ?? null;
+    }
+  }
+
+  const recentHandoffs = allProjects
+    .filter(p => p.jakeEnabled && p.jakeAwaitingHandoff)
+    .map(p => ({ projectId: p.id, projectName: p.name, reason: p.jakeHandoffReason ?? null }));
+
+  return {
+    windowStart: windowStart.toISOString(),
+    windowEnd: windowEnd.toISOString(),
+    totals,
+    projects: Array.from(byProject.values()).sort((a, b) => (b.inbound + b.replies + (b.awaitingHandoff ? 100 : 0)) - (a.inbound + a.replies + (a.awaitingHandoff ? 100 : 0))),
+    recentHandoffs,
+  };
+}
+
+export async function sendJakeDailyDigest(): Promise<void> {
+  const report = await buildJakeDailyReport(24);
+  if (!isPushConfigured()) return;
+  const parts: string[] = [];
+  if (report.totals.inbound) parts.push(`${report.totals.inbound} inbound`);
+  if (report.totals.replies) parts.push(`${report.totals.replies} reply${report.totals.replies === 1 ? "" : "s"}`);
+  if (report.totals.welcomes) parts.push(`${report.totals.welcomes} welcome${report.totals.welcomes === 1 ? "" : "s"}`);
+  if (report.totals.checkins) parts.push(`${report.totals.checkins} check-in${report.totals.checkins === 1 ? "" : "s"}`);
+  if (report.totals.openHandoffs) parts.push(`${report.totals.openHandoffs} open handoff${report.totals.openHandoffs === 1 ? "" : "s"}`);
+  const summary = parts.length ? parts.join(" · ") : "no Jake activity in the last 24h";
+  try {
+    await sendPushToAll({
+      title: "Jake daily report",
+      body: summary,
+      url: "/admin/ops/jake/report",
+    });
+  } catch (err) {
+    console.error("Jake daily digest push failed:", err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Background runners — schedule the cadence + the daily digest.
+// ─────────────────────────────────────────────────────────────────────────
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAILY_DIGEST_HOUR = 8;
+const DAILY_DIGEST_TZ = "America/Chicago";
+
+let cadenceTimer: NodeJS.Timeout | null = null;
+let digestTimer: NodeJS.Timeout | null = null;
+
+export function startJakeRunners(): void {
+  if (cadenceTimer) return;
+  // Cadence — run every hour. The cutoff inside runMaintenanceCadence
+  // keeps it idempotent.
+  cadenceTimer = setInterval(() => {
+    runMaintenanceCadence().catch(err => console.error("Jake cadence runner error:", err));
+  }, HOUR_MS);
+  // Initial run shortly after boot.
+  setTimeout(() => {
+    runMaintenanceCadence().catch(err => console.error("Initial Jake cadence run error:", err));
+  }, 60 * 1000);
+
+  // Daily digest — fire at the next 8am America/Chicago, then daily.
+  function scheduleNextDigest() {
+    const now = new Date();
+    const target = new Date(now.toLocaleString("en-US", { timeZone: DAILY_DIGEST_TZ }));
+    target.setHours(DAILY_DIGEST_HOUR, 0, 0, 0);
+    if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+    const delay = Math.max(60_000, target.getTime() - now.getTime());
+    digestTimer = setTimeout(async () => {
+      try {
+        await sendJakeDailyDigest();
+      } catch (err) {
+        console.error("Jake daily digest error:", err);
+      } finally {
+        scheduleNextDigest();
+      }
+    }, delay);
+    console.log(`Jake daily digest scheduled for ${target.toISOString()} (${Math.round(delay / 60000)} min)`);
+  }
+  scheduleNextDigest();
+
+  console.log("Jake runners started: maintenance cadence (1h) + daily digest (8am CT)");
 }
