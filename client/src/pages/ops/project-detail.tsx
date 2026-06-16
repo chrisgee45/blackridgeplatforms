@@ -3313,26 +3313,12 @@ function JakeTab({
       </Card>
 
       {awaitingHandoff && (
-        <Card className="border-amber-500/40 bg-amber-500/10">
-          <CardContent className="pt-3 pb-3 flex items-start justify-between gap-3 flex-wrap">
-            <div className="flex items-start gap-2 min-w-0">
-              <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-amber-300">Jake handed off to you</div>
-                <p className="text-xs text-amber-200/80 mt-0.5">{handoffReason ?? "Needs your attention."}</p>
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => resolveMutation.mutate()}
-              disabled={resolveMutation.isPending}
-              data-testid="button-jake-resolve"
-            >
-              I handled it
-            </Button>
-          </CardContent>
-        </Card>
+        <JakeHandoffPanel
+          projectId={projectId}
+          handoffReason={handoffReason}
+          onResolve={() => resolveMutation.mutate()}
+          resolving={resolveMutation.isPending}
+        />
       )}
 
       {!jakeEnabled && conversations.length === 0 ? (
@@ -3373,5 +3359,75 @@ function JakeTab({
         </div>
       )}
     </div>
+  );
+}
+
+function JakeHandoffPanel({
+  projectId,
+  handoffReason,
+  onResolve,
+  resolving,
+}: {
+  projectId: string;
+  handoffReason: string | null;
+  onResolve: () => void;
+  resolving: boolean;
+}) {
+  const { toast } = useToast();
+  const [answer, setAnswer] = useState("");
+
+  const relayMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await apiRequest("POST", `/api/ops/projects/${projectId}/jake/relay-handoff`, { answer: text });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId, "jake/conversations"] });
+      setAnswer("");
+      toast({ title: "Sent via Jake", description: "Reply forwarded to the client and handoff cleared." });
+    },
+    onError: (e: Error) => toast({ title: "Relay failed", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card className="border-amber-500/40 bg-amber-500/10">
+      <CardContent className="pt-3 pb-3 space-y-3">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-amber-300">Jake needs your answer</div>
+            <p className="text-xs text-amber-200/80 mt-0.5">{handoffReason ?? "Needs your attention."}</p>
+          </div>
+        </div>
+        <Textarea
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          placeholder="Type your answer. Jake will rewrite it in his voice and send it to the client in the existing thread."
+          className="min-h-[88px] text-sm bg-background/40"
+          data-testid="textarea-jake-relay"
+        />
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onResolve}
+            disabled={resolving || relayMutation.isPending}
+            data-testid="button-jake-resolve"
+          >
+            I handled it myself
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => relayMutation.mutate(answer)}
+            disabled={!answer.trim() || relayMutation.isPending}
+            data-testid="button-jake-relay"
+          >
+            {relayMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}
+            Send via Jake
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

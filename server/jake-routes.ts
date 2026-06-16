@@ -8,6 +8,9 @@ import {
   getProjectConversations,
   getClientJakeConversations,
   resolveHandoff,
+  relayHandoffAnswer,
+  buildJakeDailyReport,
+  runMaintenanceCadence,
 } from "./jake";
 
 /**
@@ -91,6 +94,42 @@ export function registerJakeRoutes(app: Express, isAuthenticated: RequestHandler
     } catch (error: any) {
       console.error("Jake resolve-handoff error:", error);
       res.status(500).json({ message: error?.message || "Failed to clear handoff" });
+    }
+  });
+
+  // Chris typed an answer in the handoff banner; Jake relays it to the
+  // client in his voice and clears the handoff.
+  app.post("/api/ops/projects/:id/jake/relay-handoff", isAuthenticated, async (req, res) => {
+    try {
+      const answer = typeof req.body?.answer === "string" ? req.body.answer.trim() : "";
+      if (!answer) return res.status(400).json({ message: "answer is required" });
+      const result = await relayHandoffAnswer(String(req.params.id), answer);
+      if (!result.ok) return res.status(400).json({ message: result.message ?? "Relay failed" });
+      res.json({ ok: true, message: result.message });
+    } catch (error: any) {
+      console.error("Jake relay-handoff error:", error);
+      res.status(500).json({ message: error?.message || "Failed to relay handoff" });
+    }
+  });
+
+  app.get("/api/ops/jake/report", isAuthenticated, async (req, res) => {
+    try {
+      const hours = req.query.hours ? Math.max(1, Math.min(168, Number(req.query.hours))) : 24;
+      const report = await buildJakeDailyReport(hours);
+      res.json(report);
+    } catch (error: any) {
+      console.error("Jake report error:", error);
+      res.status(500).json({ message: error?.message || "Failed to build report" });
+    }
+  });
+
+  app.post("/api/ops/jake/run-cadence", isAuthenticated, async (_req, res) => {
+    try {
+      const result = await runMaintenanceCadence();
+      res.json({ ok: true, ...result });
+    } catch (error: any) {
+      console.error("Jake cadence trigger error:", error);
+      res.status(500).json({ message: error?.message || "Failed to run cadence" });
     }
   });
 

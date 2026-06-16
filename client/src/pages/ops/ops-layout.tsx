@@ -44,6 +44,7 @@ import {
   FileText,
   FileBarChart,
   Brain,
+  Sparkles,
   Megaphone,
   UserCircle,
   Receipt,
@@ -74,6 +75,7 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
     items: [
       { title: "Dashboard", href: "/admin/ops", icon: LayoutDashboard },
       { title: "AI Insights", href: "/admin/ops/ai", icon: Brain },
+      { title: "Jake Report", href: "/admin/ops/jake/report", icon: Sparkles },
     ],
   },
   {

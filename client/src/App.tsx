@@ -24,6 +24,7 @@ const OutreachPage = lazy(() => import("@/pages/ops/outreach-page"));
 const ClientsPage = lazy(() => import("@/pages/ops/clients-page"));
 const AccountingPage = lazy(() => import("@/pages/ops/accounting-page"));
 const CalendarPage = lazy(() => import("@/pages/ops/calendar-page"));
+const JakeReportPage = lazy(() => import("@/pages/ops/jake-report-page"));
 const QaTemplatesPage = lazy(() => import("@/pages/ops/qa-templates-page"));
 const AuditTestPage = lazy(() => import("@/pages/ops/audit-test-page"));
 const AuditsListPage = lazy(() => import("@/pages/ops/audits-list-page"));
@@ -154,6 +155,9 @@ function Router() {
         </Route>
         <Route path="/admin/ops/qa-audit">
           {() => <OpsPage component={QualityPage} />}
+        </Route>
+        <Route path="/admin/ops/jake/report">
+          {() => <OpsPage component={JakeReportPage} />}
         </Route>
         <Route path="/pay/:token" component={PayPage} />
         <Route path="/kickoff/:token" component={KickoffForm} />
