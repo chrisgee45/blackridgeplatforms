@@ -362,17 +362,18 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   }
   let textBody = pickBody();
 
-  // Resend's email.received webhook on most accounts sends ONLY metadata
-  // (from / to / subject / email_id / message_id). The body has to be
-  // fetched from the REST API. Try a few endpoints since Resend has moved
-  // them around — log every attempt so we know exactly which works.
+  // Resend's email.received webhook intentionally ships only metadata.
+  // The body must be fetched from the Received Emails API by email_id
+  // — this is documented behavior, not a bug. SDK v4 doesn't expose
+  // emails.receiving yet, so hit the REST endpoint directly.
   if (emailId && (!textBody || textBody.length < 5)) {
     const apiKey = process.env.RESEND_API_KEY;
     if (apiKey) {
       const endpoints = [
+        `https://api.resend.com/emails/receiving/${emailId}`,
+        `https://api.resend.com/emails/${emailId}/receiving`,
+        `https://api.resend.com/receiving/${emailId}`,
         `https://api.resend.com/emails/${emailId}`,
-        `https://api.resend.com/inbound-emails/${emailId}`,
-        `https://api.resend.com/inbound/${emailId}`,
       ];
       for (const url of endpoints) {
         try {
