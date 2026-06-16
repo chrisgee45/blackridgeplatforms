@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import RidgeWidget from "@/components/RidgeWidget";
+import JakeWidget from "@/components/JakeWidget";
 import {
   Sidebar,
   SidebarContent,
@@ -483,6 +484,7 @@ export default function OpsLayout({ children }: { children: React.ReactNode }) {
       </div>
       <CommandBar open={commandOpen} onOpenChange={setCommandOpen} />
       <RidgeWidget autoGreet={true} />
+      <JakeWidget />
       <MfaSettingsDialog open={mfaOpen} onClose={() => setMfaOpen(false)} />
     </SidebarProvider>
   );

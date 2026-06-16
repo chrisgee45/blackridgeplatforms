@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <radialGradient id="skin" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0%" stop-color="#f3d6bc"/>
+      <stop offset="100%" stop-color="#d9b794"/>
+    </radialGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5a3b22"/>
+      <stop offset="100%" stop-color="#3b2412"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f3a8a"/>
+      <stop offset="100%" stop-color="#0c1f5c"/>
+    </linearGradient>
+  </defs>
+  <!-- bg -->
+  <circle cx="128" cy="128" r="128" fill="url(#bg)"/>
+  <!-- shoulders / collar -->
+  <path d="M 28 256 C 40 200 76 178 128 178 C 180 178 216 200 228 256 Z" fill="url(#shirt)"/>
+  <path d="M 100 196 L 128 224 L 156 196 L 156 256 L 100 256 Z" fill="#f5f5f5" opacity="0.95"/>
+  <!-- neck -->
+  <rect x="116" y="160" width="24" height="28" fill="url(#skin)"/>
+  <!-- head -->
+  <ellipse cx="128" cy="120" rx="44" ry="54" fill="url(#skin)"/>
+  <!-- jaw shadow -->
+  <path d="M 88 134 Q 128 168 168 134 Q 156 174 128 178 Q 100 174 88 134 Z" fill="#000" opacity="0.06"/>
+  <!-- hair (short side part) -->
+  <path d="M 84 100 Q 90 70 128 64 Q 168 70 172 100 Q 172 80 156 70 Q 144 60 128 60 Q 110 60 96 70 Q 86 80 84 100 Z" fill="url(#hair)"/>
+  <path d="M 84 100 Q 96 80 132 78 Q 162 82 170 100 L 172 110 Q 158 90 132 88 Q 100 92 86 110 Z" fill="url(#hair)"/>
+  <!-- eyebrows -->
+  <path d="M 100 110 L 116 108 L 120 112 Z" fill="#3b2412"/>
+  <path d="M 156 110 L 140 108 L 136 112 Z" fill="#3b2412"/>
+  <!-- eyes -->
+  <ellipse cx="110" cy="118" rx="3.2" ry="2.4" fill="#1f2937"/>
+  <ellipse cx="146" cy="118" rx="3.2" ry="2.4" fill="#1f2937"/>
+  <circle cx="111" cy="117" r="0.9" fill="#fff"/>
+  <circle cx="147" cy="117" r="0.9" fill="#fff"/>
+  <!-- nose -->
+  <path d="M 128 122 L 124 138 Q 128 142 132 138 Z" fill="#000" opacity="0.08"/>
+  <!-- mouth (subtle friendly) -->
+  <path d="M 116 152 Q 128 158 140 152" stroke="#7a4f33" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- short beard outline (mid-30s subtle) -->
+  <path d="M 96 144 Q 128 162 160 144 Q 156 168 128 174 Q 100 168 96 144 Z" fill="#3b2412" opacity="0.12"/>
+</svg>
