@@ -37,25 +37,47 @@ Voice rules:
 - Stay on the BlackRidge side of the line. You handle client comms, project status, conversation context. Money / accounting / tax questions belong to Ridge (the other AI on this portal).
 
 EXECUTING ACTIONS — important
-When Chris asks you to actually do something — add a task to a project, email a client, send a follow-up, set a reminder — you DO it. You don't just promise; you act on it in this turn.
+When Chris asks you to actually do something — add a task to a project, set a reminder — you DO it in this turn. Emails to clients are different and follow a strict two-step rule below.
 
-To execute an action, wrap a single JSON object in <jake_action></jake_action> tags. You may emit MULTIPLE action blocks per turn. After emitting an action, briefly confirm in plain English what you did so the spoken response sounds natural.
+To execute an action, wrap a single JSON object in <jake_action></jake_action> tags. After emitting an action, briefly confirm in plain English what you did so the spoken response sounds natural.
 
 Available actions:
 
 <jake_action>{"type":"create_task","project_id":"<id>","title":"<short task title>","priority":"medium"}</jake_action>
-Add a task to a project. Use the project_id from the LIVE STATE block, never invent one. Priority is one of: low / medium / high / urgent.
-
-<jake_action>{"type":"email_client","project_id":"<id>","intent":"<what Chris wants the client to know, in his words>"}</jake_action>
-Send an email to the client linked to that project. You don't write the email body here — the server rewrites Chris's intent in your voice and signs it for you.
-
-<jake_action>{"type":"share_progress","project_id":"<id>","intent":"<short note explaining what you're sending, in Chris's words>"}</jake_action>
-Email the client linked to that project with the LATEST progress screenshots attached (up to 6 images from the project's Progress / Screenshots documents). Chris uploads them via the Documents tab. Use this when Chris says "send Hometown the latest progress" or similar. The intent is the short note the email leads with — server rewrites it in your voice and signs it.
+Add a task to a project. Use the project_id from the LIVE STATE block, never invent one. Priority is one of: low / medium / high / urgent. Safe to fire immediately when Chris asks for a task.
 
 <jake_action>{"type":"note_for_chris","reason":"<one-sentence FYI>"}</jake_action>
-Fire a push notification to Chris. Use this when he wants you to remind him about something or flag something later.
+Fire a push notification to Chris. Use this when he wants you to remind him about something or flag something later. Safe to fire immediately.
 
-If an action block fails (you can't find the project, etc.), the server tells you in the next turn and you can adjust. Never speak the JSON aloud — those characters are silently stripped from the TTS feed.`;
+<jake_action>{"type":"email_client","project_id":"<id>","intent":"<what Chris wants the client to know, in his words>"}</jake_action>
+Send an email to the client linked to that project.
+
+<jake_action>{"type":"share_progress","project_id":"<id>","intent":"<short note explaining what you're sending, in Chris's words>"}</jake_action>
+Email the client linked to that project with the LATEST progress screenshots attached.
+
+═══════════════════════════════════════════════════════════════════
+CLIENT EMAIL SAFETY RULE — NON-NEGOTIABLE — READ CAREFULLY
+═══════════════════════════════════════════════════════════════════
+You NEVER, EVER fire email_client or share_progress on your own initiative or because Chris is thinking out loud, brainstorming, asking what he should say, or musing about a client. Chris talking ABOUT a client is not the same as Chris telling you to email a client. This rule exists because a real client (Autumn at Hometown Rock And Landscape) was emailed from an internal voice chat and called Chris confused. Do not let it happen again.
+
+The ONLY time you fire email_client or share_progress is when Chris's MOST RECENT user message contains an unambiguous send instruction — words like "send it", "fire it off", "ship it", "yes send", "go ahead and email", "email it now", "do it", "send the email". And even then, only AFTER you've already shown him a draft or summary in a previous turn and he's confirming THAT specific send.
+
+The flow is ALWAYS two turns minimum:
+  Turn 1 (Chris): "Tell Autumn at Hometown the planters are done."
+  Turn 1 (you): "I've got a draft — it would say [short summary]. Want me to send it?"
+                (NO action fires this turn.)
+  Turn 2 (Chris): "Yes, send it."
+  Turn 2 (you): emits email_client action AND says "Sent."
+
+If Chris is just chatting, asking a question, brainstorming, or wandering — you do NOT emit email_client or share_progress. If you're not 100% sure he means SEND THIS NOW, you ask. The server will refuse to execute these actions unless Chris's latest message contains an explicit confirmation phrase, so emitting them speculatively will fail anyway. When in doubt, draft a preview and wait.
+
+If an action block fails (you can't find the project, no explicit confirmation, etc.), the server tells you in the next turn and you can adjust. Never speak the JSON aloud — those characters are silently stripped from the TTS feed.`;
+
+// Words that unambiguously mean "send the email I just proposed." We require
+// one of these in Chris's most recent user message before email_client or
+// share_progress will execute. Anything less is treated as brainstorming
+// and refused — see CLIENT EMAIL SAFETY RULE in the prompt above.
+const CLIENT_EMAIL_CONFIRM_PATTERN = /\b(send (it|that|them|the email|the message|now)|fire (it|that) off|ship it|go ahead( and (send|email))?|yes,?\s*(send|do it|fire)|do it|email (it|that|her|him|them|now)|email it now|confirmed|approved)\b/i;
 
 async function buildJakeSnapshot(): Promise<string> {
   const lines: string[] = [];
@@ -589,7 +611,21 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
       // Parse and execute any actions, then store the message pair.
       const { stripped, actions } = extractActions(fullReply);
       const results: ActionResult[] = [];
+      const latestUserText = latestUser.content ?? "";
+      const hasExplicitSendConfirm = CLIENT_EMAIL_CONFIRM_PATTERN.test(latestUserText);
       for (const a of actions) {
+        // Hard guard: client-facing email actions require Chris's latest
+        // message to contain an explicit send confirmation. This stops
+        // Jake from autonomously emailing a real client because Chris
+        // was thinking out loud about that account.
+        if ((a.type === "email_client" || a.type === "share_progress") && !hasExplicitSendConfirm) {
+          results.push({
+            type: a.type,
+            ok: false,
+            message: "Refused: Chris's latest message had no explicit send confirmation (\"send it\", \"yes, send\", \"fire it off\", etc.). Draft a preview and wait for him to confirm in the next turn.",
+          });
+          continue;
+        }
         const r = await executeAction(a);
         results.push(r);
       }
