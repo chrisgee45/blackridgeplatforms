@@ -4,6 +4,10 @@ import { eq, and } from "drizzle-orm";
 
 const CAMPAIGN_A_NAME = "Campaign A - Website Audit";
 
+const TRAVIS_SIGNATURE = `Travis
+Outreach Lead
+BlackRidge Platforms`;
+
 const STEPS = [
   {
     stepNumber: 1,
@@ -13,15 +17,14 @@ const STEPS = [
 
 I came across {{business_name}} and spent a few minutes on your site. {{opening_line}}
 
-My name is Chris Gee, I'm the founder of BlackRidge Platforms. We build high-end websites with full backend portals — think member login, CRM, billing, and everything running from one central location. No more juggling five different tools.
+I'm Travis with BlackRidge Platforms. We build custom websites with the full backend portal that runs behind them. Member login, CRM, billing, scheduling, all running from one central place instead of five different tools.
 
-I'd love to put together a quick mock up so you can actually see what your business could look like. No pitch deck. No pressure. Just want you to see what we see.
+I'd put together a quick mock-up so you can see what a refreshed {{business_name}} could look like. No pitch deck. No pressure. Just want you to see what we see.
 
-Mind if I send that over?
+Mind if I send it over?
 
 Thanks,
-Chris Gee
-Founder | BlackRidge Platforms`,
+${TRAVIS_SIGNATURE}`,
   },
   {
     stepNumber: 2,
@@ -29,27 +32,27 @@ Founder | BlackRidge Platforms`,
     templateSubject: "re: quick question||following up||{{business_domain}}",
     templateBody: `Hey {{first_name}},
 
-Sent you a note a couple days ago — just wanted to make sure it didn't get buried.
+Sent you a note a couple days ago, just wanted to make sure it didn't get buried.
 
-We rebuilt a gym site in Tulsa last month. They went from 3 contact form submissions a week to 14 in the first 30 days. Main change was moving their phone number and booking button above the fold and adding a Google reviews widget.
+The thing most owners don't realize is what a slow or hard-to-navigate site is actually costing them every month. The visitors who bounce never tell you why.
 
-Worth a 10 minute conversation to see if something similar applies to {{business_name}}? No pressure at all.
+Worth a 10-minute look to see what we could change for {{business_name}}? No pressure either way.
 
-Chris Gee
-Founder | BlackRidge Platforms`,
+${TRAVIS_SIGNATURE}`,
   },
   {
     stepNumber: 3,
     delayDays: 7,
-    templateSubject: "what changed for them||3 weeks later||quick win",
+    templateSubject: "one question for you||what would the site do||quick mockup",
     templateBody: `Hey {{first_name}},
 
-Worked with a law firm in Edmond recently — they went from 1–2 contact form submissions a week to 11 in the first three weeks. Simple stuff. Phone number visible, consultation button above the fold, Google reviews on the homepage.
+Quick question. What's the one thing you wish your website could do for {{business_name}} that it doesn't do today?
 
-I think we could do some great things for {{business_name}}. Want me to mock up what that could look like? No charge, just want you to see what we see.
+If there's a clear answer, that's almost always the same thing we end up building first. I can mock up what that looks like on a redesigned site so you can see it before we ever talk price.
 
-Chris Gee
-Founder | BlackRidge Platforms`,
+Want me to put it together?
+
+${TRAVIS_SIGNATURE}`,
   },
   {
     stepNumber: 4,
@@ -57,12 +60,11 @@ Founder | BlackRidge Platforms`,
     templateSubject: "not a $10k project||what it actually costs||honest question",
     templateBody: `Hey {{first_name}},
 
-Most business owners I talk to assume a site rebuild is going to cost a fortune. For most of our clients it's been between $1,500 and $3,500 depending on what's needed — and most of them made that back on one or two new customers.
+Most owners assume a full site rebuild is going to cost a fortune. For most of our clients it lands between $1,500 and $3,500 depending on scope, and the build usually pays for itself on a customer or two.
 
-Is cost the main thing holding this back or is the timing just not right? Either way, no pressure.
+Is cost what's holding this up, or is it just bad timing? Either way, no pressure.
 
-Chris Gee
-Founder | BlackRidge Platforms`,
+${TRAVIS_SIGNATURE}`,
   },
   {
     stepNumber: 5,
@@ -70,12 +72,11 @@ Founder | BlackRidge Platforms`,
     templateSubject: "closing the loop||last note||stepping back",
     templateBody: `Hey {{first_name}},
 
-I've reached out a few times and haven't heard back so I'll assume the timing isn't right. I won't follow up again after this.
+I've reached out a few times and haven't heard back, so I'll assume the timing isn't right. I won't follow up again after this.
 
 If you ever want a second set of eyes on {{business_name}}'s site you know where to find me. Wishing you a strong rest of the year.
 
-Chris Gee
-Founder | BlackRidge Platforms`,
+${TRAVIS_SIGNATURE}`,
   },
 ];
 
