@@ -59,9 +59,15 @@ function renderTemplate(template: string, lead: any): string {
 export async function getResendClientForOutreach(): Promise<{ client: Resend; fromEmail: string } | null> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return null;
+  // Outreach campaigns are Travis's responsibility. The From header
+  // shows his name so cold replies route to him, not to Chris.
+  const address = process.env.TRAVIS_FROM_EMAIL
+    || process.env.OUTREACH_FROM_EMAIL
+    || "travis@blackridgeplatforms.com";
+  const name = process.env.TRAVIS_FROM_NAME || "Travis at BlackRidge";
   return {
     client: new Resend(apiKey),
-    fromEmail: process.env.RESEND_FROM_EMAIL || "chris@blackridgeplatforms.com",
+    fromEmail: `${name} <${address}>`,
   };
 }
 
