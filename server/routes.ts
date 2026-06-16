@@ -1256,7 +1256,7 @@ ${snapshot}`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 1500,
           system: RIDGE_SYSTEM,
           messages: trimmed.slice(-20),
@@ -1566,7 +1566,7 @@ ${snapshot}`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 1000,
           stream: true,
           system: RIDGE_SYSTEM,
