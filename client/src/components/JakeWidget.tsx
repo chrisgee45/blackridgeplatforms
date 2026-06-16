@@ -79,6 +79,16 @@ export default function JakeWidget() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Web Audio graph so we can boost Jake above the 1.0 cap that plain
+  // <audio> elements enforce. Built once on first play; source nodes can
+  // only be created once per element, so we keep the same audio element.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  // Boost factor — 1.0 is system max, 2.5 is significantly louder without
+  // obvious distortion on a 192 kbps mp3. Tweak here if you want it
+  // louder or softer.
+  const VOLUME_BOOST = 2.5;
   const abortRef = useRef<AbortController | null>(null);
   const audioBufRef = useRef<Uint8Array[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -189,6 +199,31 @@ export default function JakeWidget() {
         const url = URL.createObjectURL(blob);
         if (!audioRef.current) audioRef.current = new Audio();
         audioRef.current.src = url;
+        // Build (or reuse) the Web Audio graph: element → gain → speakers.
+        // This is what gives us Jake's volume above the browser's 1.0 cap.
+        try {
+          if (!audioCtxRef.current) {
+            const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (Ctx) {
+              audioCtxRef.current = new Ctx() as AudioContext;
+              sourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current);
+              gainRef.current = audioCtxRef.current.createGain();
+              gainRef.current.gain.value = VOLUME_BOOST;
+              sourceRef.current.connect(gainRef.current);
+              gainRef.current.connect(audioCtxRef.current.destination);
+            }
+          }
+          // Some browsers (Safari, iOS) suspend the context until the next
+          // user gesture — resume() is a no-op if it's already running.
+          if (audioCtxRef.current?.state === "suspended") {
+            await audioCtxRef.current.resume().catch(() => { /* */ });
+          }
+          if (gainRef.current) gainRef.current.gain.value = VOLUME_BOOST;
+        } catch (err) {
+          // Fall back to plain playback if Web Audio refuses; volume will
+          // be at the browser default but Jake still speaks.
+          console.warn("[Jake] Web Audio boost unavailable:", err);
+        }
         setStatus("speaking");
         await audioRef.current.play().catch(() => { /* */ });
         await new Promise<void>(resolve => {
