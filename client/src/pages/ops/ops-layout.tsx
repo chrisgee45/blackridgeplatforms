@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import RidgeWidget from "@/components/RidgeWidget";
 import JakeWidget from "@/components/JakeWidget";
+import TravisWidget from "@/components/TravisWidget";
 import {
   Sidebar,
   SidebarContent,
@@ -485,6 +486,7 @@ export default function OpsLayout({ children }: { children: React.ReactNode }) {
       <CommandBar open={commandOpen} onOpenChange={setCommandOpen} />
       <RidgeWidget autoGreet={true} />
       <JakeWidget />
+      <TravisWidget />
       <MfaSettingsDialog open={mfaOpen} onClose={() => setMfaOpen(false)} />
     </SidebarProvider>
   );

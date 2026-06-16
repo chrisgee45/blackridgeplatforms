@@ -8,132 +8,118 @@ interface Message {
 
 type Status = "idle" | "listening" | "thinking" | "speaking";
 
-const STORAGE_KEY = "jake-voice-conversation-id";
+const STORAGE_KEY = "travis-voice-conversation-id";
 
 const FRAME_AUDIO = 0x01;
 const FRAME_TEXT = 0x02;
 const FRAME_DONE = 0x03;
 const FRAME_HEADER_SIZE = 5;
 
-const JAKE_STYLES = `
-@keyframes jake-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.82; }
+const STYLES = `
+@keyframes travis-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(180, 100, 50, 0.6); }
+  50% { transform: scale(1.04); box-shadow: 0 0 0 20px rgba(180, 100, 50, 0); }
 }
-@keyframes jake-fade {
+@keyframes travis-ring {
+  0% { transform: scale(0.98); opacity: 0.9; }
+  100% { transform: scale(1.18); opacity: 0; }
+}
+@keyframes travis-fade-up {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes jake-dot-bounce {
+@keyframes travis-dot-bounce {
   0%, 80%, 100% { transform: translateY(0); }
   40% { transform: translateY(-6px); }
 }
 `;
 
 function injectStyles() {
-  if (document.getElementById("jake-widget-styles")) return;
+  if (document.getElementById("travis-widget-styles")) return;
   const el = document.createElement("style");
-  el.id = "jake-widget-styles";
-  el.textContent = JAKE_STYLES;
+  el.id = "travis-widget-styles";
+  el.textContent = STYLES;
   document.head.appendChild(el);
 }
 
-/**
- * Jake's avatar. Tries /jake-avatar.png first (drop a real photo there to
- * upgrade from the placeholder), falls back to the committed SVG
- * portrait, then to a stylized initial bubble if both fail.
- */
-function JakeAvatar({ size = 56 }: { size?: number }) {
-  const [src, setSrc] = useState("/jake-avatar.png");
-  const [allFailed, setAllFailed] = useState(false);
-
-  if (allFailed) {
+function TravisAvatar({ size }: { size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
     return (
-      <svg width={size} height={size} viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+      <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="jake-grad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#1e3a8a" />
-            <stop offset="100%" stopColor="#0f172a" />
+          <linearGradient id="travis-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#7c2d12" />
+            <stop offset="100%" stopColor="#1c1917" />
           </linearGradient>
         </defs>
-        <circle cx="28" cy="28" r="28" fill="url(#jake-grad)" />
-        <text x="28" y="36" textAnchor="middle" fontFamily="Inter, sans-serif" fontSize="22" fontWeight="600" fill="#e0e7ff">J</text>
+        <circle cx="50" cy="50" r="50" fill="url(#travis-grad)" />
+        <text x="50" y="63" textAnchor="middle" fontFamily="Inter, sans-serif" fontSize={size * 0.42} fontWeight="600" fill="#fef3c7">T</text>
       </svg>
     );
   }
   return (
     <img
-      src={src}
-      alt="Jake"
+      src="/travis-avatar.png"
+      alt="Travis"
       width={size}
       height={size}
-      onError={() => {
-        if (src === "/jake-avatar.png") setSrc("/jake-avatar.svg");
-        else setAllFailed(true);
-      }}
-      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", display: "block", background: "#0f172a" }}
+      onError={() => setFailed(true)}
+      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", display: "block", background: "#1c1917" }}
     />
   );
 }
 
-export default function JakeWidget() {
+export default function TravisWidget() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     try { return window.localStorage.getItem(STORAGE_KEY); } catch { return null; }
   });
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  // Web Audio graph so we can boost Jake above the 1.0 cap that plain
-  // <audio> elements enforce. Built once on first play; source nodes can
-  // only be created once per element, so we keep the same audio element.
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  // Boost factor — 1.0 is system max, 2.5 is significantly louder without
-  // obvious distortion on a 192 kbps mp3. Tweak here if you want it
-  // louder or softer.
   const VOLUME_BOOST = 2.5;
   const abortRef = useRef<AbortController | null>(null);
   const audioBufRef = useRef<Uint8Array[]>([]);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const [vw, setVw] = useState<number>(typeof window !== "undefined" ? window.innerWidth : 1024);
+  const [vh, setVh] = useState<number>(typeof window !== "undefined" ? window.innerHeight : 768);
 
   useEffect(() => { injectStyles(); }, []);
   useEffect(() => { if (!audioRef.current) audioRef.current = new Audio(); }, []);
+  useEffect(() => {
+    const onResize = () => { setVw(window.innerWidth); setVh(window.innerHeight); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
-  // Hydrate existing conversation history once on mount if we have a saved
-  // conversation id.
   useEffect(() => {
     if (!conversationId) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/jake/voice/conversations/${conversationId}/messages`, {
+        const res = await fetch(`/api/travis/voice/conversations/${conversationId}/messages`, {
           credentials: "include",
         });
         if (!res.ok) return;
         const rows = await res.json() as { role: string; content: string; actions?: any }[];
         if (cancelled) return;
-        const hydrated: Message[] = rows.map(r => ({
+        setMessages(rows.map(r => ({
           role: r.role === "assistant" ? "assistant" : "user",
           content: r.content,
           actions: Array.isArray(r.actions) ? r.actions : undefined,
-        }));
-        setMessages(hydrated);
+        })));
       } catch {
-        // If history fetch fails (conversation deleted, etc.), drop it.
         try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
         setConversationId(null);
       }
     })();
     return () => { cancelled = true; };
   }, [conversationId]);
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -151,7 +137,6 @@ export default function JakeWidget() {
   const sendTurn = useCallback(async (userText: string) => {
     const trimmed = userText.trim();
     if (!trimmed) return;
-    setInput("");
     const newMessages: Message[] = [...messages, { role: "user", content: trimmed }, { role: "assistant", content: "" }];
     setMessages(newMessages);
     setStatus("thinking");
@@ -161,14 +146,12 @@ export default function JakeWidget() {
     abortRef.current = controller;
 
     try {
-      const resp = await fetch("/api/jake/voice-stream", {
+      const resp = await fetch("/api/travis/voice-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         signal: controller.signal,
         body: JSON.stringify({
-          // Send the conversation up through the user's latest message.
-          // Drop the empty assistant placeholder we just appended for UI.
           messages: newMessages.filter(m => m.content && m.content.length > 0),
           conversationId,
         }),
@@ -220,11 +203,7 @@ export default function JakeWidget() {
               setMessages(prev => {
                 const copy = [...prev];
                 if (copy.length > 0 && copy[copy.length - 1].role === "assistant") {
-                  copy[copy.length - 1] = {
-                    role: "assistant",
-                    content: assistantText,
-                    actions: finalActions,
-                  };
+                  copy[copy.length - 1] = { role: "assistant", content: assistantText, actions: finalActions };
                 }
                 return copy;
               });
@@ -246,8 +225,6 @@ export default function JakeWidget() {
         const url = URL.createObjectURL(blob);
         if (!audioRef.current) audioRef.current = new Audio();
         audioRef.current.src = url;
-        // Build (or reuse) the Web Audio graph: element → gain → speakers.
-        // This is what gives us Jake's volume above the browser's 1.0 cap.
         try {
           if (!audioCtxRef.current) {
             const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -260,16 +237,12 @@ export default function JakeWidget() {
               gainRef.current.connect(audioCtxRef.current.destination);
             }
           }
-          // Some browsers (Safari, iOS) suspend the context until the next
-          // user gesture — resume() is a no-op if it's already running.
           if (audioCtxRef.current?.state === "suspended") {
             await audioCtxRef.current.resume().catch(() => { /* */ });
           }
           if (gainRef.current) gainRef.current.gain.value = VOLUME_BOOST;
         } catch (err) {
-          // Fall back to plain playback if Web Audio refuses; volume will
-          // be at the browser default but Jake still speaks.
-          console.warn("[Jake] Web Audio boost unavailable:", err);
+          console.warn("[Travis] Web Audio boost unavailable:", err);
         }
         setStatus("speaking");
         await audioRef.current.play().catch(() => { /* */ });
@@ -282,139 +255,149 @@ export default function JakeWidget() {
       setStatus("idle");
     } catch (err: any) {
       if (err?.name !== "AbortError") {
-        console.error("[Jake] stream error:", err);
-        setMessages(prev => {
-          const copy = [...prev];
-          if (copy.length > 0 && copy[copy.length - 1].role === "assistant" && !copy[copy.length - 1].content) {
-            copy[copy.length - 1] = { role: "assistant", content: "I couldn't reach the server just now. Try again in a sec." };
-          }
-          return copy;
-        });
+        console.error("[Travis] stream error:", err);
       }
       setStatus("idle");
     }
-  }, [messages]);
+  }, [messages, conversationId]);
 
-  const startListening = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      // No mic — keep typing.
+  const toggleMic = useCallback(() => {
+    if (status === "listening") {
+      stop();
       return;
     }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
     const rec = new SR();
     rec.continuous = false;
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onstart = () => setStatus("listening");
     rec.onerror = () => setStatus("idle");
-    rec.onend = () => { if (status === "listening") setStatus("idle"); };
+    rec.onend = () => setStatus(s => s === "listening" ? "idle" : s);
     rec.onresult = (e: any) => {
       const text = e?.results?.[0]?.[0]?.transcript;
       setStatus("idle");
       if (text) sendTurn(text);
     };
     recognitionRef.current = rec;
-    try { rec.start(); } catch { /* already started */ }
-  }, [sendTurn, status]);
+    try { rec.start(); } catch { /* */ }
+  }, [sendTurn, status, stop]);
 
-  // Last assistant turn for caption + actions row in fullscreen.
+  // Last assistant turn = caption shown beside the big face.
   const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && (m.content || m.actions?.length));
   const lastUser = [...messages].reverse().find(m => m.role === "user");
   const recentActions = lastAssistant?.actions ?? [];
-  const fullSize = typeof window !== "undefined"
-    ? Math.min(Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.62), 480)
-    : 360;
+
+  const bubbleSize = 58;
+  const fullSize = Math.min(Math.round(Math.min(vw, vh) * 0.62), 480);
 
   return (
     <>
-      {/* Closed-state floating bubble — bottom-left, opposite Ridge */}
+      {/* Closed-state floating bubble — top-right quadrant */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          title="Talk to Jake"
-          aria-label="Talk to Jake"
+          title="Talk to Travis"
+          aria-label="Talk to Travis"
           style={{
             position: "fixed",
-            left: 20,
-            bottom: 20,
-            width: 64,
-            height: 64,
+            right: 24,
+            top: 24,
+            width: bubbleSize,
+            height: bubbleSize,
             borderRadius: "50%",
             padding: 0,
-            border: "2px solid rgba(120, 145, 200, 0.45)",
+            border: "2px solid rgba(180, 100, 50, 0.55)",
             background: "transparent",
             cursor: "pointer",
             overflow: "hidden",
             boxShadow: "0 6px 22px rgba(0, 0, 0, 0.45)",
             zIndex: 9998,
           }}
-          data-testid="jake-widget-toggle"
+          data-testid="travis-widget-toggle"
         >
-          <JakeAvatar size={60} />
+          <TravisAvatar size={bubbleSize - 4} />
         </button>
       )}
 
+      {/* Open-state: full takeover */}
       {open && (
         <div
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(8, 10, 18, 0.92)",
+            background: "rgba(8, 5, 3, 0.92)",
             backdropFilter: "blur(14px)",
             zIndex: 10000,
-            animation: "jake-fade 0.18s ease-out",
+            animation: "travis-fade-up 0.18s ease-out",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
-          data-testid="jake-widget-fullscreen"
+          data-testid="travis-widget-fullscreen"
         >
           <button
             onClick={() => { stop(); setOpen(false); }}
-            aria-label="Close Jake"
+            aria-label="Close Travis"
             style={{
-              position: "absolute", top: 20, right: 24,
-              width: 40, height: 40, borderRadius: "50%",
-              border: "1px solid rgba(120,145,200,0.4)",
-              background: "rgba(15,23,42,0.6)",
-              color: "#e2e8f0",
-              fontSize: 22, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
+              position: "absolute",
+              top: 20,
+              right: 24,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              border: "1px solid rgba(180,100,50,0.4)",
+              background: "rgba(28,18,12,0.6)",
+              color: "#fef3c7",
+              fontSize: 22,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             ×
           </button>
 
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, padding: 24, maxWidth: 640, width: "100%" }}>
-            {/* Avatar — large */}
+            {/* Avatar — large, with optional speaking pulse ring */}
             <div style={{ position: "relative", width: fullSize, height: fullSize }}>
               {status === "speaking" && (
                 <div
                   aria-hidden
                   style={{
-                    position: "absolute", inset: -8, borderRadius: "50%",
-                    border: "2px solid rgba(120,145,200,0.6)",
-                    animation: "jake-pulse 1.6s ease-in-out infinite",
+                    position: "absolute",
+                    inset: -8,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(180,100,50,0.6)",
+                    animation: "travis-ring 1.4s ease-out infinite",
                   }}
                 />
               )}
               <div
                 style={{
-                  width: fullSize, height: fullSize, borderRadius: "50%", overflow: "hidden",
-                  border: "3px solid rgba(120,145,200,0.45)",
+                  width: fullSize,
+                  height: fullSize,
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  border: "3px solid rgba(180,100,50,0.45)",
                   boxShadow: "0 10px 40px rgba(0,0,0,0.6)",
-                  animation: status === "speaking" ? "jake-pulse 1.6s ease-in-out infinite" : undefined,
+                  animation: status === "speaking" ? "travis-pulse 1.6s ease-in-out infinite" : undefined,
                 }}
               >
-                <JakeAvatar size={fullSize} />
+                <TravisAvatar size={fullSize} />
               </div>
             </div>
 
+            {/* Name + status */}
             <div style={{ textAlign: "center" }}>
-              <div style={{ color: "#e2e8f0", fontSize: 22, fontWeight: 600, letterSpacing: "0.02em" }}>Jake</div>
-              <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
-                {status === "idle" && "Client relations · ready"}
-                {status === "listening" && <span style={{ color: "#fca5a5" }}>● Listening…</span>}
+              <div style={{ color: "#fef3c7", fontSize: 22, fontWeight: 600, letterSpacing: "0.02em" }}>Travis</div>
+              <div style={{ color: "#a8a29e", fontSize: 13, marginTop: 4 }}>
+                {status === "idle" && "Outreach desk · ready"}
+                {status === "listening" && (
+                  <span style={{ color: "#fca5a5" }}>● Listening…</span>
+                )}
                 {status === "thinking" && (
                   <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
                     Thinking
@@ -423,31 +406,38 @@ export default function JakeWidget() {
                         key={d}
                         style={{
                           width: 5, height: 5, borderRadius: "50%",
-                          background: "#94a3b8",
-                          animation: `jake-dot-bounce 1.1s ease-in-out ${d * 0.15}s infinite`,
+                          background: "#a8a29e",
+                          animation: `travis-dot-bounce 1.1s ease-in-out ${d * 0.15}s infinite`,
                           display: "inline-block",
                         }}
                       />
                     ))}
                   </span>
                 )}
-                {status === "speaking" && <span style={{ color: "#bfdbfe" }}>● Talking</span>}
+                {status === "speaking" && <span style={{ color: "#fde68a" }}>● Talking</span>}
               </div>
             </div>
 
+            {/* Caption — last user line + last assistant reply, max 2 lines each. */}
             {(lastUser || lastAssistant) && (
               <div style={{ minHeight: 64, width: "100%", textAlign: "center" }}>
                 {lastUser && (
-                  <div style={{ color: "rgba(226,232,240,0.55)", fontSize: 12, marginBottom: 6, fontStyle: "italic" }}>
+                  <div style={{ color: "rgba(254,243,199,0.55)", fontSize: 12, marginBottom: 6, fontStyle: "italic" }}>
                     you: "{lastUser.content}"
                   </div>
                 )}
                 {lastAssistant?.content && (
                   <div
                     style={{
-                      color: "#e2e8f0", fontSize: 15, lineHeight: 1.5,
-                      maxWidth: 520, margin: "0 auto",
-                      display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                      color: "#fef3c7",
+                      fontSize: 15,
+                      lineHeight: 1.5,
+                      maxWidth: 520,
+                      margin: "0 auto",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
                     }}
                   >
                     {lastAssistant.content}
@@ -456,16 +446,19 @@ export default function JakeWidget() {
               </div>
             )}
 
+            {/* Action chips for the latest assistant turn */}
             {recentActions.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
                 {recentActions.map((a, ai) => (
                   <div
                     key={ai}
                     style={{
-                      fontSize: 12, padding: "4px 10px", borderRadius: 999,
-                      background: a.ok ? "rgba(34,197,94,0.20)" : "rgba(239,68,68,0.20)",
-                      color: a.ok ? "#86efac" : "#fca5a5",
-                      border: `1px solid ${a.ok ? "rgba(34,197,94,0.40)" : "rgba(239,68,68,0.38)"}`,
+                      fontSize: 12,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: a.ok ? "rgba(202,138,4,0.22)" : "rgba(239,68,68,0.20)",
+                      color: a.ok ? "#fde68a" : "#fca5a5",
+                      border: `1px solid ${a.ok ? "rgba(202,138,4,0.42)" : "rgba(239,68,68,0.38)"}`,
                     }}
                   >
                     {a.ok ? "✓" : "✗"} {a.message}
@@ -474,27 +467,37 @@ export default function JakeWidget() {
               </div>
             )}
 
+            {/* Mic — primary interaction */}
             <button
-              onClick={status === "listening" ? stop : startListening}
+              onClick={toggleMic}
               disabled={status === "thinking" || status === "speaking"}
               style={{
-                width: 88, height: 88, borderRadius: "50%", border: "none",
-                background: status === "listening" ? "#ef4444" : "#3b82f6",
+                width: 88,
+                height: 88,
+                borderRadius: "50%",
+                border: "none",
+                background: status === "listening" ? "#ef4444" : "#b45309",
                 color: "white",
                 cursor: (status === "thinking" || status === "speaking") ? "not-allowed" : "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                boxShadow: "0 10px 30px rgba(59,130,246,0.45)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 10px 30px rgba(180,100,50,0.45)",
                 opacity: (status === "thinking" || status === "speaking") ? 0.5 : 1,
-                transition: "background 0.2s, opacity 0.2s",
+                transition: "background 0.2s, opacity 0.2s, transform 0.15s",
               }}
+              onMouseDown={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.96)"; }}
+              onMouseUp={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
               title={status === "listening" ? "Stop listening" : "Push to talk"}
-              data-testid="jake-mic"
+              aria-label={status === "listening" ? "Stop listening" : "Push to talk"}
+              data-testid="travis-mic"
             >
               <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" />
               </svg>
             </button>
-            <div style={{ color: "rgba(226,232,240,0.45)", fontSize: 11, marginTop: -8 }}>
+            <div style={{ color: "rgba(254,243,199,0.45)", fontSize: 11, marginTop: -8 }}>
               tap the mic and talk
             </div>
           </div>
