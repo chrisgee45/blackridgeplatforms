@@ -122,7 +122,9 @@ export default function JakeWidget() {
         credentials: "include",
         signal: controller.signal,
         body: JSON.stringify({
-          messages: newMessages.filter(m => m.content || m.role === "user").slice(0, -1),
+          // Send the conversation up through the user's latest message.
+          // Drop the empty assistant placeholder we just appended for UI.
+          messages: newMessages.filter(m => m.content && m.content.length > 0),
         }),
       });
       if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
