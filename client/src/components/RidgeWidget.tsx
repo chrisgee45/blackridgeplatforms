@@ -98,6 +98,10 @@ const FRAME_HEADER_SIZE = 5;
 
 export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Default to "face" — fullscreen photo + mic. Toggle to "chat" to
+  // reveal the original 372x534 panel (transcript, conversation list,
+  // report sending, etc).
+  const [viewMode, setViewMode] = useState<"face" | "chat">("face");
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [status, setStatus] = useState<WidgetStatus>("online");
@@ -817,6 +821,9 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
     if (isOpen) {
       stopRidge();
       setShowHistory(false);
+    } else {
+      // Fresh open always starts on the fullscreen face.
+      setViewMode("face");
     }
     setIsOpen((prev) => !prev);
     if (!isOpen) {
@@ -852,7 +859,141 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
 
   return (
     <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999 }} data-testid="ridge-widget">
-      {isOpen && (
+      {/* Fullscreen face takeover — default when Ridge is opened */}
+      {isOpen && viewMode === "face" && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(8, 7, 5, 0.92)",
+            backdropFilter: "blur(14px)",
+            zIndex: 10000,
+            animation: "ridge-fade-in 0.25s ease-out",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          data-testid="ridge-fullscreen"
+        >
+          <button
+            onClick={() => { setIsOpen(false); setViewMode("face"); }}
+            aria-label="Close Ridge"
+            style={{
+              position: "absolute", top: 20, right: 24,
+              width: 40, height: 40, borderRadius: "50%",
+              border: "1px solid rgba(201,168,64,0.5)",
+              background: "rgba(10,10,10,0.7)",
+              color: "#C9A840", fontSize: 22, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            ×
+          </button>
+
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, padding: 24, maxWidth: 640, width: "100%" }}>
+            <div
+              style={{
+                width: Math.min(Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.62), 480),
+                height: Math.min(Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.62), 480),
+                borderRadius: "50%",
+                overflow: "hidden",
+                border: "3px solid rgba(201,168,64,0.6)",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.7)",
+                animation: status === "speaking" ? "ridge-pulse 1.6s ease-in-out infinite" : undefined,
+              }}
+            >
+              <img
+                src="/ridge-avatar.png"
+                alt="Ridge"
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                  const next = (e.currentTarget as HTMLImageElement).nextElementSibling as HTMLElement | null;
+                  if (next) next.style.display = "flex";
+                }}
+              />
+              <div style={{
+                display: "none", width: "100%", height: "100%",
+                alignItems: "center", justifyContent: "center",
+                background: "#0A0A0A", color: "#C9A840",
+                fontFamily: "Georgia, serif", fontSize: 120, fontWeight: "bold",
+              }}>R</div>
+            </div>
+
+            <div style={{ textAlign: "center" }}>
+              <div style={{ color: "#C9A840", fontSize: 22, fontWeight: 600, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>RIDGE</div>
+              <div style={{ color: "#888", fontSize: 13, marginTop: 4 }}>
+                {status === "speaking" ? <span style={{ color: "#C9A840" }}>● Speaking</span>
+                  : status === "thinking" ? "Thinking…"
+                  : status === "listening" ? <span style={{ color: "#fca5a5" }}>● Listening…</span>
+                  : "CFO desk · ready"}
+              </div>
+            </div>
+
+            {/* Last exchange caption */}
+            {(() => {
+              const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+              const lastAsst = [...messages].reverse().find(m => m.role === "assistant" && m.content);
+              if (!lastUserMsg && !lastAsst) return null;
+              return (
+                <div style={{ minHeight: 64, width: "100%", textAlign: "center" }}>
+                  {lastUserMsg && (
+                    <div style={{ color: "rgba(201,168,64,0.55)", fontSize: 12, marginBottom: 6, fontStyle: "italic" }}>
+                      you: "{lastUserMsg.content}"
+                    </div>
+                  )}
+                  {lastAsst?.content && (
+                    <div
+                      style={{
+                        color: "#e5e5e5", fontSize: 15, lineHeight: 1.5,
+                        maxWidth: 520, margin: "0 auto",
+                        display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                      }}
+                    >
+                      {lastAsst.content}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <button
+              onClick={status === "listening" ? stopRidge : startListening}
+              disabled={status === "thinking" || status === "speaking"}
+              style={{
+                width: 88, height: 88, borderRadius: "50%", border: "none",
+                background: status === "listening" ? "#ef4444" : "#C9A840",
+                color: "#0A0A0A",
+                cursor: (status === "thinking" || status === "speaking") ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 10px 30px rgba(201,168,64,0.45)",
+                opacity: (status === "thinking" || status === "speaking") ? 0.5 : 1,
+              }}
+              title="Push to talk"
+              data-testid="ridge-fullscreen-mic"
+            >
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" />
+              </svg>
+            </button>
+
+            <button
+              onClick={() => setViewMode("chat")}
+              style={{
+                background: "transparent", border: "1px solid rgba(201,168,64,0.4)",
+                color: "#C9A840", padding: "6px 14px", borderRadius: 999,
+                fontSize: 11, fontFamily: "Georgia, serif", letterSpacing: "0.05em",
+                cursor: "pointer",
+              }}
+              data-testid="ridge-show-transcript"
+            >
+              Show transcript & history
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isOpen && viewMode === "chat" && (
         <div
           onClick={handlePanelClick}
           style={{
@@ -914,7 +1055,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
               <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}`, transition: "all 0.3s" }} />
               <button onClick={toggleHistory} style={{ background: "none", border: "none", color: showHistory ? "#C9A840" : "#666", fontSize: 16, cursor: "pointer", padding: 4, lineHeight: 1, transition: "color 0.2s" }} title="Conversation history" data-testid="button-ridge-history">☰</button>
               <button onClick={startNewConversation} style={{ background: "none", border: "none", color: "#666", fontSize: 16, cursor: "pointer", padding: 4, lineHeight: 1 }} title="New conversation" data-testid="button-ridge-new-convo">＋</button>
-              <button onClick={toggleOpen} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} data-testid="button-ridge-close">✕</button>
+              <button onClick={() => setViewMode("face")} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }} data-testid="button-ridge-close" title="Back to Ridge's face">✕</button>
             </div>
           </div>
 
