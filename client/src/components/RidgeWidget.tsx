@@ -551,6 +551,9 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
         const fullBlob = new Blob(allAudioChunks, { type: "audio/mpeg" });
         allAudioChunks = [];
         const url = URL.createObjectURL(fullBlob);
+        // Fresh Audio element each play — the cached one can get stuck
+        // after the tab is backgrounded and woken up.
+        audioRef.current = new Audio();
         const audio = audioRef.current;
         audio.src = url;
         setStatus("speaking");
@@ -577,6 +580,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             const blob = await speakResp.blob();
             if (blob.size > 0) {
               const url = URL.createObjectURL(blob);
+              audioRef.current = new Audio();
               const audio = audioRef.current;
               audio.src = url;
               setStatus("speaking");
@@ -657,6 +661,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       const blob = await resp.blob();
       console.log("[Ridge] speak() got blob:", blob.size, "bytes, type:", blob.type);
       const url = URL.createObjectURL(blob);
+      audioRef.current = new Audio();
       const audio = audioRef.current;
       audio.src = url;
       // Don't start passive listening until audio finishes — the mic picks up
