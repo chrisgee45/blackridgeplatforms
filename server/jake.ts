@@ -362,19 +362,49 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   }
   let textBody = pickBody();
 
-  // Fallback: try fetching the full email via the Resend API. This works
-  // for some accounts and event shapes, not all — that's why we now have
-  // the multi-field extraction above as the primary path.
+  // Resend's email.received webhook on most accounts sends ONLY metadata
+  // (from / to / subject / email_id / message_id). The body has to be
+  // fetched from the REST API. Try a few endpoints since Resend has moved
+  // them around — log every attempt so we know exactly which works.
   if (emailId && (!textBody || textBody.length < 5)) {
-    try {
-      const apiKey = process.env.RESEND_API_KEY;
-      if (apiKey) {
-        const full = await new Resend(apiKey).emails.get(emailId);
-        const fetched = (full as any)?.text || (full as any)?.html?.replace(/<[^>]*>/g, " ").trim() || "";
-        if (fetched && fetched.trim().length > 0) textBody = fetched;
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey) {
+      const endpoints = [
+        `https://api.resend.com/emails/${emailId}`,
+        `https://api.resend.com/inbound-emails/${emailId}`,
+        `https://api.resend.com/inbound/${emailId}`,
+      ];
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          const status = res.status;
+          const bodyJson = await res.json().catch(() => ({}));
+          const preview = JSON.stringify(bodyJson).slice(0, 600);
+          console.log(`Jake fetch ${url} → ${status} preview=${preview}`);
+          if (status >= 200 && status < 300) {
+            const fetchedText = (bodyJson as any)?.text
+              || (bodyJson as any)?.data?.text
+              || (bodyJson as any)?.email?.text
+              || "";
+            const fetchedHtml = (bodyJson as any)?.html
+              || (bodyJson as any)?.data?.html
+              || (bodyJson as any)?.email?.html
+              || "";
+            const candidate = fetchedText
+              || (fetchedHtml && fetchedHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim())
+              || "";
+            if (candidate && candidate.length > 0) {
+              textBody = candidate;
+              console.log(`Jake fetched body via ${url} (${candidate.length} chars)`);
+              break;
+            }
+          }
+        } catch (err: any) {
+          console.error(`Jake fetch ${url} threw:`, err?.message);
+        }
       }
-    } catch (err: any) {
-      console.error(`Jake: Resend get(${emailId}) failed:`, err?.message);
     }
   }
 
