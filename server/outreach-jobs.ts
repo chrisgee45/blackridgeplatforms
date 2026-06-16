@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { outreachStorage } from "./outreach-storage";
+import { discoverAndVerifyEmail } from "./email-discovery";
 
 const STOP_STATUSES = ["replied", "converted", "unsubscribed", "bounced"];
 
@@ -234,10 +235,6 @@ Return only valid JSON.`;
     };
 
     if (needsContactResearch) {
-      if (analysis.discovered_email && !lead.email && typeof analysis.discovered_email === "string" && EMAIL_REGEX.test(analysis.discovered_email.trim())) {
-        updateData.email = analysis.discovered_email.trim().toLowerCase();
-        console.log(`AI discovered email for ${lead.businessName}: ${updateData.email}`);
-      }
       if (analysis.discovered_contact_name && !lead.contactName) {
         updateData.contactName = analysis.discovered_contact_name;
       }
@@ -252,9 +249,37 @@ Return only valid JSON.`;
       }
     }
 
+    // Three-stage email discovery: verify Claude's guess (if any),
+    // scrape the site, then try Hunter.io. ZeroBounce verifies each
+    // candidate. Replaces the old "trust whatever Claude said" path.
+    if (!lead.email && lead.websiteUrl) {
+      const claudeCandidate = typeof analysis.discovered_email === "string"
+        && EMAIL_REGEX.test(analysis.discovered_email.trim())
+          ? analysis.discovered_email.trim().toLowerCase()
+          : null;
+      const discovery = await discoverAndVerifyEmail({
+        websiteUrl: lead.websiteUrl,
+        businessName: lead.businessName,
+        claudeEmail: claudeCandidate,
+      });
+      if (discovery.email) {
+        updateData.email = discovery.email;
+        updateData.status = discovery.verified === "valid" ? "new" : "needs_review";
+        console.log(`Email discovery for ${lead.businessName}: ${discovery.email} (source=${discovery.source}, verified=${discovery.verified})`);
+      } else {
+        updateData.status = "email_invalid";
+        console.log(`Email discovery failed for ${lead.businessName}: no deliverable address found`);
+      }
+    }
+
     await outreachStorage.updateLead(lead.id, updateData);
 
-    if (updateData.email && !lead.email) {
+    // Only auto-enroll when we ended up with an email AND the
+    // verifier didn't say "invalid". This is the gate that protects
+    // sender reputation.
+    const finalEmail = (updateData.email ?? lead.email) as string | undefined;
+    const finalStatus = (updateData.status ?? lead.status) as string | undefined;
+    if (finalEmail && finalStatus !== "email_invalid" && !lead.email) {
       const settings = await outreachStorage.getSettings();
       if (!settings.enrollmentsPaused) {
         const campaign = await outreachStorage.getActiveCampaign();
@@ -272,7 +297,7 @@ Return only valid JSON.`;
               },
               runAt: new Date(Date.now() + 10000),
             });
-            console.log(`Auto-enrolled ${lead.businessName} in campaign after AI discovered email`);
+            console.log(`Auto-enrolled ${lead.businessName} in campaign after email discovery`);
           }
         }
       }
