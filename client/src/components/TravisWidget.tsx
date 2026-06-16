@@ -223,10 +223,19 @@ export default function TravisWidget() {
       if (audioBufRef.current.length > 0) {
         const blob = new Blob(audioBufRef.current, { type: "audio/mpeg" });
         const url = URL.createObjectURL(blob);
-        if (!audioRef.current) audioRef.current = new Audio();
-        audioRef.current.src = url;
         try {
-          if (!audioCtxRef.current) {
+          // Rebuild the graph if the context died while the tab was
+          // backgrounded. MediaElementSource can only attach to a given
+          // <audio> element once, so we swap the element too.
+          const needsRebuild = !audioCtxRef.current
+            || audioCtxRef.current.state === "closed"
+            || !sourceRef.current;
+          if (needsRebuild) {
+            try { audioCtxRef.current?.close(); } catch { /* */ }
+            audioCtxRef.current = null;
+            sourceRef.current = null;
+            gainRef.current = null;
+            audioRef.current = new Audio();
             const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
             if (Ctx) {
               audioCtxRef.current = new Ctx() as AudioContext;
@@ -244,6 +253,8 @@ export default function TravisWidget() {
         } catch (err) {
           console.warn("[Travis] Web Audio boost unavailable:", err);
         }
+        if (!audioRef.current) audioRef.current = new Audio();
+        audioRef.current.src = url;
         setStatus("speaking");
         await audioRef.current.play().catch(() => { /* */ });
         await new Promise<void>(resolve => {
