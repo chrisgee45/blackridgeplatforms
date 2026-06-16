@@ -83,6 +83,13 @@ export default function TravisWidget() {
   const gainRef = useRef<GainNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const VOLUME_BOOST = 2.5;
+  // iOS Safari refuses to start an AudioContext outside a strict
+  // user-gesture window and will silently mute MediaElementSource
+  // playback. Skip the Web Audio graph on iOS and use plain audio.
+  const isIOS = typeof navigator !== "undefined" && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1)
+  );
   const abortRef = useRef<AbortController | null>(null);
   const audioBufRef = useRef<Uint8Array[]>([]);
   const recognitionRef = useRef<any>(null);
@@ -234,26 +241,29 @@ export default function TravisWidget() {
         audioRef.current = audio;
         audio.src = url;
         audio.volume = 1.0;
+        audio.setAttribute("playsinline", "true");
         let usingWebAudio = false;
-        try {
-          const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
-          if (Ctx) {
-            const ctx = new Ctx() as AudioContext;
-            audioCtxRef.current = ctx;
-            const source = ctx.createMediaElementSource(audio);
-            sourceRef.current = source;
-            const gain = ctx.createGain();
-            gain.gain.value = VOLUME_BOOST;
-            gainRef.current = gain;
-            source.connect(gain);
-            gain.connect(ctx.destination);
-            if (ctx.state === "suspended") {
-              await ctx.resume().catch(() => { /* */ });
+        if (!isIOS) {
+          try {
+            const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (Ctx) {
+              const ctx = new Ctx() as AudioContext;
+              audioCtxRef.current = ctx;
+              const source = ctx.createMediaElementSource(audio);
+              sourceRef.current = source;
+              const gain = ctx.createGain();
+              gain.gain.value = VOLUME_BOOST;
+              gainRef.current = gain;
+              source.connect(gain);
+              gain.connect(ctx.destination);
+              if (ctx.state === "suspended") {
+                await ctx.resume().catch(() => { /* */ });
+              }
+              usingWebAudio = true;
             }
-            usingWebAudio = true;
+          } catch (err) {
+            console.warn("[Travis] Web Audio boost unavailable, plain playback:", err);
           }
-        } catch (err) {
-          console.warn("[Travis] Web Audio boost unavailable, plain playback:", err);
         }
         setStatus("speaking");
         try {
@@ -268,6 +278,7 @@ export default function TravisWidget() {
             const fallback = new Audio(url);
             audioRef.current = fallback;
             fallback.volume = 1.0;
+            fallback.setAttribute("playsinline", "true");
             await fallback.play().catch(() => { /* */ });
           }
         }

@@ -96,6 +96,14 @@ export default function JakeWidget() {
   // obvious distortion on a 192 kbps mp3. Tweak here if you want it
   // louder or softer.
   const VOLUME_BOOST = 2.5;
+  // iOS Safari refuses to start an AudioContext outside a strict
+  // user-gesture window — it'll silently mute MediaElementSource playback
+  // even though audio.play() resolves. Detect the platform and skip the
+  // Web Audio graph entirely; iPhone speakers handle volume on the device.
+  const isIOS = typeof navigator !== "undefined" && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1)
+  );
   const abortRef = useRef<AbortController | null>(null);
   const audioBufRef = useRef<Uint8Array[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -255,26 +263,32 @@ export default function JakeWidget() {
         audioRef.current = audio;
         audio.src = url;
         audio.volume = 1.0;
+        // Tell iOS this is part of the user's voice conversation so it
+        // routes through the loud speaker instead of the earpiece.
+        audio.setAttribute("playsinline", "true");
         let usingWebAudio = false;
-        try {
-          const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
-          if (Ctx) {
-            const ctx = new Ctx() as AudioContext;
-            audioCtxRef.current = ctx;
-            const source = ctx.createMediaElementSource(audio);
-            sourceRef.current = source;
-            const gain = ctx.createGain();
-            gain.gain.value = VOLUME_BOOST;
-            gainRef.current = gain;
-            source.connect(gain);
-            gain.connect(ctx.destination);
-            if (ctx.state === "suspended") {
-              await ctx.resume().catch(() => { /* */ });
+        // Skip Web Audio entirely on iOS — see isIOS comment above.
+        if (!isIOS) {
+          try {
+            const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (Ctx) {
+              const ctx = new Ctx() as AudioContext;
+              audioCtxRef.current = ctx;
+              const source = ctx.createMediaElementSource(audio);
+              sourceRef.current = source;
+              const gain = ctx.createGain();
+              gain.gain.value = VOLUME_BOOST;
+              gainRef.current = gain;
+              source.connect(gain);
+              gain.connect(ctx.destination);
+              if (ctx.state === "suspended") {
+                await ctx.resume().catch(() => { /* */ });
+              }
+              usingWebAudio = true;
             }
-            usingWebAudio = true;
+          } catch (err) {
+            console.warn("[Jake] Web Audio boost unavailable, plain playback:", err);
           }
-        } catch (err) {
-          console.warn("[Jake] Web Audio boost unavailable, plain playback:", err);
         }
         setStatus("speaking");
         try {
@@ -289,6 +303,7 @@ export default function JakeWidget() {
             const fallback = new Audio(url);
             audioRef.current = fallback;
             fallback.volume = 1.0;
+            fallback.setAttribute("playsinline", "true");
             await fallback.play().catch(() => { /* */ });
           }
         }
