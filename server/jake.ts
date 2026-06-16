@@ -317,18 +317,55 @@ ${JAKE_SIGNATURE}`;
 // ─────────────────────────────────────────────────────────────────────────
 
 export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
-  const fromEmail = (data?.from || "").replace(/.*</, "").replace(/>.*/, "").trim().toLowerCase();
-  const toEmail = Array.isArray(data?.to) ? data.to[0] : (data?.to || "");
-  const subject = data?.subject || "";
-  const messageId = data?.message_id || data?.email_id || null;
-  const emailId = data?.email_id || null;
-  let textBody = data?.text || data?.html?.replace(/<[^>]*>/g, " ").trim() || "";
+  // Verbose dump while we figure out which field Resend's inbound webhook
+  // actually uses for the email body. Trim to keep logs sane.
+  try {
+    const dump = JSON.stringify(data ?? {});
+    console.log(`Jake inbound raw payload (${dump.length} chars):`, dump.slice(0, 4000));
+  } catch {
+    console.log("Jake inbound raw payload: (unserialisable)");
+  }
 
-  // Resend webhooks frequently omit the body — especially for mobile-client
-  // replies that are HTML-only with quoted history. When the inbound arrives
-  // with no usable text, fetch the full email by ID from the Resend API so
-  // Jake actually has something to respond to.
-  if (emailId && (!textBody || textBody.trim().length < 5)) {
+  const fromEmail = (data?.from || data?.from_address || data?.sender || "").replace(/.*</, "").replace(/>.*/, "").trim().toLowerCase();
+  const toRaw = data?.to ?? data?.to_address ?? data?.recipient ?? "";
+  const toEmail = Array.isArray(toRaw) ? toRaw[0] : toRaw;
+  const subject = data?.subject || "";
+  const messageId = data?.message_id || data?.email_id || data?.id || null;
+  const emailId = data?.email_id || data?.id || null;
+
+  // Try every known shape Resend has used over the past year for inbound
+  // payloads. The body sometimes arrives under nested keys.
+  function pickBody(): string {
+    const candidates: any[] = [
+      data?.text,
+      data?.html,
+      data?.body,
+      data?.body_plain,
+      data?.body_html,
+      data?.plain,
+      data?.email?.text,
+      data?.email?.html,
+      data?.payload?.text,
+      data?.payload?.html,
+      data?.message?.text,
+      data?.message?.html,
+      data?.parsed?.text,
+      data?.parsed?.html,
+    ];
+    for (const c of candidates) {
+      if (typeof c === "string" && c.trim().length > 0) {
+        // Strip HTML if it looks like HTML.
+        return /<[^>]+>/.test(c) ? c.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : c.trim();
+      }
+    }
+    return "";
+  }
+  let textBody = pickBody();
+
+  // Fallback: try fetching the full email via the Resend API. This works
+  // for some accounts and event shapes, not all — that's why we now have
+  // the multi-field extraction above as the primary path.
+  if (emailId && (!textBody || textBody.length < 5)) {
     try {
       const apiKey = process.env.RESEND_API_KEY;
       if (apiKey) {
@@ -341,7 +378,7 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
     }
   }
 
-  console.log(`Jake inbound: from=${fromEmail} subject="${subject}" bodyLen=${textBody.length} emailId=${emailId}`);
+  console.log(`Jake inbound: from=${fromEmail} to=${toEmail} subject="${subject}" bodyLen=${textBody.length} emailId=${emailId} keys=${Object.keys(data ?? {}).join(",")}`);
 
   if (!fromEmail) return { ok: true };
 
