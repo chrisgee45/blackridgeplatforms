@@ -3,9 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  actions?: { type: string; ok: boolean; message: string }[];
 }
 
 type Status = "idle" | "listening" | "thinking" | "speaking";
+
+const STORAGE_KEY = "jake-voice-conversation-id";
 
 const FRAME_AUDIO = 0x01;
 const FRAME_TEXT = 0x02;
@@ -78,6 +81,10 @@ export default function JakeWidget() {
   const [status, setStatus] = useState<Status>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [conversationId, setConversationId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return window.localStorage.getItem(STORAGE_KEY); } catch { return null; }
+  });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const audioBufRef = useRef<Uint8Array[]>([]);
@@ -86,6 +93,34 @@ export default function JakeWidget() {
 
   useEffect(() => { injectStyles(); }, []);
   useEffect(() => { if (!audioRef.current) audioRef.current = new Audio(); }, []);
+
+  // Hydrate existing conversation history once on mount if we have a saved
+  // conversation id.
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/jake/voice/conversations/${conversationId}/messages`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const rows = await res.json() as { role: string; content: string; actions?: any }[];
+        if (cancelled) return;
+        const hydrated: Message[] = rows.map(r => ({
+          role: r.role === "assistant" ? "assistant" : "user",
+          content: r.content,
+          actions: Array.isArray(r.actions) ? r.actions : undefined,
+        }));
+        setMessages(hydrated);
+      } catch {
+        // If history fetch fails (conversation deleted, etc.), drop it.
+        try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+        setConversationId(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversationId]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
@@ -125,6 +160,7 @@ export default function JakeWidget() {
           // Send the conversation up through the user's latest message.
           // Drop the empty assistant placeholder we just appended for UI.
           messages: newMessages.filter(m => m.content && m.content.length > 0),
+          conversationId,
         }),
       });
       if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
@@ -160,17 +196,28 @@ export default function JakeWidget() {
             audioBufRef.current.push(payload);
           } else if (type === FRAME_DONE) {
             try {
-              const meta = JSON.parse(new TextDecoder().decode(payload));
-              if (meta.fullReply) {
-                assistantText = meta.fullReply;
-                setMessages(prev => {
-                  const copy = [...prev];
-                  if (copy.length > 0 && copy[copy.length - 1].role === "assistant") {
-                    copy[copy.length - 1] = { role: "assistant", content: assistantText };
-                  }
-                  return copy;
-                });
+              const meta = JSON.parse(new TextDecoder().decode(payload)) as {
+                fullReply?: string;
+                actions?: { type: string; ok: boolean; message: string }[];
+                conversationId?: string;
+              };
+              if (meta.fullReply) assistantText = meta.fullReply;
+              if (meta.conversationId && meta.conversationId !== conversationId) {
+                setConversationId(meta.conversationId);
+                try { window.localStorage.setItem(STORAGE_KEY, meta.conversationId); } catch { /* */ }
               }
+              const finalActions = meta.actions;
+              setMessages(prev => {
+                const copy = [...prev];
+                if (copy.length > 0 && copy[copy.length - 1].role === "assistant") {
+                  copy[copy.length - 1] = {
+                    role: "assistant",
+                    content: assistantText,
+                    actions: finalActions,
+                  };
+                }
+                return copy;
+              });
             } catch { /* */ }
           }
         }
@@ -356,6 +403,25 @@ export default function JakeWidget() {
                           animation: `jake-dot-bounce 1.1s ease-in-out ${d * 0.15}s infinite`,
                         }}
                       />
+                    ))}
+                  </div>
+                )}
+                {m.actions && m.actions.length > 0 && (
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {m.actions.map((a, ai) => (
+                      <div
+                        key={ai}
+                        style={{
+                          fontSize: 11,
+                          padding: "3px 7px",
+                          borderRadius: 6,
+                          background: a.ok ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)",
+                          color: a.ok ? "#86efac" : "#fca5a5",
+                          border: `1px solid ${a.ok ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`,
+                        }}
+                      >
+                        {a.ok ? "✓" : "✗"} {a.message}
+                      </div>
                     ))}
                   </div>
                 )}
