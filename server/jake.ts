@@ -317,15 +317,6 @@ ${JAKE_SIGNATURE}`;
 // ─────────────────────────────────────────────────────────────────────────
 
 export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
-  // Verbose dump while we figure out which field Resend's inbound webhook
-  // actually uses for the email body. Trim to keep logs sane.
-  try {
-    const dump = JSON.stringify(data ?? {});
-    console.log(`Jake inbound raw payload (${dump.length} chars):`, dump.slice(0, 4000));
-  } catch {
-    console.log("Jake inbound raw payload: (unserialisable)");
-  }
-
   const fromEmail = (data?.from || data?.from_address || data?.sender || "").replace(/.*</, "").replace(/>.*/, "").trim().toLowerCase();
   const toRaw = data?.to ?? data?.to_address ?? data?.recipient ?? "";
   const toEmail = Array.isArray(toRaw) ? toRaw[0] : toRaw;
@@ -333,83 +324,35 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   const messageId = data?.message_id || data?.email_id || data?.id || null;
   const emailId = data?.email_id || data?.id || null;
 
-  // Try every known shape Resend has used over the past year for inbound
-  // payloads. The body sometimes arrives under nested keys.
-  function pickBody(): string {
-    const candidates: any[] = [
-      data?.text,
-      data?.html,
-      data?.body,
-      data?.body_plain,
-      data?.body_html,
-      data?.plain,
-      data?.email?.text,
-      data?.email?.html,
-      data?.payload?.text,
-      data?.payload?.html,
-      data?.message?.text,
-      data?.message?.html,
-      data?.parsed?.text,
-      data?.parsed?.html,
-    ];
-    for (const c of candidates) {
-      if (typeof c === "string" && c.trim().length > 0) {
-        // Strip HTML if it looks like HTML.
-        return /<[^>]+>/.test(c) ? c.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : c.trim();
-      }
-    }
-    return "";
-  }
-  let textBody = pickBody();
-
-  // Resend's email.received webhook intentionally ships only metadata.
-  // The body must be fetched from the Received Emails API by email_id
-  // — this is documented behavior, not a bug. SDK v4 doesn't expose
-  // emails.receiving yet, so hit the REST endpoint directly.
-  if (emailId && (!textBody || textBody.length < 5)) {
+  // Resend's email.received webhook intentionally ships metadata only —
+  // body, headers, and attachments are excluded by design. Fetch the body
+  // from the Received Emails API by email_id. (SDK v4 doesn't expose
+  // emails.receiving yet, so we hit REST directly.)
+  let textBody = "";
+  if (emailId) {
     const apiKey = process.env.RESEND_API_KEY;
     if (apiKey) {
-      const endpoints = [
-        `https://api.resend.com/emails/receiving/${emailId}`,
-        `https://api.resend.com/emails/${emailId}/receiving`,
-        `https://api.resend.com/receiving/${emailId}`,
-        `https://api.resend.com/emails/${emailId}`,
-      ];
-      for (const url of endpoints) {
-        try {
-          const res = await fetch(url, {
-            headers: { Authorization: `Bearer ${apiKey}` },
-          });
-          const status = res.status;
-          const bodyJson = await res.json().catch(() => ({}));
-          const preview = JSON.stringify(bodyJson).slice(0, 600);
-          console.log(`Jake fetch ${url} → ${status} preview=${preview}`);
-          if (status >= 200 && status < 300) {
-            const fetchedText = (bodyJson as any)?.text
-              || (bodyJson as any)?.data?.text
-              || (bodyJson as any)?.email?.text
-              || "";
-            const fetchedHtml = (bodyJson as any)?.html
-              || (bodyJson as any)?.data?.html
-              || (bodyJson as any)?.email?.html
-              || "";
-            const candidate = fetchedText
-              || (fetchedHtml && fetchedHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim())
-              || "";
-            if (candidate && candidate.length > 0) {
-              textBody = candidate;
-              console.log(`Jake fetched body via ${url} (${candidate.length} chars)`);
-              break;
-            }
-          }
-        } catch (err: any) {
-          console.error(`Jake fetch ${url} threw:`, err?.message);
+      try {
+        const res = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (res.ok) {
+          const payload = await res.json() as { text?: string; html?: string };
+          const text = payload.text?.trim() || "";
+          const htmlStripped = payload.html
+            ? payload.html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+            : "";
+          textBody = text || htmlStripped;
+        } else {
+          console.error(`Jake receiving fetch ${emailId} → ${res.status}`);
         }
+      } catch (err: any) {
+        console.error(`Jake receiving fetch ${emailId} threw:`, err?.message);
       }
     }
   }
 
-  console.log(`Jake inbound: from=${fromEmail} to=${toEmail} subject="${subject}" bodyLen=${textBody.length} emailId=${emailId} keys=${Object.keys(data ?? {}).join(",")}`);
+  console.log(`Jake inbound: from=${fromEmail} subject="${subject}" bodyLen=${textBody.length} emailId=${emailId}`);
 
   if (!fromEmail) return { ok: true };
 
