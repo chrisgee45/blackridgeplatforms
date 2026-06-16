@@ -49,6 +49,9 @@ Add a task to a project. Use the project_id from the LIVE STATE block, never inv
 <jake_action>{"type":"email_client","project_id":"<id>","intent":"<what Chris wants the client to know, in his words>"}</jake_action>
 Send an email to the client linked to that project. You don't write the email body here — the server rewrites Chris's intent in your voice and signs it for you.
 
+<jake_action>{"type":"share_progress","project_id":"<id>","intent":"<short note explaining what you're sending, in Chris's words>"}</jake_action>
+Email the client linked to that project with the LATEST progress screenshots attached (up to 6 images from the project's Progress / Screenshots documents). Chris uploads them via the Documents tab. Use this when Chris says "send Hometown the latest progress" or similar. The intent is the short note the email leads with — server rewrites it in your voice and signs it.
+
 <jake_action>{"type":"note_for_chris","reason":"<one-sentence FYI>"}</jake_action>
 Fire a push notification to Chris. Use this when he wants you to remind him about something or flag something later.
 
@@ -166,6 +169,7 @@ const JAKE_FROM_NAME = process.env.JAKE_FROM_NAME || "Jake at BlackRidge";
 type JakeAction =
   | { type: "create_task"; project_id?: string; title?: string; priority?: string }
   | { type: "email_client"; project_id?: string; intent?: string }
+  | { type: "share_progress"; project_id?: string; intent?: string }
   | { type: "note_for_chris"; reason?: string };
 
 interface ActionResult {
@@ -283,6 +287,85 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
       });
       void relayHandoffAnswer; // imported for parity / future use
       return { type: action.type, ok: true, message: `Emailed ${contactName ?? contactEmail} about ${proj.name}` };
+    }
+
+    if (action.type === "share_progress") {
+      if (!action.project_id) return { type: action.type, ok: false, message: "missing project_id" };
+      const [proj] = await db.select().from(projects).where(eq(projects.id, action.project_id));
+      if (!proj) return { type: action.type, ok: false, message: "project not found" };
+
+      let contactEmail: string | null = null;
+      let contactName: string | null = null;
+      if (proj.contactId) {
+        const [c] = await db.select().from(contacts).where(eq(contacts.id, proj.contactId));
+        if (c) { contactEmail = c.email ?? null; contactName = c.name ?? null; }
+      }
+      if (!contactEmail && proj.clientId) {
+        const [cl] = await db.select().from(clients).where(eq(clients.id, proj.clientId));
+        if (cl?.email) { contactEmail = cl.email; contactName = cl.name ?? null; }
+      }
+      if (!contactEmail) return { type: action.type, ok: false, message: `no client email on file for ${proj.name}` };
+
+      // Find progress images via the project documents table.
+      const { projectDocuments } = await import("@shared/schema");
+      const docs = await db.select().from(projectDocuments)
+        .where(eq(projectDocuments.projectId, proj.id))
+        .orderBy(desc(projectDocuments.createdAt));
+      const progress = docs.filter(d => d.category === "progress" && /image\//i.test(d.contentType ?? "")).slice(0, 6);
+      if (progress.length === 0) return { type: action.type, ok: false, message: `no progress screenshots uploaded for ${proj.name} yet` };
+
+      // Reuse jake.ts's attachment loader.
+      const { loadProgressForVoice } = await import("./jake");
+      const attachments = await loadProgressForVoice(progress.map(p => p.id));
+      if (attachments.length === 0) return { type: action.type, ok: false, message: "couldn't read the progress images from storage" };
+
+      // Quick Claude rephrase for the email body.
+      const Anthropic = (await import("@anthropic-ai/sdk")).default;
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const phrased = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 600,
+        system: `You are Jake at BlackRidge writing a short email to a project client. Warm, direct. Mention you've attached the latest progress images. End with this exact four-line signature:\n\nSincerely,\nJake\nClient Relations Specialist\nBlackRidge Platforms\n\nOutput ONLY the email body.`,
+        messages: [{
+          role: "user",
+          content: `Project: ${proj.name}\nClient contact: ${contactName ?? "the client"}\n\nChris asked you to send the latest progress with this note: ${action.intent ?? "(no extra context)"}`,
+        }],
+      });
+      const body = phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+      const subject = `Latest progress — ${proj.name}`;
+
+      const { Resend } = await import("resend");
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) return { type: action.type, ok: false, message: "RESEND_API_KEY not configured" };
+      try {
+        await new Resend(apiKey).emails.send({
+          from: `${JAKE_FROM_NAME} <${JAKE_FROM_EMAIL}>`,
+          to: contactEmail,
+          replyTo: JAKE_FROM_EMAIL,
+          subject,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${body.replace(/\n/g, "<br>")}</div>`,
+          attachments,
+          tags: [
+            { name: "projectId", value: proj.id },
+            { name: "agent", value: "jake" },
+            { name: "kind", value: "progress_share" },
+          ],
+        });
+      } catch (err: any) {
+        return { type: action.type, ok: false, message: `send failed: ${err?.message ?? "unknown"}` };
+      }
+      await db.insert(projectConversations).values({
+        projectId: proj.id,
+        clientId: proj.clientId ?? null,
+        direction: "outbound",
+        fromEmail: JAKE_FROM_EMAIL,
+        toEmail: contactEmail,
+        subject,
+        body: `${body}\n\n[${attachments.length} progress screenshot${attachments.length === 1 ? "" : "s"} attached]`,
+        aiGenerated: true,
+        classification: "PROGRESS_SHARE",
+      });
+      return { type: action.type, ok: true, message: `Sent ${attachments.length} progress screenshot${attachments.length === 1 ? "" : "s"} to ${contactName ?? contactEmail}` };
     }
 
     if (action.type === "note_for_chris") {

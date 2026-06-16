@@ -13,7 +13,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { db } from "./db";
-import { projects, projectConversations, clients, contacts, companies, outreachJobs, tasks, milestones } from "@shared/schema";
+import { projects, projectConversations, projectDocuments, clients, contacts, companies, outreachJobs, tasks, milestones } from "@shared/schema";
 import { eq, desc, asc, gte } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
 
@@ -496,6 +496,21 @@ export async function processJakeReplyJob(payload: { project_id: string }): Prom
     ? projectBriefSections.join("\n\n")
     : "(no project-specific notes are recorded)";
 
+  // Progress screenshots — Chris uploads to the Documents tab under the
+  // "progress" category. When the client asks for an update / pictures /
+  // designs, Jake can choose to attach them in his reply.
+  const progressDocs = await db
+    .select()
+    .from(projectDocuments)
+    .where(eq(projectDocuments.projectId, projectId))
+    .orderBy(desc(projectDocuments.createdAt));
+  const availableProgress = progressDocs.filter(d => d.category === "progress" && /image\//i.test(d.contentType ?? ""));
+  const progressList = availableProgress.length === 0
+    ? "(no progress screenshots have been uploaded for this project yet)"
+    : availableProgress.slice(0, 8).map(d =>
+        `- id=${d.id} | filename=${d.filename}${d.notes ? ` | note: ${d.notes}` : ""} | uploaded ${d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : "?"}`
+      ).join("\n");
+
   const projectContext = `Project: ${ctx.project.name}
 Current stage: ${stageLabel}
 Client: ${ctx.clientName ?? ctx.companyName ?? "the client"}
@@ -505,7 +520,12 @@ PROJECT BRIEF (treat this as authoritative for this project — when it answers 
 ${projectBrief}
 
 PROJECT TIMELINE (use to give accurate status updates — only mention specifics if the client asks or it's directly relevant)
-${renderTimelineForPrompt(timeline)}`;
+${renderTimelineForPrompt(timeline)}
+
+AVAILABLE PROGRESS SCREENSHOTS (only mention if the client asks for an update / progress / sneak peek / designs)
+${progressList}
+
+If the client requests visual progress AND screenshots are available, set attachProgress to true and list the progress doc ids in attachProgressIds. Jake's email will go out with those images attached — you don't need to embed links yourself.`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await anthropic.messages.create({
@@ -547,6 +567,15 @@ ${renderTimelineForPrompt(timeline)}`;
             type: "string",
             description: "Required when handoff is true. One sentence explaining what Chris needs to address.",
           },
+          attachProgress: {
+            type: "boolean",
+            description: "True when the client asked for an update / progress / sneak peek / designs AND progress screenshots are available in the AVAILABLE PROGRESS SCREENSHOTS list. Jake's email will include those images as attachments.",
+          },
+          attachProgressIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Required when attachProgress is true. List of document IDs from AVAILABLE PROGRESS SCREENSHOTS to attach (pick the most recent + relevant, up to 6).",
+          },
         },
         required: ["classification", "reply", "handoff"],
       },
@@ -569,6 +598,8 @@ ${renderTimelineForPrompt(timeline)}`;
     handoffReason?: string;
     notifyChris?: boolean;
     notifyReason?: string;
+    attachProgress?: boolean;
+    attachProgressIds?: string[];
   };
   if (toolBlock && typeof toolBlock.input === "object") {
     parsed = {
@@ -578,6 +609,10 @@ ${renderTimelineForPrompt(timeline)}`;
       handoffReason: typeof toolBlock.input.handoffReason === "string" ? toolBlock.input.handoffReason : undefined,
       notifyChris: !!toolBlock.input.notifyChris,
       notifyReason: typeof toolBlock.input.notifyReason === "string" ? toolBlock.input.notifyReason : undefined,
+      attachProgress: !!toolBlock.input.attachProgress,
+      attachProgressIds: Array.isArray(toolBlock.input.attachProgressIds)
+        ? toolBlock.input.attachProgressIds.filter((id: unknown) => typeof id === "string") as string[]
+        : undefined,
     };
   } else {
     // Refusal or malformed tool use — fall back to a handoff so we never
@@ -633,6 +668,12 @@ ${renderTimelineForPrompt(timeline)}`;
     ? lastInbound.subject.startsWith("Re:") ? lastInbound.subject : `Re: ${lastInbound.subject}`
     : `Re: ${ctx.project.name}`;
 
+  // Build attachments when Jake chose to share progress screenshots.
+  let attachments: { filename: string; content: string }[] | undefined;
+  if (parsed.attachProgress && parsed.attachProgressIds?.length) {
+    attachments = await loadProgressAttachments(parsed.attachProgressIds);
+  }
+
   let messageId: string | undefined;
   const resend = getResendClient();
   if (resend) {
@@ -648,6 +689,9 @@ ${renderTimelineForPrompt(timeline)}`;
           { name: "agent", value: "jake" },
         ],
       };
+      if (attachments && attachments.length > 0) {
+        emailPayload.attachments = attachments;
+      }
       if (lastInbound?.resendMessageId) {
         emailPayload.headers = { "In-Reply-To": lastInbound.resendMessageId };
       }
@@ -1132,4 +1176,74 @@ export function startJakeRunners(): void {
   scheduleNextDigest();
 
   console.log("Jake runners started: maintenance cadence (1h) + daily digest (8am CT)");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Progress screenshot helpers — fetch from object storage and base64
+// encode so Resend can ship them as email attachments.
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function loadProgressForVoice(docIds: string[]): Promise<{ filename: string; content: string }[]> {
+  return loadProgressAttachments(docIds);
+}
+
+async function loadProgressAttachments(docIds: string[]): Promise<{ filename: string; content: string }[]> {
+  if (docIds.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(projectDocuments)
+    .where(eq(projectDocuments.category, "progress"));
+  const byId = new Map(rows.map(r => [r.id, r]));
+
+  const { ObjectStorageService } = await import("./object-storage");
+  const service = new ObjectStorageService();
+  const out: { filename: string; content: string }[] = [];
+
+  for (const id of docIds.slice(0, 6)) {
+    const doc = byId.get(id);
+    if (!doc) continue;
+    if (!doc.storageKey) continue;
+    if (!/image\//i.test(doc.contentType ?? "")) continue;
+    try {
+      const file = await service.getObjectEntityFile(doc.storageKey);
+      // Each backend exposes a download method. We don't have a "read to
+      // buffer" helper; pipe to an in-memory writable instead.
+      const buffer = await readFileToBuffer(file);
+      if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) continue; // skip oversize
+      out.push({ filename: doc.filename, content: buffer.toString("base64") });
+    } catch (err: any) {
+      console.error(`Jake progress attachment ${id} failed:`, err?.message);
+    }
+  }
+  return out;
+}
+
+async function readFileToBuffer(file: any): Promise<Buffer> {
+  // Both LocalFile (createReadStream) and S3File (download via the
+  // service) shape work — we just need raw bytes. Prefer the read-to-
+  // buffer path that doesn't touch res.
+  if (typeof file.createReadStream === "function") {
+    const stream = file.createReadStream();
+    return await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on("data", (c: Buffer) => chunks.push(c));
+      stream.on("end", () => resolve(Buffer.concat(chunks)));
+      stream.on("error", reject);
+    });
+  }
+  // S3 fallback: HEAD + GET via SDK if the local-style stream isn't
+  // available. Lazy import so the local-disk path stays import-clean.
+  const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+  const region = process.env.AWS_S3_REGION;
+  const bucket = process.env.AWS_S3_DOCUMENTS_BUCKET || process.env.AWS_S3_BUCKET;
+  if (!region || !bucket) throw new Error("S3 not configured for attachment fetch");
+  const client = new S3Client({ region });
+  const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: file.name }));
+  const stream = result.Body as any;
+  return await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on("data", (c: Buffer) => chunks.push(c));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", reject);
+  });
 }

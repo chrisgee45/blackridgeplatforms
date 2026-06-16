@@ -1925,6 +1925,7 @@ export default function ProjectDetail() {
                     <SelectItem value="contract">Contract</SelectItem>
                     <SelectItem value="invoice">Invoice</SelectItem>
                     <SelectItem value="proposal">Proposal</SelectItem>
+                    <SelectItem value="progress">Progress / Screenshots</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1983,10 +1984,16 @@ export default function ProjectDetail() {
               <p className="text-muted-foreground text-sm py-8 text-center">No documents uploaded yet</p>
             )}
 
-            {["contract", "invoice", "proposal", "other"].map((cat) => {
+            {["contract", "invoice", "proposal", "progress", "other"].map((cat) => {
               const catDocs = documents.filter((d) => d.category === cat);
               if (catDocs.length === 0) return null;
-              const catLabels: Record<string, string> = { contract: "Contracts", invoice: "Invoices", proposal: "Proposals", other: "Other" };
+              const catLabels: Record<string, string> = {
+                contract: "Contracts",
+                invoice: "Invoices",
+                proposal: "Proposals",
+                progress: "Progress / Screenshots",
+                other: "Other",
+              };
               return (
                 <div key={cat}>
                   <h4 className="text-sm font-medium text-muted-foreground mb-2" data-testid={`text-doc-section-${cat}`}>{catLabels[cat]}</h4>
