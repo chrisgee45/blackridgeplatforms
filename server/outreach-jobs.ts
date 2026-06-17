@@ -220,8 +220,16 @@ Return only valid JSON.`;
     const rawText = response.content
       .map(b => (b.type === "text" ? b.text : ""))
       .join("");
-    const raw = rawText.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-    const analysis = JSON.parse(raw);
+    const cleaned = rawText.replace(/```(?:json)?\s*/g, "").replace(/```/g, "");
+    // Claude sometimes prefixes the JSON with a paragraph of prose
+    // ("All the research…", "Here is the analysis…", "Research customer…")
+    // when it uses web_search. Extract the first balanced JSON object
+    // instead of strict-parsing the whole response.
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("Claude response had no JSON object");
+    }
+    const analysis = JSON.parse(jsonMatch[0]);
 
     const updateData: Record<string, any> = {
       openingLine: analysis.opening_line || `I noticed a few things we could do to help boost your traffic and turn more visitors into customers.`,
@@ -306,7 +314,7 @@ Return only valid JSON.`;
     console.log(`AI analysis complete for lead: ${lead.businessName}`);
   } catch (error) {
     console.error(`AI analysis failed for lead ${lead.id}:`, error);
-    await outreachStorage.updateLead(lead.id, {
+    const fallback: Record<string, any> = {
       openingLine: `I noticed a few things we could do to help boost your traffic and turn more visitors into customers.`,
       aiAuditSummary: "Automated analysis unavailable. Manual review recommended.",
       pitchAngle: `A few small changes could help drive more calls and walk-ins within the first few weeks.`,
@@ -317,7 +325,55 @@ Return only valid JSON.`;
         "No Google reviews or social proof on the site",
         "Contact form is hard to find",
       ],
-    });
+    };
+
+    // Even when Claude's analysis crashed, still try to find an email
+    // so the lead can be enrolled in the campaign instead of getting
+    // stranded with no email forever.
+    if (!lead.email && lead.websiteUrl) {
+      try {
+        const discovery = await discoverAndVerifyEmail({
+          websiteUrl: lead.websiteUrl,
+          businessName: lead.businessName,
+        });
+        if (discovery.email) {
+          fallback.email = discovery.email;
+          fallback.status = discovery.verified === "valid" ? "new" : "needs_review";
+          console.log(`Email discovery (catch branch) for ${lead.businessName}: ${discovery.email} (source=${discovery.source}, verified=${discovery.verified})`);
+        } else {
+          fallback.status = "email_invalid";
+          console.log(`Email discovery (catch branch) failed for ${lead.businessName}: no deliverable address found`);
+        }
+      } catch (discoveryErr) {
+        console.error(`Catch-branch discovery failed for ${lead.businessName}:`, discoveryErr);
+      }
+    }
+
+    await outreachStorage.updateLead(lead.id, fallback);
+
+    if (fallback.email && fallback.status !== "email_invalid" && !lead.email) {
+      const settings = await outreachStorage.getSettings();
+      if (!settings.enrollmentsPaused) {
+        const campaign = await outreachStorage.getActiveCampaign();
+        if (campaign) {
+          const existingEnrollment = await outreachStorage.getEnrollmentByLead(lead.id);
+          if (!existingEnrollment) {
+            const enrollment = await outreachStorage.createEnrollment(lead.id, campaign.id);
+            await outreachStorage.createJob({
+              type: "send_campaign_step",
+              payload: {
+                lead_id: lead.id,
+                enrollment_id: enrollment.id,
+                campaign_id: campaign.id,
+                step_number: 1,
+              },
+              runAt: new Date(Date.now() + 10000),
+            });
+            console.log(`Auto-enrolled ${lead.businessName} from catch-branch discovery`);
+          }
+        }
+      }
+    }
   }
 }
 
