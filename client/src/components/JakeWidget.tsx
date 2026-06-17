@@ -361,7 +361,8 @@ export default function JakeWidget() {
 
   return (
     <>
-      {/* Closed-state floating bubble — bottom-left, opposite Ridge */}
+      {/* Closed-state floating bubble — bottom-right next to Ridge.
+          Previously bottom-left but the OPS sidebar covered it. */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -369,8 +370,8 @@ export default function JakeWidget() {
           aria-label="Talk to Jake"
           style={{
             position: "fixed",
-            left: 20,
-            bottom: 20,
+            right: 104,
+            bottom: 24,
             width: 64,
             height: 64,
             borderRadius: "50%",
