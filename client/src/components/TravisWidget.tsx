@@ -454,33 +454,8 @@ export default function TravisWidget() {
               </div>
             </div>
 
-            {/* Caption — last user line + last assistant reply, max 2 lines each. */}
-            {(lastUser || lastAssistant) && (
-              <div style={{ minHeight: 64, width: "100%", textAlign: "center" }}>
-                {lastUser && (
-                  <div style={{ color: "rgba(254,243,199,0.55)", fontSize: 12, marginBottom: 6, fontStyle: "italic" }}>
-                    you: "{lastUser.content}"
-                  </div>
-                )}
-                {lastAssistant?.content && (
-                  <div
-                    style={{
-                      color: "#fef3c7",
-                      fontSize: 15,
-                      lineHeight: 1.5,
-                      maxWidth: 520,
-                      margin: "0 auto",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {lastAssistant.content}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* No transcript here — Chris asked for a clean face takeover,
+                not a chat box. Only action confirmations show below. */}
 
             {/* Action chips for the latest assistant turn */}
             {recentActions.length > 0 && (
