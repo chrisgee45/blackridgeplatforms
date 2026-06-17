@@ -16,6 +16,7 @@ import { db } from "./db";
 import { projects, projectConversations, projectDocuments, clients, contacts, companies, outreachJobs, tasks, milestones } from "@shared/schema";
 import { eq, desc, asc, gte } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
+import { ObjectStorageService } from "./object-storage";
 
 const JAKE_FROM_EMAIL = process.env.JAKE_FROM_EMAIL || "jake@blackridgeplatforms.com";
 const JAKE_FROM_NAME = process.env.JAKE_FROM_NAME || "Jake at BlackRidge";
@@ -341,6 +342,71 @@ ${JAKE_SIGNATURE}`;
 // Inbound webhook handler — called by /api/jake/inbound
 // ─────────────────────────────────────────────────────────────────────────
 
+interface InboundAttachment {
+  filename?: string;
+  content_type?: string;
+  content_disposition?: string;
+  url?: string;
+  content?: string; // base64-encoded
+  size?: number;
+}
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const MIN_ATTACHMENT_BYTES = 1024;             // skip tracking pixels / signature dots
+
+/**
+ * Download every attachment on an inbound email, push the bytes into
+ * object storage, and create a project_documents row tagged
+ * "client_upload" so the file shows up in the project's Documents tab
+ * right next to Chris's own uploads.
+ */
+async function persistClientAttachments(
+  projectId: string,
+  fromEmail: string,
+  attachments: InboundAttachment[],
+): Promise<string[]> {
+  if (!Array.isArray(attachments) || attachments.length === 0) return [];
+  const service = new ObjectStorageService();
+  const savedFilenames: string[] = [];
+
+  for (const att of attachments) {
+    try {
+      if ((att.content_disposition ?? "").toLowerCase() === "inline") continue;
+
+      let buf: Buffer | null = null;
+      if (att.url) {
+        const resp = await fetch(att.url);
+        if (resp.ok) buf = Buffer.from(await resp.arrayBuffer());
+      } else if (att.content) {
+        buf = Buffer.from(att.content, "base64");
+      }
+      if (!buf || buf.length < MIN_ATTACHMENT_BYTES) continue;
+      if (buf.length > MAX_ATTACHMENT_BYTES) {
+        console.warn(`Jake: skipping oversized attachment ${att.filename} (${buf.length} bytes)`);
+        continue;
+      }
+
+      const filename = (att.filename || "attachment").trim().slice(0, 200) || "attachment";
+      const contentType = att.content_type || "application/octet-stream";
+      const { storageKey } = await service.saveBuffer(buf, contentType);
+
+      await db.insert(projectDocuments).values({
+        projectId,
+        filename,
+        storageKey,
+        category: "client_upload",
+        fileSize: buf.length,
+        contentType,
+        uploadedBy: fromEmail || "client",
+      });
+      savedFilenames.push(filename);
+    } catch (err: any) {
+      console.error(`Jake: failed to persist attachment ${att?.filename}:`, err?.message);
+    }
+  }
+  return savedFilenames;
+}
+
 export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   const fromEmail = (data?.from || data?.from_address || data?.sender || "").replace(/.*</, "").replace(/>.*/, "").trim().toLowerCase();
   const toRaw = data?.to ?? data?.to_address ?? data?.recipient ?? "";
@@ -354,6 +420,7 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   // from the Received Emails API by email_id. (SDK v4 doesn't expose
   // emails.receiving yet, so we hit REST directly.)
   let textBody = "";
+  let inboundAttachments: InboundAttachment[] = [];
   if (emailId) {
     const apiKey = process.env.RESEND_API_KEY;
     if (apiKey) {
@@ -362,12 +429,13 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
         if (res.ok) {
-          const payload = await res.json() as { text?: string; html?: string };
+          const payload = await res.json() as { text?: string; html?: string; attachments?: InboundAttachment[] };
           const text = payload.text?.trim() || "";
           const htmlStripped = payload.html
             ? payload.html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
             : "";
           textBody = text || htmlStripped;
+          if (Array.isArray(payload.attachments)) inboundAttachments = payload.attachments;
         } else {
           console.error(`Jake receiving fetch ${emailId} → ${res.status}`);
         }
@@ -388,6 +456,18 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
     return { ok: true };
   }
 
+  // Save any attachments into the project's Documents tab so Chris sees
+  // them right next to his own uploads. Done before logging the
+  // conversation so the body can mention what arrived.
+  const savedAttachments = await persistClientAttachments(project.id, fromEmail, inboundAttachments);
+  if (savedAttachments.length > 0) {
+    console.log(`Jake: saved ${savedAttachments.length} attachment(s) for project ${project.id}: ${savedAttachments.join(", ")}`);
+  }
+
+  const attachmentFooter = savedAttachments.length > 0
+    ? `\n\n[${savedAttachments.length} attachment${savedAttachments.length === 1 ? "" : "s"} saved to project documents: ${savedAttachments.join(", ")}]`
+    : "";
+
   await db.insert(projectConversations).values({
     projectId: project.id,
     clientId: project.clientId ?? null,
@@ -395,7 +475,7 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
     fromEmail,
     toEmail: toEmail || JAKE_FROM_EMAIL,
     subject,
-    body: textBody || "(empty)",
+    body: (textBody || "(empty)") + attachmentFooter,
     aiGenerated: false,
     resendMessageId: messageId,
   });
