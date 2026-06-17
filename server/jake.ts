@@ -411,9 +411,28 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   const fromEmail = (data?.from || data?.from_address || data?.sender || "").replace(/.*</, "").replace(/>.*/, "").trim().toLowerCase();
   const toRaw = data?.to ?? data?.to_address ?? data?.recipient ?? "";
   const toEmail = Array.isArray(toRaw) ? toRaw[0] : toRaw;
+  const toEmailNormalized = String(toEmail || "").replace(/.*</, "").replace(/>.*/, "").trim().toLowerCase();
   const subject = data?.subject || "";
   const messageId = data?.message_id || data?.email_id || data?.id || null;
   const emailId = data?.email_id || data?.id || null;
+
+  // Defense in depth against cross-tenant Resend webhook fan-out. A
+  // single Resend account fires its webhooks for EVERY inbound email on
+  // the account, regardless of which verified domain or address the
+  // email actually went to. If another tenant on the same Resend account
+  // misconfigures their webhook URL (or this URL ends up registered on
+  // someone else's tenant), Jake should silently ignore any email that
+  // wasn't actually addressed to him.
+  //
+  // Allowed recipients come from env so you can add a second Jake alias
+  // without a code change. Defaults to Jake's documented public addresses.
+  const allowedToList = (process.env.JAKE_ALLOWED_TO_EMAILS
+    || `jake@reply.blackridgeplatforms.com,${JAKE_FROM_EMAIL}`)
+    .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (toEmailNormalized && !allowedToList.includes(toEmailNormalized)) {
+    console.warn(`Jake: rejecting inbound — recipient ${toEmailNormalized} not in allowlist`);
+    return { ok: true };
+  }
 
   // Resend's email.received webhook intentionally ships metadata only —
   // body, headers, and attachments are excluded by design. Fetch the body
