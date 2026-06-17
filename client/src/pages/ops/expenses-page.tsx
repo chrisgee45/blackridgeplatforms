@@ -698,7 +698,8 @@ export default function ExpensesPage() {
                       const data = await res.json();
                       (file as any)._objectPath = data.objectPath;
                       (file as any)._fileName = file.name;
-                      return { method: "PUT" as const, url: data.uploadURL };
+                      const absoluteUrl = new URL(data.uploadURL, window.location.origin).toString();
+                      return { method: "PUT" as const, url: absoluteUrl };
                     }}
                     onComplete={(result) => {
                       const successful = result.successful || [];
@@ -1246,7 +1247,8 @@ export default function ExpensesPage() {
                     const data = await res.json();
                     (file as any)._objectPath = data.objectPath;
                     (file as any)._fileName = file.name;
-                    return { method: "PUT" as const, url: data.uploadURL };
+                    const absoluteUrl = new URL(data.uploadURL, window.location.origin).toString();
+                    return { method: "PUT" as const, url: absoluteUrl };
                   }}
                   onComplete={(result) => {
                     const successful = result.successful || [];

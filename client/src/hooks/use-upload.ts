@@ -179,9 +179,12 @@ export function useUpload(options: UseUploadOptions = {}) {
       }
 
       const data = await response.json();
+      // Server returns a relative path; Uppy's URL validator rejects
+      // relatives with "Failed to construct 'URL'".
+      const absoluteUrl = new URL(data.uploadURL, window.location.origin).toString();
       return {
         method: "PUT",
-        url: data.uploadURL,
+        url: absoluteUrl,
         headers: { "Content-Type": file.type || "application/octet-stream" },
       };
     },
