@@ -470,26 +470,8 @@ export default function JakeWidget() {
               </div>
             </div>
 
-            {(lastUser || lastAssistant) && (
-              <div style={{ minHeight: 64, width: "100%", textAlign: "center" }}>
-                {lastUser && (
-                  <div style={{ color: "rgba(226,232,240,0.55)", fontSize: 12, marginBottom: 6, fontStyle: "italic" }}>
-                    you: "{lastUser.content}"
-                  </div>
-                )}
-                {lastAssistant?.content && (
-                  <div
-                    style={{
-                      color: "#e2e8f0", fontSize: 15, lineHeight: 1.5,
-                      maxWidth: 520, margin: "0 auto",
-                      display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
-                    }}
-                  >
-                    {lastAssistant.content}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* No transcript here — Chris asked for a clean face takeover,
+                not a chat box. Only action confirmations show below. */}
 
             {recentActions.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
