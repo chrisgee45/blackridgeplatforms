@@ -323,6 +323,21 @@ export class ObjectStorageService {
     return `/api/uploads/${encodeURIComponent(privateDir)}/${objectId}`;
   }
 
+  /**
+   * Write a buffer directly to storage server-side and return the
+   * /objects/... path that the rest of the app uses as storageKey.
+   * Used for files that arrive on the server (Jake inbound email
+   * attachments, etc.) instead of via the browser uploader.
+   */
+  async saveBuffer(buffer: Buffer, contentType: string): Promise<{ storageKey: string }> {
+    const privateDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const logical = `${privateDir}/${objectId}`;
+    const { bucketName, objectName } = parseLogicalPath(logical);
+    await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, { contentType });
+    return { storageKey: `/objects${logical}`.replace(/\/+/g, "/") };
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("/api/uploads/")) return rawPath;
     const encoded = rawPath.replace("/api/uploads/", "");
