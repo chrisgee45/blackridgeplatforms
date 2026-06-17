@@ -1592,6 +1592,20 @@ ${contextBlock}`;
     }
   });
 
+  // Re-run email discovery on every lead currently without a deliverable
+  // address. Safe to call repeatedly — skips leads that already have a
+  // pending analyze_lead job.
+  app.post("/api/outreach/leads/rediscover-emails", isAuthenticated, async (_req, res) => {
+    try {
+      const { backfillEmaillessLeads } = await import("./outreach-jobs");
+      const queued = await backfillEmaillessLeads();
+      res.json({ queued });
+    } catch (err: any) {
+      console.error("Rediscover emails error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to queue rediscovery" });
+    }
+  });
+
   app.post("/api/outreach/leads/bad-site-import", isAuthenticated, async (req, res) => {
     try {
       const { leads: leadsToImport, threshold = 60 } = req.body;

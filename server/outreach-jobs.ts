@@ -894,11 +894,57 @@ Return ONLY valid JSON:
   }
 }
 
+/**
+ * Find every lead currently without a deliverable email and enqueue
+ * a fresh analyze_lead job for it. Skips leads that already have a
+ * pending analyze_lead job so this is safe to call repeatedly.
+ * Returns the number of jobs newly enqueued.
+ */
+export async function backfillEmaillessLeads(): Promise<number> {
+  const leads = await outreachStorage.getLeads();
+  const targets = leads.filter(l =>
+    !!l.websiteUrl
+    && (!l.email || l.email.trim().length === 0 || l.status === "email_invalid")
+    && l.status !== "unsubscribed"
+    && l.status !== "bounced"
+  );
+  if (targets.length === 0) return 0;
+
+  const pendingJobs = await outreachStorage.getQueuedJobs();
+  const pendingLeadIds = new Set(
+    pendingJobs
+      .filter(j => j.type === "analyze_lead")
+      .map(j => (j.payload as any)?.lead_id)
+      .filter(Boolean)
+  );
+
+  let enqueued = 0;
+  for (const lead of targets) {
+    if (pendingLeadIds.has(lead.id)) continue;
+    await outreachStorage.createJob({
+      type: "analyze_lead",
+      payload: { lead_id: lead.id },
+      // Stagger 5s apart so we don't slam Anthropic or third-party
+      // APIs all at once when there's a big backlog.
+      runAt: new Date(Date.now() + enqueued * 5000),
+    });
+    enqueued++;
+  }
+  return enqueued;
+}
+
 export function startOutreachJobRunner() {
   console.log("Outreach job runner started (30s interval)");
   outreachStorage.cleanupOrphanedJobs()
     .then(n => { if (n > 0) console.log(`Outreach: cleaned up ${n} orphaned job(s) on startup`); })
     .catch(err => console.error("Initial orphan-job cleanup error:", err));
+
+  // One-shot backfill: re-run email discovery on every lead currently
+  // without a deliverable address. Idempotent — skips leads that
+  // already have a pending analyze_lead job.
+  backfillEmaillessLeads()
+    .then(n => { if (n > 0) console.log(`Outreach: queued email-discovery backfill for ${n} lead(s)`); })
+    .catch(err => console.error("Email-discovery backfill error:", err));
 
   setInterval(() => {
     runOutreachJobs().catch(err => console.error("Outreach job runner error:", err));
