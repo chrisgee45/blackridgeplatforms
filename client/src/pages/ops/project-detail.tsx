@@ -1945,7 +1945,10 @@ export default function ProjectDetail() {
                   });
                   const data = await res.json();
                   (file as any)._objectPath = data.objectPath;
-                  return { method: "PUT" as const, url: data.uploadURL };
+                  // Server returns a relative path; Uppy's URL validator
+                  // rejects relatives with "Failed to construct 'URL'".
+                  const absoluteUrl = new URL(data.uploadURL, window.location.origin).toString();
+                  return { method: "PUT" as const, url: absoluteUrl };
                 }}
                 onComplete={async (result) => {
                   const successful = result.successful || [];

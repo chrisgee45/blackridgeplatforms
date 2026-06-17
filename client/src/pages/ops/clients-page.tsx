@@ -1470,7 +1470,8 @@ export default function ClientsPage() {
                   });
                   const data = await res.json();
                   (file as any)._objectPath = data.objectPath;
-                  return { method: "PUT" as const, url: data.uploadURL };
+                  const absoluteUrl = new URL(data.uploadURL, window.location.origin).toString();
+                  return { method: "PUT" as const, url: absoluteUrl };
                 }}
                 onComplete={async (result) => {
                   const successful = result.successful || [];
