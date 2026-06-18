@@ -171,4 +171,25 @@ export function registerJakeRoutes(app: Express, isAuthenticated: RequestHandler
       res.status(500).json({ ok: false });
     }
   });
+
+  // Replay a past inbound email through the fixed handler. Lets Chris
+  // re-process attachments that were silently dropped by older code
+  // without asking the client to forward the message again. Pass the
+  // original Resend webhook payload body (the `data` object from the
+  // email.received event) and Jake's handler runs it as if it just
+  // arrived.
+  app.post("/api/ops/jake/replay-inbound", isAuthenticated, async (req, res) => {
+    try {
+      const { handleJakeInbound } = await import("./jake");
+      const payload = req.body?.data ?? req.body;
+      if (!payload || typeof payload !== "object") {
+        return res.status(400).json({ message: "Pass the original webhook payload as the request body" });
+      }
+      const result = await handleJakeInbound(payload);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Jake replay error:", err);
+      res.status(500).json({ message: err?.message ?? "Replay failed" });
+    }
+  });
 }
