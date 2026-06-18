@@ -55,12 +55,15 @@ Send an email to the client linked to that project.
 <jake_action>{"type":"share_progress","project_id":"<id>","intent":"<short note explaining what you're sending, in Chris's words>"}</jake_action>
 Email the client linked to that project with the LATEST progress screenshots attached.
 
+<jake_action>{"type":"send_documents","project_id":"<id>","document_ids":["<doc_id_1>","<doc_id_2>"],"intent":"<short note explaining what you're sending, in Chris's words>"}</jake_action>
+Email the client linked to that project with one or more SPECIFIC project documents attached. Pull document_ids from the "Documents available to attach" list in the live state — they appear there with their filename, category, and size. Use this when Chris says things like "send Alan the signed contract", "email the planter mockups to Hometown", "ship the invoice PDF to so-and-so". Up to 10 documents per email; each file is hard-capped at 20MB and the combined email shouldn't exceed ~25MB (Gmail bounces above that).
+
 ═══════════════════════════════════════════════════════════════════
 CLIENT EMAIL SAFETY RULE — NON-NEGOTIABLE — READ CAREFULLY
 ═══════════════════════════════════════════════════════════════════
-You NEVER, EVER fire email_client or share_progress on your own initiative or because Chris is thinking out loud, brainstorming, asking what he should say, or musing about a client. Chris talking ABOUT a client is not the same as Chris telling you to email a client. This rule exists because a real client (Autumn at Hometown Rock And Landscape) was emailed from an internal voice chat and called Chris confused. Do not let it happen again.
+You NEVER, EVER fire email_client, share_progress, or send_documents on your own initiative or because Chris is thinking out loud, brainstorming, asking what he should say, or musing about a client. Chris talking ABOUT a client is not the same as Chris telling you to email a client. This rule exists because a real client (Autumn at Hometown Rock And Landscape) was emailed from an internal voice chat and called Chris confused. Do not let it happen again.
 
-The ONLY time you fire email_client or share_progress is when Chris's MOST RECENT user message contains an unambiguous send instruction — words like "send it", "fire it off", "ship it", "yes send", "go ahead and email", "email it now", "do it", "send the email". And even then, only AFTER you've already shown him a draft or summary in a previous turn and he's confirming THAT specific send.
+The ONLY time you fire email_client, share_progress, or send_documents is when Chris's MOST RECENT user message contains an unambiguous send instruction — words like "send it", "fire it off", "ship it", "yes send", "go ahead and email", "email it now", "do it", "send the email". And even then, only AFTER you've already shown him a draft or summary in a previous turn and he's confirming THAT specific send.
 
 The flow is ALWAYS two turns minimum:
   Turn 1 (Chris): "Tell Autumn at Hometown the planters are done."
@@ -69,7 +72,7 @@ The flow is ALWAYS two turns minimum:
   Turn 2 (Chris): "Yes, send it."
   Turn 2 (you): emits email_client action AND says "Sent."
 
-If Chris is just chatting, asking a question, brainstorming, or wandering — you do NOT emit email_client or share_progress. If you're not 100% sure he means SEND THIS NOW, you ask. The server will refuse to execute these actions unless Chris's latest message contains an explicit confirmation phrase, so emitting them speculatively will fail anyway. When in doubt, draft a preview and wait.
+If Chris is just chatting, asking a question, brainstorming, or wandering — you do NOT emit email_client, share_progress, or send_documents. If you're not 100% sure he means SEND THIS NOW, you ask. The server will refuse to execute these actions unless Chris's latest message contains an explicit confirmation phrase, so emitting them speculatively will fail anyway. When in doubt, draft a preview and wait.
 
 If an action block fails (you can't find the project, no explicit confirmation, etc.), the server tells you in the next turn and you can adjust. Never speak the JSON aloud — those characters are silently stripped from the TTS feed.`;
 
@@ -139,6 +142,31 @@ async function buildJakeSnapshot(): Promise<string> {
       }
     }
   }
+
+  // Per-project documents Jake can attach via send_documents. We list
+  // ALL active projects' documents (not just Jake-enabled) so Chris
+  // can ask Jake to grab anything on any project.
+  const enabledProjectIds = new Set(allProjects.slice(0, 40).map(p => p.id));
+  if (enabledProjectIds.size > 0) {
+    const { projectDocuments } = await import("@shared/schema");
+    const docs = await db
+      .select()
+      .from(projectDocuments)
+      .orderBy(desc(projectDocuments.createdAt))
+      .limit(120);
+    const projNames = new Map<string, string>();
+    for (const p of allProjects) projNames.set(p.id, p.name);
+    const visible = docs.filter(d => enabledProjectIds.has(d.projectId));
+    if (visible.length > 0) {
+      lines.push("");
+      lines.push(`Documents available to attach via send_documents (use the document_id):`);
+      for (const d of visible.slice(0, 60)) {
+        const proj = projNames.get(d.projectId) ?? "?";
+        const size = d.fileSize ? `${Math.round((d.fileSize ?? 0) / 1024)}KB` : "";
+        lines.push(`- ${d.id} · ${proj} · [${d.category}] ${d.filename}${size ? ` (${size})` : ""}`);
+      }
+    }
+  }
   return lines.join("\n");
 }
 
@@ -192,6 +220,7 @@ type JakeAction =
   | { type: "create_task"; project_id?: string; title?: string; priority?: string }
   | { type: "email_client"; project_id?: string; intent?: string }
   | { type: "share_progress"; project_id?: string; intent?: string }
+  | { type: "send_documents"; project_id?: string; document_ids?: string[]; intent?: string }
   | { type: "note_for_chris"; reason?: string };
 
 interface ActionResult {
@@ -388,6 +417,83 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
         classification: "PROGRESS_SHARE",
       });
       return { type: action.type, ok: true, message: `Sent ${attachments.length} progress screenshot${attachments.length === 1 ? "" : "s"} to ${contactName ?? contactEmail}` };
+    }
+
+    if (action.type === "send_documents") {
+      if (!action.project_id) return { type: action.type, ok: false, message: "missing project_id" };
+      if (!Array.isArray(action.document_ids) || action.document_ids.length === 0) {
+        return { type: action.type, ok: false, message: "missing document_ids" };
+      }
+      const [proj] = await db.select().from(projects).where(eq(projects.id, action.project_id));
+      if (!proj) return { type: action.type, ok: false, message: "project not found" };
+
+      let contactEmail: string | null = null;
+      let contactName: string | null = null;
+      if (proj.contactId) {
+        const [c] = await db.select().from(contacts).where(eq(contacts.id, proj.contactId));
+        if (c) { contactEmail = c.email ?? null; contactName = c.name ?? null; }
+      }
+      if (!contactEmail && proj.clientId) {
+        const [cl] = await db.select().from(clients).where(eq(clients.id, proj.clientId));
+        if (cl?.email) { contactEmail = cl.email; contactName = cl.name ?? null; }
+      }
+      if (!contactEmail) return { type: action.type, ok: false, message: `no client email on file for ${proj.name}` };
+
+      const { loadDocumentsForVoice } = await import("./jake");
+      const attachments = await loadDocumentsForVoice(proj.id, action.document_ids);
+      if (attachments.length === 0) {
+        return { type: action.type, ok: false, message: "couldn't read the requested documents from storage" };
+      }
+
+      const Anthropic = (await import("@anthropic-ai/sdk")).default;
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const fileList = attachments.map(a => a.filename).join(", ");
+      const phrased = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 600,
+        system: `You are Jake at BlackRidge writing a short email to a project client. Warm, direct. Mention you've attached the requested file(s) by name. End with this exact four-line signature:\n\nSincerely,\nJake\nClient Relations Specialist\nBlackRidge Platforms\n\nOutput ONLY the email body.`,
+        messages: [{
+          role: "user",
+          content: `Project: ${proj.name}\nClient contact: ${contactName ?? "the client"}\nAttachments: ${fileList}\n\nChris asked you to send these with this context: ${action.intent ?? "(no extra context)"}`,
+        }],
+      });
+      const body = phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+      const subject = attachments.length === 1
+        ? `${attachments[0].filename} — ${proj.name}`
+        : `${attachments.length} files — ${proj.name}`;
+
+      const { Resend } = await import("resend");
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) return { type: action.type, ok: false, message: "RESEND_API_KEY not configured" };
+      try {
+        await new Resend(apiKey).emails.send({
+          from: `${JAKE_FROM_NAME} <${JAKE_FROM_EMAIL}>`,
+          to: contactEmail,
+          replyTo: JAKE_FROM_EMAIL,
+          subject,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${body.replace(/\n/g, "<br>")}</div>`,
+          attachments: attachments.map(a => ({ filename: a.filename, content: a.content })),
+          tags: [
+            { name: "projectId", value: proj.id },
+            { name: "agent", value: "jake" },
+            { name: "kind", value: "documents_send" },
+          ],
+        });
+      } catch (err: any) {
+        return { type: action.type, ok: false, message: `send failed: ${err?.message ?? "unknown"}` };
+      }
+      await db.insert(projectConversations).values({
+        projectId: proj.id,
+        clientId: proj.clientId ?? null,
+        direction: "outbound",
+        fromEmail: JAKE_FROM_EMAIL,
+        toEmail: contactEmail,
+        subject,
+        body: `${body}\n\n[${attachments.length} attachment${attachments.length === 1 ? "" : "s"}: ${fileList}]`,
+        aiGenerated: true,
+        classification: "DOCUMENTS_SEND",
+      });
+      return { type: action.type, ok: true, message: `Sent ${attachments.length} document${attachments.length === 1 ? "" : "s"} (${fileList}) to ${contactName ?? contactEmail}` };
     }
 
     if (action.type === "note_for_chris") {
@@ -618,7 +724,7 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
         // message to contain an explicit send confirmation. This stops
         // Jake from autonomously emailing a real client because Chris
         // was thinking out loud about that account.
-        if ((a.type === "email_client" || a.type === "share_progress") && !hasExplicitSendConfirm) {
+        if ((a.type === "email_client" || a.type === "share_progress" || a.type === "send_documents") && !hasExplicitSendConfirm) {
           results.push({
             type: a.type,
             ok: false,

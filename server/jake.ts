@@ -1286,6 +1286,46 @@ export async function loadProgressForVoice(docIds: string[]): Promise<{ filename
   return loadProgressAttachments(docIds);
 }
 
+/**
+ * Generic document loader for the send_documents voice action.
+ * Unlike loadProgressAttachments which is locked to category=progress
+ * and image types only, this loads any documents from a project the
+ * client should plausibly receive — PDFs, signed contracts, images,
+ * spreadsheets, etc.
+ */
+export async function loadDocumentsForVoice(
+  projectId: string,
+  docIds: string[],
+): Promise<{ filename: string; content: string; contentType?: string }[]> {
+  if (docIds.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(projectDocuments)
+    .where(eq(projectDocuments.projectId, projectId));
+  const byId = new Map(rows.map(r => [r.id, r]));
+
+  const { ObjectStorageService } = await import("./object-storage");
+  const service = new ObjectStorageService();
+  const out: { filename: string; content: string; contentType?: string }[] = [];
+
+  for (const id of docIds.slice(0, 10)) {
+    const doc = byId.get(id);
+    if (!doc) continue;
+    if (!doc.storageKey) continue;
+    try {
+      const file = await service.getObjectEntityFile(doc.storageKey);
+      const buffer = await readFileToBuffer(file);
+      // 20MB cap per attachment — Resend rejects bigger and Gmail
+      // bounces the whole message above ~25MB total anyway.
+      if (buffer.length === 0 || buffer.length > 20 * 1024 * 1024) continue;
+      out.push({ filename: doc.filename, content: buffer.toString("base64"), contentType: doc.contentType ?? undefined });
+    } catch (err: any) {
+      console.error(`Jake document attachment ${id} failed:`, err?.message);
+    }
+  }
+  return out;
+}
+
 async function loadProgressAttachments(docIds: string[]): Promise<{ filename: string; content: string }[]> {
   if (docIds.length === 0) return [];
   const rows = await db
