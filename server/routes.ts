@@ -26,6 +26,7 @@ import { registerJakeVoiceRoutes } from "./jake-voice-route";
 import { registerTravisVoiceRoutes } from "./travis-voice-route";
 import { registerServiceAccountRoutes } from "./service-accounts-routes";
 import { registerExternalApiRoutes } from "./external-api-routes";
+import { registerQaAgentRoutes } from "./qa-agent-routes";
 import { initPush } from "./push";
 import { createAccountingV2Router } from "./accounting-v2-routes";
 import { registerGaapRoutes } from "./gaap-routes";
@@ -322,6 +323,7 @@ export async function registerRoutes(
   registerTravisVoiceRoutes(app, isAuthenticated);
   registerServiceAccountRoutes(app, isAuthenticated);
   registerExternalApiRoutes(app);
+  registerQaAgentRoutes(app, isAuthenticated);
 
   initPush();
   ensureCrmSchema().catch(err => console.error("Failed to ensure CRM schema:", err));
