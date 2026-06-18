@@ -5,7 +5,7 @@
  */
 import type { Express, RequestHandler } from "express";
 import { db } from "./db";
-import { projectServiceAccounts } from "@shared/schema";
+import { projectServiceAccounts, blackridgeServiceAccounts } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import {
   encryptSecrets,
@@ -34,6 +34,20 @@ async function ensureServiceAccountsSchema(): Promise<void> {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS project_service_accounts_project_id_idx
       ON project_service_accounts (project_id)
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS blackridge_service_accounts (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      service text NOT NULL,
+      label text,
+      account_email text,
+      account_id text,
+      login_url text,
+      notes text,
+      secrets_encrypted text,
+      created_at timestamptz DEFAULT now(),
+      updated_at timestamptz DEFAULT now()
+    )
   `);
 }
 function getSchemaReady(): Promise<void> {
@@ -178,6 +192,117 @@ export function registerServiceAccountRoutes(app: Express, isAuthenticated: Requ
       res.json({ secrets });
     } catch (err: any) {
       console.error("Reveal service account error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to reveal" });
+    }
+  });
+
+  // === BlackRidge-scoped vault (the OPS "Vault" page) ===
+  // Same shape as the project-scoped routes above but without a
+  // projectId. These are the platform's own accounts: Railway,
+  // Resend, Anthropic, AWS, Stripe, etc.
+
+  app.get("/api/ops/blackridge/service-accounts", isAuthenticated, async (_req, res) => {
+    try {
+      await getSchemaReady();
+      const rows = await db
+        .select({
+          id: blackridgeServiceAccounts.id,
+          service: blackridgeServiceAccounts.service,
+          label: blackridgeServiceAccounts.label,
+          accountEmail: blackridgeServiceAccounts.accountEmail,
+          accountId: blackridgeServiceAccounts.accountId,
+          loginUrl: blackridgeServiceAccounts.loginUrl,
+          notes: blackridgeServiceAccounts.notes,
+          hasSecrets: blackridgeServiceAccounts.secretsEncrypted,
+          createdAt: blackridgeServiceAccounts.createdAt,
+          updatedAt: blackridgeServiceAccounts.updatedAt,
+        })
+        .from(blackridgeServiceAccounts)
+        .orderBy(desc(blackridgeServiceAccounts.updatedAt));
+      res.json(rows.map(r => ({ ...r, hasSecrets: !!r.hasSecrets })));
+    } catch (err: any) {
+      console.error("List blackridge accounts error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to load accounts" });
+    }
+  });
+
+  app.post("/api/ops/blackridge/service-accounts", isAuthenticated, async (req, res) => {
+    try {
+      await getSchemaReady();
+      const { service, label, accountEmail, accountId, loginUrl, notes, secrets } = req.body || {};
+      if (!service || typeof service !== "string") {
+        return res.status(400).json({ message: "service is required" });
+      }
+      const secretsEncrypted = secrets && typeof secrets === "object" && Object.keys(secrets).length > 0
+        ? encryptSecrets(secrets)
+        : null;
+      const [row] = await db.insert(blackridgeServiceAccounts).values({
+        service,
+        label: label ?? null,
+        accountEmail: accountEmail ?? null,
+        accountId: accountId ?? null,
+        loginUrl: loginUrl ?? null,
+        notes: notes ?? null,
+        secretsEncrypted,
+      }).returning();
+      res.status(201).json({
+        ...row,
+        secretsEncrypted: undefined,
+        hasSecrets: !!row.secretsEncrypted,
+      });
+    } catch (err: any) {
+      console.error("Create blackridge account error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to create" });
+    }
+  });
+
+  app.patch("/api/ops/blackridge/service-accounts/:id", isAuthenticated, async (req, res) => {
+    try {
+      await getSchemaReady();
+      const id = String(req.params.id);
+      const [existing] = await db.select().from(blackridgeServiceAccounts).where(eq(blackridgeServiceAccounts.id, id));
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const { service, label, accountEmail, accountId, loginUrl, notes, secrets, clearSecrets } = req.body || {};
+      const patch: Record<string, unknown> = { updatedAt: new Date() };
+      if (typeof service === "string") patch.service = service;
+      if (label !== undefined) patch.label = label;
+      if (accountEmail !== undefined) patch.accountEmail = accountEmail;
+      if (accountId !== undefined) patch.accountId = accountId;
+      if (loginUrl !== undefined) patch.loginUrl = loginUrl;
+      if (notes !== undefined) patch.notes = notes;
+      if (clearSecrets) {
+        patch.secretsEncrypted = null;
+      } else if (secrets && typeof secrets === "object" && Object.keys(secrets).length > 0) {
+        patch.secretsEncrypted = encryptSecrets(secrets);
+      }
+      const [row] = await db.update(blackridgeServiceAccounts).set(patch).where(eq(blackridgeServiceAccounts.id, id)).returning();
+      res.json({ ...row, secretsEncrypted: undefined, hasSecrets: !!row.secretsEncrypted });
+    } catch (err: any) {
+      console.error("Update blackridge account error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to update" });
+    }
+  });
+
+  app.delete("/api/ops/blackridge/service-accounts/:id", isAuthenticated, async (req, res) => {
+    try {
+      await db.delete(blackridgeServiceAccounts).where(eq(blackridgeServiceAccounts.id, String(req.params.id)));
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Delete blackridge account error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to delete" });
+    }
+  });
+
+  app.post("/api/ops/blackridge/service-accounts/:id/reveal", isAuthenticated, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const [row] = await db.select().from(blackridgeServiceAccounts).where(eq(blackridgeServiceAccounts.id, id));
+      if (!row) return res.status(404).json({ message: "Not found" });
+      const secrets = row.secretsEncrypted ? decryptSecrets(row.secretsEncrypted) : {};
+      console.log(`[secret-vault] reveal blackridge id=${id} service=${row.service}`);
+      res.json({ secrets });
+    } catch (err: any) {
+      console.error("Reveal blackridge account error:", err);
       res.status(500).json({ message: err?.message ?? "Failed to reveal" });
     }
   });
