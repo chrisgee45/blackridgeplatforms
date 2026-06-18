@@ -273,20 +273,30 @@ export function registerOpsRoutes(app: Express, isAuthenticated: RequestHandler)
 
   app.patch("/api/ops/milestones/:id", isAuthenticated, async (req, res) => {
     try {
-      const milestone = await opsStorage.updateMilestone(String(req.params.id), req.body);
+      // Coerce ISO date strings into Date objects — Drizzle's timestamp
+      // columns reject raw strings. The client sends completedAt as an
+      // ISO string when checking a milestone off.
+      const body = { ...req.body };
+      for (const key of ["completedAt", "dueDate"] as const) {
+        if (typeof body[key] === "string") {
+          const d = new Date(body[key]);
+          if (!Number.isNaN(d.getTime())) body[key] = d;
+        }
+      }
+      const milestone = await opsStorage.updateMilestone(String(req.params.id), body);
       if (!milestone) return res.status(404).json({ message: "Milestone not found" });
       await opsStorage.createActivityLog({
         entityType: "milestone",
         entityId: milestone.id,
         projectId: milestone.projectId,
         action: "updated",
-        details: req.body,
+        details: body,
         createdBy: "admin",
       });
       res.json(milestone);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Update milestone error:", error);
-      res.status(500).json({ message: "Failed to update milestone" });
+      res.status(500).json({ message: error?.message ?? "Failed to update milestone" });
     }
   });
 

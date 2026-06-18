@@ -605,15 +605,19 @@ export default function ProjectDetail() {
   });
 
   const completeMilestoneMutation = useMutation({
-    mutationFn: async (milestoneId: string) => {
+    mutationFn: async ({ milestoneId, complete }: { milestoneId: string; complete: boolean }) => {
       const res = await apiRequest("PATCH", `/api/ops/milestones/${milestoneId}`, {
-        completedAt: new Date().toISOString(),
+        completedAt: complete ? new Date().toISOString() : null,
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId, "milestones"] });
       queryClient.invalidateQueries({ queryKey: ["/api/ops/projects", projectId, "activity"] });
+      toast({ title: vars.complete ? "Milestone completed" : "Milestone reopened" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't update milestone", description: err?.message, variant: "destructive" });
     },
   });
 
@@ -1624,7 +1628,7 @@ export default function ProjectDetail() {
                 key={ms.id}
                 className="flex items-center gap-3 py-2 px-3 rounded-md border border-border/30 hover-elevate cursor-pointer"
                 onClick={() => {
-                  if (!ms.completedAt) completeMilestoneMutation.mutate(ms.id);
+                  completeMilestoneMutation.mutate({ milestoneId: ms.id, complete: !ms.completedAt });
                 }}
                 data-testid={`milestone-${ms.id}`}
               >
