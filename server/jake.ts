@@ -343,9 +343,11 @@ ${JAKE_SIGNATURE}`;
 // ─────────────────────────────────────────────────────────────────────────
 
 interface InboundAttachment {
+  id?: string;
   filename?: string;
   content_type?: string;
   content_disposition?: string;
+  content_id?: string;
   url?: string;
   content?: string; // base64-encoded
   size?: number;
@@ -360,9 +362,55 @@ const MIN_ATTACHMENT_BYTES = 1024;             // skip tracking pixels / signatu
  * "client_upload" so the file shows up in the project's Documents tab
  * right next to Chris's own uploads.
  */
+/**
+ * Resend's email.received webhook payload AND the body fetched from
+ * /emails/receiving/{id} both ship attachment metadata only — never
+ * the raw bytes. Each attachment carries an opaque `id` that we have
+ * to download separately. Try the documented endpoint shapes in
+ * order; whichever returns 200 wins.
+ */
+async function downloadResendAttachment(emailId: string, att: InboundAttachment): Promise<Buffer | null> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !att.id) return null;
+  const candidates = [
+    `https://api.resend.com/emails/receiving/${emailId}/attachments/${att.id}`,
+    `https://api.resend.com/emails/receiving/${emailId}/attachments/${att.id}/download`,
+    `https://api.resend.com/attachments/${att.id}`,
+  ];
+  for (const url of candidates) {
+    try {
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (!resp.ok) {
+        console.log(`[jake-attach] ${resp.status} from ${url}`);
+        continue;
+      }
+      const ct = (resp.headers.get("content-type") ?? "").toLowerCase();
+      // Some Resend endpoints return JSON wrapping a base64 `content`
+      // field; others return the binary body directly. Handle both.
+      if (ct.includes("application/json")) {
+        const json = await resp.json() as { content?: string; data?: string; url?: string };
+        if (typeof json.content === "string") return Buffer.from(json.content, "base64");
+        if (typeof json.data === "string") return Buffer.from(json.data, "base64");
+        if (typeof json.url === "string") {
+          const cdn = await fetch(json.url);
+          if (cdn.ok) return Buffer.from(await cdn.arrayBuffer());
+        }
+        console.log(`[jake-attach] JSON from ${url} but no content/data/url field`);
+        continue;
+      }
+      const buf = Buffer.from(await resp.arrayBuffer());
+      if (buf.length > 0) return buf;
+    } catch (err: any) {
+      console.warn(`[jake-attach] ${url} threw:`, err?.message);
+    }
+  }
+  return null;
+}
+
 async function persistClientAttachments(
   projectId: string,
   fromEmail: string,
+  emailId: string | null,
   attachments: InboundAttachment[],
 ): Promise<string[]> {
   if (!Array.isArray(attachments) || attachments.length === 0) return [];
@@ -374,15 +422,26 @@ async function persistClientAttachments(
       if ((att.content_disposition ?? "").toLowerCase() === "inline") continue;
 
       let buf: Buffer | null = null;
-      if (att.url) {
+      // Try inline content / url first (older shape we coded against),
+      // then fall back to downloading by id (the current Resend shape).
+      if (att.content) {
+        buf = Buffer.from(att.content, "base64");
+      } else if (att.url) {
         const resp = await fetch(att.url);
         if (resp.ok) buf = Buffer.from(await resp.arrayBuffer());
-      } else if (att.content) {
-        buf = Buffer.from(att.content, "base64");
+      } else if (att.id && emailId) {
+        buf = await downloadResendAttachment(emailId, att);
       }
-      if (!buf || buf.length < MIN_ATTACHMENT_BYTES) continue;
+      if (!buf || buf.length === 0) {
+        console.warn(`[jake-attach] no bytes downloaded for ${att.filename} (id=${att.id})`);
+        continue;
+      }
+      if (buf.length < MIN_ATTACHMENT_BYTES) {
+        console.log(`[jake-attach] skipping small attachment ${att.filename} (${buf.length}B)`);
+        continue;
+      }
       if (buf.length > MAX_ATTACHMENT_BYTES) {
-        console.warn(`Jake: skipping oversized attachment ${att.filename} (${buf.length} bytes)`);
+        console.warn(`[jake-attach] skipping oversized attachment ${att.filename} (${buf.length}B)`);
         continue;
       }
 
@@ -400,6 +459,7 @@ async function persistClientAttachments(
         uploadedBy: fromEmail || "client",
       });
       savedFilenames.push(filename);
+      console.log(`[jake-attach] saved ${filename} (${buf.length}B) for project ${projectId}`);
     } catch (err: any) {
       console.error(`Jake: failed to persist attachment ${att?.filename}:`, err?.message);
     }
@@ -439,7 +499,13 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   // from the Received Emails API by email_id. (SDK v4 doesn't expose
   // emails.receiving yet, so we hit REST directly.)
   let textBody = "";
-  let inboundAttachments: InboundAttachment[] = [];
+  // Seed from the webhook payload first — it always carries attachment
+  // metadata (id, filename, content_type, content_disposition) even
+  // though the actual bytes have to be downloaded by id. The receiving
+  // API may or may not echo the same attachments list back.
+  let inboundAttachments: InboundAttachment[] = Array.isArray(data?.attachments)
+    ? (data.attachments as InboundAttachment[])
+    : [];
   if (emailId) {
     const apiKey = process.env.RESEND_API_KEY;
     if (apiKey) {
@@ -454,7 +520,9 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
             ? payload.html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
             : "";
           textBody = text || htmlStripped;
-          if (Array.isArray(payload.attachments)) inboundAttachments = payload.attachments;
+          if (Array.isArray(payload.attachments) && payload.attachments.length > 0) {
+            inboundAttachments = payload.attachments;
+          }
         } else {
           console.error(`Jake receiving fetch ${emailId} → ${res.status}`);
         }
@@ -478,7 +546,8 @@ export async function handleJakeInbound(data: any): Promise<{ ok: boolean }> {
   // Save any attachments into the project's Documents tab so Chris sees
   // them right next to his own uploads. Done before logging the
   // conversation so the body can mention what arrived.
-  const savedAttachments = await persistClientAttachments(project.id, fromEmail, inboundAttachments);
+  console.log(`[jake-attach] inbound from ${fromEmail} → ${inboundAttachments.length} attachment metadata entries (emailId=${emailId})`);
+  const savedAttachments = await persistClientAttachments(project.id, fromEmail, emailId, inboundAttachments);
   if (savedAttachments.length > 0) {
     console.log(`Jake: saved ${savedAttachments.length} attachment(s) for project ${project.id}: ${savedAttachments.join(", ")}`);
   }
