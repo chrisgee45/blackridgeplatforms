@@ -106,7 +106,7 @@ const LEAD_SOURCES = ["Referral", "Cold DM", "Facebook", "SEO", "Word of Mouth",
 
 const BUDGET_OPTIONS = ["1k-2.5k", "2.5k-5k", "5k-15k", "15k-30k", "30k-75k", "75k-150k", "150k+"];
 
-const PROJECT_TYPES = ["web-design", "web-development", "ecommerce", "branding", "seo", "consulting", "other"];
+const PROJECT_TYPES = ["web-design", "web-development", "ecommerce", "branding", "seo", "consulting", "replicated-funnel-portal", "saas", "itad", "other"];
 
 function formatDate(date: string | Date | null) {
   if (!date) return "N/A";
@@ -125,8 +125,19 @@ function formatTime(date: string | Date | null) {
   });
 }
 
+// Project-type slugs that need custom display labels because the
+// default kebab → Title Case mapping would mangle the acronym
+// (e.g. "saas" → "Saas") or the punctuation ("Replicated Funnel Portal"
+// instead of "Replicated Funnel / Portal").
+const PROJECT_TYPE_LABELS: Record<string, string> = {
+  "replicated-funnel-portal": "Replicated Funnel / Portal",
+  saas: "SaaS",
+  itad: "ITAD",
+};
+
 function formatProjectType(type: string | null) {
   if (!type) return "Not specified";
+  if (PROJECT_TYPE_LABELS[type]) return PROJECT_TYPE_LABELS[type];
   return type.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
