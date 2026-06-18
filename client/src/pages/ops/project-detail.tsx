@@ -38,6 +38,8 @@ import { generateQaReport, generateQaCertificate, exportQaCsv } from "@/lib/qa-p
 import { generateKickoffPdf } from "@/lib/kickoff-pdf";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import ProjectAccountsTab from "./project-accounts-tab";
+import { KeyRound } from "lucide-react";
 
 const STAGES = ["discovery", "proposal", "contract", "kickoff", "in_progress", "review", "completed", "archived"] as const;
 
@@ -102,7 +104,7 @@ export default function ProjectDetail() {
   const projectId = params?.id;
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"tasks" | "time" | "milestones" | "payments" | "documents" | "activity" | "qa" | "kickoff" | "sequence" | "jake">("tasks");
+  const [activeTab, setActiveTab] = useState<"tasks" | "time" | "milestones" | "payments" | "documents" | "activity" | "qa" | "kickoff" | "sequence" | "jake" | "accounts">("tasks");
 
   const [showQaInitDialog, setShowQaInitDialog] = useState(false);
   const [qaInitProjectType, setQaInitProjectType] = useState("marketing_website");
@@ -675,6 +677,7 @@ export default function ProjectDetail() {
     { key: "sequence" as const, label: "Sequence", icon: Mail, count: welcomeSeq?.status === "running" ? undefined : undefined },
     { key: "activity" as const, label: "Activity", icon: Activity },
     { key: "jake" as const, label: "Jake", icon: Sparkles, count: project?.jakeAwaitingHandoff ? 1 : undefined },
+    { key: "accounts" as const, label: "Accounts", icon: KeyRound },
   ];
 
   return (
@@ -2900,6 +2903,10 @@ export default function ProjectDetail() {
 
         {activeTab === "jake" && projectId && (
           <JakeTab projectId={projectId} jakeEnabled={!!project?.jakeEnabled} awaitingHandoff={!!project?.jakeAwaitingHandoff} handoffReason={project?.jakeHandoffReason ?? null} />
+        )}
+
+        {activeTab === "accounts" && projectId && (
+          <ProjectAccountsTab projectId={projectId} />
         )}
       </div>
 
