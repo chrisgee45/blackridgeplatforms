@@ -1995,7 +1995,7 @@ export default function ProjectDetail() {
               <p className="text-muted-foreground text-sm py-8 text-center">No documents uploaded yet</p>
             )}
 
-            {["contract", "invoice", "proposal", "progress", "other"].map((cat) => {
+            {["contract", "invoice", "proposal", "progress", "client_upload", "other"].map((cat) => {
               const catDocs = documents.filter((d) => d.category === cat);
               if (catDocs.length === 0) return null;
               const catLabels: Record<string, string> = {
@@ -2003,6 +2003,7 @@ export default function ProjectDetail() {
                 invoice: "Invoices",
                 proposal: "Proposals",
                 progress: "Progress / Screenshots",
+                client_upload: "From Client (Email)",
                 other: "Other",
               };
               return (
