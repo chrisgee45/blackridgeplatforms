@@ -39,6 +39,7 @@ import { generateKickoffPdf } from "@/lib/kickoff-pdf";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import ProjectAccountsTab from "./project-accounts-tab";
+import QaAgentPanel from "./qa-agent-panel";
 import { KeyRound } from "lucide-react";
 
 const STAGES = ["discovery", "proposal", "contract", "kickoff", "in_progress", "review", "completed", "archived"] as const;
@@ -2054,6 +2055,7 @@ export default function ProjectDetail() {
 
         {activeTab === "qa" && (
           <div className="space-y-4">
+            {projectId && <QaAgentPanel projectId={projectId} />}
             {!qaHasChecklist ? (
               <div className="text-center py-12 space-y-4">
                 <ClipboardCheck className="w-12 h-12 mx-auto text-muted-foreground/40" />

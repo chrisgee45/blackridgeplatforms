@@ -527,6 +527,23 @@ export const blackridgeServiceAccounts = pgTable("blackridge_service_accounts", 
 });
 export type BlackridgeServiceAccount = typeof blackridgeServiceAccounts.$inferSelect;
 
+// === Automated QA audit reports (the "light tier" QA agent) ===
+export const qaAuditReports = pgTable("qa_audit_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id).notNull(),
+  url: text("url").notNull(),
+  status: text("status").notNull().default("queued"),
+  desktopScores: jsonb("desktop_scores"),
+  mobileScores: jsonb("mobile_scores"),
+  brokenLinks: jsonb("broken_links"),
+  securityHeaders: jsonb("security_headers"),
+  aiReview: text("ai_review"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+export type QaAuditReport = typeof qaAuditReports.$inferSelect;
+
 // === Client Revenue System ===
 
 export const clientStatusEnum = pgEnum("client_status", [
