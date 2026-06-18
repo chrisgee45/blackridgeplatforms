@@ -47,8 +47,15 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      // Successfully-loaded data never goes stale on its own, but a
+      // FAILED query gets two retries (with backoff) before showing
+      // the empty state. Without this, a single transient 401 (session
+      // not yet hydrated on tab switch) would freeze the page until
+      // the user did a hard refresh.
       staleTime: Infinity,
-      retry: false,
+      retry: 2,
+      retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 4000),
     },
     mutations: {
       retry: false,
