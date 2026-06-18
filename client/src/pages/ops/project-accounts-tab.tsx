@@ -132,8 +132,9 @@ export default function ProjectAccountsTab({ projectId }: { projectId: string })
       return;
     }
     try {
-      const res: any = await apiRequest("POST", `/api/ops/service-accounts/${accountId}/reveal`, {});
-      setRevealed(r => ({ ...r, [accountId]: res?.secrets ?? {} }));
+      const res = await apiRequest("POST", `/api/ops/service-accounts/${accountId}/reveal`, {});
+      const data = await res.json();
+      setRevealed(r => ({ ...r, [accountId]: data?.secrets ?? {} }));
     } catch (e: any) {
       toast({ title: "Failed to reveal", description: e?.message, variant: "destructive" });
     }
@@ -220,10 +221,13 @@ export default function ProjectAccountsTab({ projectId }: { projectId: string })
                   className="mt-2"
                   onClick={async () => {
                     try {
-                      const r: any = await apiRequest("POST", "/api/ops/service-accounts/generate-key", {});
-                      if (r?.key) {
-                        await navigator.clipboard.writeText(r.key);
+                      const res = await apiRequest("POST", "/api/ops/service-accounts/generate-key", {});
+                      const data = await res.json();
+                      if (data?.key) {
+                        await navigator.clipboard.writeText(data.key);
                         toast({ title: "Key copied to clipboard", description: "Set ACCOUNT_SECRETS_KEY in Railway and redeploy." });
+                      } else {
+                        toast({ title: "Server returned no key", variant: "destructive" });
                       }
                     } catch (e: any) {
                       toast({ title: "Failed to generate key", description: e?.message, variant: "destructive" });
