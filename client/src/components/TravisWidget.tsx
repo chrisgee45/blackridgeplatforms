@@ -93,6 +93,7 @@ export default function TravisWidget() {
   const abortRef = useRef<AbortController | null>(null);
   const audioBufRef = useRef<Uint8Array[]>([]);
   const recognitionRef = useRef<any>(null);
+  const transcriptBufferRef = useRef<string>("");
   const [vw, setVw] = useState<number>(typeof window !== "undefined" ? window.innerWidth : 1024);
   const [vh, setVh] = useState<number>(typeof window !== "undefined" ? window.innerHeight : 768);
 
@@ -298,27 +299,43 @@ export default function TravisWidget() {
   }, [messages, conversationId]);
 
   const toggleMic = useCallback(() => {
+    // If we're already listening, finish the dictation: stop the
+    // recognizer, send whatever we've buffered, let Travis respond.
     if (status === "listening") {
-      stop();
+      const rec = recognitionRef.current;
+      if (rec) {
+        try { rec.stop(); } catch { /* */ }
+        recognitionRef.current = null;
+      }
+      const buffered = transcriptBufferRef.current.trim();
+      transcriptBufferRef.current = "";
+      setStatus("idle");
+      if (buffered) sendTurn(buffered);
       return;
     }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
     const rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;
+    rec.interimResults = true;
     rec.lang = "en-US";
+    transcriptBufferRef.current = "";
     rec.onstart = () => setStatus("listening");
     rec.onerror = () => setStatus("idle");
-    rec.onend = () => setStatus(s => s === "listening" ? "idle" : s);
+    // Don't auto-send on end — the next mic tap sends the buffer.
+    rec.onend = () => { /* */ };
     rec.onresult = (e: any) => {
-      const text = e?.results?.[0]?.[0]?.transcript;
-      setStatus("idle");
-      if (text) sendTurn(text);
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) {
+          const piece = r[0]?.transcript ?? "";
+          if (piece.trim()) transcriptBufferRef.current += (transcriptBufferRef.current ? " " : "") + piece.trim();
+        }
+      }
     };
     recognitionRef.current = rec;
     try { rec.start(); } catch { /* */ }
-  }, [sendTurn, status, stop]);
+  }, [sendTurn, status]);
 
   // Last assistant turn = caption shown beside the big face.
   const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && (m.content || m.actions?.length));
@@ -509,7 +526,7 @@ export default function TravisWidget() {
               </svg>
             </button>
             <div style={{ color: "rgba(254,243,199,0.45)", fontSize: 11, marginTop: -8 }}>
-              tap the mic and talk
+              {status === "listening" ? "tap again when you're done" : "tap the mic and talk"}
             </div>
           </div>
         </div>

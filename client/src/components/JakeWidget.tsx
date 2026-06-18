@@ -108,6 +108,7 @@ export default function JakeWidget() {
   const audioBufRef = useRef<Uint8Array[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const transcriptBufferRef = useRef<string>("");
 
   useEffect(() => { injectStyles(); }, []);
   useEffect(() => { if (!audioRef.current) audioRef.current = new Audio(); }, []);
@@ -336,20 +337,38 @@ export default function JakeWidget() {
       return;
     }
     const rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;
+    rec.interimResults = true;
     rec.lang = "en-US";
+    transcriptBufferRef.current = "";
     rec.onstart = () => setStatus("listening");
     rec.onerror = () => setStatus("idle");
-    rec.onend = () => { if (status === "listening") setStatus("idle"); };
+    // Don't auto-send on end — wait for Chris to tap the mic again.
+    rec.onend = () => { /* finishListening sends the buffer manually */ };
     rec.onresult = (e: any) => {
-      const text = e?.results?.[0]?.[0]?.transcript;
-      setStatus("idle");
-      if (text) sendTurn(text);
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) {
+          const piece = r[0]?.transcript ?? "";
+          if (piece.trim()) transcriptBufferRef.current += (transcriptBufferRef.current ? " " : "") + piece.trim();
+        }
+      }
     };
     recognitionRef.current = rec;
     try { rec.start(); } catch { /* already started */ }
-  }, [sendTurn, status]);
+  }, []);
+
+  const finishListening = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (rec) {
+      try { rec.stop(); } catch { /* */ }
+      recognitionRef.current = null;
+    }
+    const buffered = transcriptBufferRef.current.trim();
+    transcriptBufferRef.current = "";
+    setStatus("idle");
+    if (buffered) sendTurn(buffered);
+  }, [sendTurn]);
 
   // Last assistant turn for caption + actions row in fullscreen.
   const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && (m.content || m.actions?.length));
@@ -492,7 +511,7 @@ export default function JakeWidget() {
             )}
 
             <button
-              onClick={status === "listening" ? stop : startListening}
+              onClick={status === "listening" ? finishListening : startListening}
               disabled={status === "thinking" || status === "speaking"}
               style={{
                 width: 88, height: 88, borderRadius: "50%", border: "none",
@@ -512,7 +531,7 @@ export default function JakeWidget() {
               </svg>
             </button>
             <div style={{ color: "rgba(226,232,240,0.45)", fontSize: 11, marginTop: -8 }}>
-              tap the mic and talk
+              {status === "listening" ? "tap again when you're done" : "tap the mic and talk"}
             </div>
           </div>
         </div>
