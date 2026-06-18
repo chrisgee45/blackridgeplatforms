@@ -30,6 +30,7 @@ const AuditTestPage = lazy(() => import("@/pages/ops/audit-test-page"));
 const AuditsListPage = lazy(() => import("@/pages/ops/audits-list-page"));
 const AuditTrailPage = lazy(() => import("@/pages/ops/audit-trail-page"));
 const BackupsPage = lazy(() => import("@/pages/ops/backups-page"));
+const VaultPage = lazy(() => import("@/pages/ops/vault-page"));
 const QaAuditPortalPage = lazy(() => import("@/pages/ops/qa-audit-portal-page"));
 const QualityPage = lazy(() => import("@/pages/ops/quality-page"));
 const PoliciesPage = lazy(() => import("@/pages/ops/policies-page"));
@@ -152,6 +153,9 @@ function Router() {
         </Route>
         <Route path="/admin/ops/backups">
           {() => <OpsPage component={BackupsPage} />}
+        </Route>
+        <Route path="/admin/ops/vault">
+          {() => <OpsPage component={VaultPage} />}
         </Route>
         <Route path="/admin/ops/qa-audit">
           {() => <OpsPage component={QualityPage} />}

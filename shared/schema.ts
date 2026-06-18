@@ -510,6 +510,23 @@ export const insertProjectServiceAccountSchema = createInsertSchema(projectServi
 export type InsertProjectServiceAccount = z.infer<typeof insertProjectServiceAccountSchema>;
 export type ProjectServiceAccount = typeof projectServiceAccounts.$inferSelect;
 
+// Mirrors projectServiceAccounts but scoped to BlackRidge itself
+// (Railway, Resend, Anthropic, Stripe, AWS, etc. that power the
+// BlackRidge platform — not per-client). Lives in the OPS Vault page.
+export const blackridgeServiceAccounts = pgTable("blackridge_service_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  service: text("service").notNull(),
+  label: text("label"),
+  accountEmail: text("account_email"),
+  accountId: text("account_id"),
+  loginUrl: text("login_url"),
+  notes: text("notes"),
+  secretsEncrypted: text("secrets_encrypted"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type BlackridgeServiceAccount = typeof blackridgeServiceAccounts.$inferSelect;
+
 // === Client Revenue System ===
 
 export const clientStatusEnum = pgEnum("client_status", [

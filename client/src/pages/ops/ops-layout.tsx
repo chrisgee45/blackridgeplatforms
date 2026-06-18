@@ -57,6 +57,7 @@ import {
   Shield,
   Database,
   BookOpen,
+  KeyRound,
   ShieldCheck,
   Scan,
 } from "lucide-react";
@@ -115,6 +116,7 @@ const NAV_SECTIONS: { label: string; items: { title: string; href: string; icon:
     items: [
       { title: "Templates", href: "/admin/ops/templates", icon: FileCog },
       { title: "Policies", href: "/admin/ops/policies", icon: BookOpen },
+      { title: "Vault", href: "/admin/ops/vault", icon: KeyRound },
       { title: "Audit Trail", href: "/admin/ops/audit-trail", icon: Shield },
       { title: "Backups", href: "/admin/ops/backups", icon: Database },
     ],
