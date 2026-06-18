@@ -388,14 +388,30 @@ async function downloadResendAttachment(emailId: string, att: InboundAttachment)
       // Some Resend endpoints return JSON wrapping a base64 `content`
       // field; others return the binary body directly. Handle both.
       if (ct.includes("application/json")) {
-        const json = await resp.json() as { content?: string; data?: string; url?: string };
+        const json = await resp.json() as any;
         if (typeof json.content === "string") return Buffer.from(json.content, "base64");
         if (typeof json.data === "string") return Buffer.from(json.data, "base64");
         if (typeof json.url === "string") {
           const cdn = await fetch(json.url);
           if (cdn.ok) return Buffer.from(await cdn.arrayBuffer());
         }
-        console.log(`[jake-attach] JSON from ${url} but no content/data/url field`);
+        // Try the most common alternative field names Resend might use.
+        for (const k of ["body", "base64", "attachment", "file", "content_base64", "raw"] as const) {
+          const v = (json as any)[k];
+          if (typeof v === "string" && v.length > 0) {
+            return Buffer.from(v, "base64");
+          }
+        }
+        for (const k of ["download_url", "attachment_url", "presigned_url", "signed_url", "file_url"] as const) {
+          const v = (json as any)[k];
+          if (typeof v === "string" && v.length > 0) {
+            const cdn = await fetch(v);
+            if (cdn.ok) return Buffer.from(await cdn.arrayBuffer());
+          }
+        }
+        // Last resort — log the keys so the next replay tells us
+        // which field Resend actually uses.
+        console.log(`[jake-attach] response JSON keys from ${url}: ${Object.keys(json).join(", ")} | sample: ${JSON.stringify(json).slice(0, 400)}`);
         continue;
       }
       const buf = Buffer.from(await resp.arrayBuffer());
