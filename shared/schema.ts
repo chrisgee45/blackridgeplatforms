@@ -481,6 +481,35 @@ export const insertProjectDocumentSchema = createInsertSchema(projectDocuments).
 export type InsertProjectDocument = z.infer<typeof insertProjectDocumentSchema>;
 export type ProjectDocument = typeof projectDocuments.$inferSelect;
 
+// === Project service-account vault ===
+// One row per third-party account associated with a project — e.g. the
+// Railway / Resend / Supabase / AWS / GoDaddy account that powers the
+// site we built for that client. Non-secret fields stored in plaintext
+// for searchability. The secrets column holds an AES-256-GCM blob (base64
+// envelope) decrypted on demand via the secret-vault helper.
+
+export const projectServiceAccounts = pgTable("project_service_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").references(() => projects.id).notNull(),
+  service: text("service").notNull(),
+  label: text("label"),
+  accountEmail: text("account_email"),
+  accountId: text("account_id"),
+  loginUrl: text("login_url"),
+  notes: text("notes"),
+  secretsEncrypted: text("secrets_encrypted"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProjectServiceAccountSchema = createInsertSchema(projectServiceAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertProjectServiceAccount = z.infer<typeof insertProjectServiceAccountSchema>;
+export type ProjectServiceAccount = typeof projectServiceAccounts.$inferSelect;
+
 // === Client Revenue System ===
 
 export const clientStatusEnum = pgEnum("client_status", [
