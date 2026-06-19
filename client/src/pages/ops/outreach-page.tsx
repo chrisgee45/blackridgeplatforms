@@ -2336,12 +2336,23 @@ function LeadDetailDrawer({ leadId, detail, loading, onClose }: {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => {
+                      // Required columns (businessName, websiteUrl) — only
+                      // send if the user actually populated them, otherwise
+                      // omit entirely. Sending null would violate NOT NULL
+                      // on Postgres and 500 the whole save.
+                      // Optional columns — empty string becomes null to
+                      // clear the value.
+                      const requiredFields = new Set(["businessName", "websiteUrl"]);
                       const cleaned: Record<string, unknown> = {};
                       for (const [k, v] of Object.entries(editData)) {
-                        cleaned[k] = v || null;
+                        const trimmed = typeof v === "string" ? v.trim() : v;
+                        if (requiredFields.has(k)) {
+                          if (trimmed) cleaned[k] = trimmed;
+                          // else: skip — preserve the existing DB value
+                        } else {
+                          cleaned[k] = trimmed ? trimmed : null;
+                        }
                       }
-                      if (editData.businessName) cleaned.businessName = editData.businessName;
-                      if (editData.websiteUrl) cleaned.websiteUrl = editData.websiteUrl;
                       updateMutation.mutate({ id: lead.id, data: cleaned });
                     }}
                     disabled={updateMutation.isPending}
