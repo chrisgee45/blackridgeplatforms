@@ -325,6 +325,21 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
         }
       }
 
+      // Retire the CRM row so it no longer clutters the inbound list.
+      // Default CRM filter hides status="won". Adds a one-line note
+      // so Chris understands what happened when reviewing later.
+      try {
+        const trailingNote = `Converted to outreach lead (${lead.id}) on ${new Date().toISOString().slice(0, 10)}.`;
+        const mergedNotes = crmLead.notes ? `${crmLead.notes}\n\n${trailingNote}` : trailingNote;
+        await storage.updateContactSubmission(crmLead.id, {
+          status: "won",
+          followUpDate: null,
+          notes: mergedNotes,
+        });
+      } catch (err: any) {
+        console.warn("Failed to retire CRM row after outreach conversion:", err?.message);
+      }
+
       res.status(201).json(lead);
     } catch (error) {
       console.error("Import CRM lead error:", error);
