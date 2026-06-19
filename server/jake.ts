@@ -17,6 +17,7 @@ import { projects, projectConversations, projectDocuments, clients, contacts, co
 import { eq, desc, asc, gte } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
 import { ObjectStorageService } from "./object-storage";
+import { stripDashes } from "./text-utils";
 
 const JAKE_FROM_EMAIL = process.env.JAKE_FROM_EMAIL || "jake@blackridgeplatforms.com";
 const JAKE_FROM_NAME = process.env.JAKE_FROM_NAME || "Jake at BlackRidge";
@@ -845,6 +846,9 @@ If the client requests visual progress AND screenshots are available, set attach
   if (!/client\s+relations\s+specialist/i.test(replyBody)) {
     replyBody = `${replyBody.replace(/\s+$/, "")}\n\n${JAKE_SIGNATURE}`;
   }
+  // Strip em/en dashes — Jake's prompt forbids them but the model
+  // slips them in occasionally.
+  replyBody = stripDashes(replyBody);
 
   // Pull the latest inbound to thread the reply.
   const lastInbound = history.filter(c => c.direction === "inbound").slice(-1)[0];
