@@ -170,6 +170,24 @@ Un-pause the outreach engine.
 <travis_action>{"type":"note_for_chris","reason":"<one-sentence FYI>"}</travis_action>
 Fire a push notification to Chris. Use when he wants to be reminded about something later, or you spotted something he should know.
 
+<travis_action>{"type":"send_custom_email","lead_id":"<id>","subject":"<subject line>","body":"<full email body with signature>"}</travis_action>
+Send a fully custom email — subject and body that YOU wrote (not a campaign template) — to the lead's primary email address. Use this when Chris has just heard you read a draft and approved it. The body must already include Travis's signature block at the end (Travis / Outreach Lead / BlackRidge Platforms). Treats Chris's last message as the send confirmation; the server refuses the action if Chris's last message doesn't contain an unambiguous send phrase ("send it", "fire it off", "yes send", "ship it", "do it"), so the proper flow is ALWAYS: Turn 1 you read the draft aloud, Turn 2 Chris says "send it" and you emit this action.
+
+DRAFTING EMAILS — read carefully
+When Chris asks you to draft an outreach email for a lead, follow this process:
+1. READ the lead's full row from the LEAD PIPELINE snapshot — especially NOTES (Chris's "Notes for AI"), AUDIT, PITCH, PROBLEMS, BULLETS, VISUAL, and CONVERSION blocks. Those are the research you base your draft on.
+2. If the lead's sourceType is "bad_site_finder" / "bad_website_finder" (came from the lead finder), the AUDIT/PROBLEMS/VISUAL/CONVERSION blocks reflect a deep automated review of their actual website. Use those specifics to make the email feel personal — reference one or two concrete observations.
+3. If the lead came from elsewhere (manual add, CRM convert, etc.) and the snapshot doesn't have AUDIT/PROBLEMS blocks, fall back to NOTES and PITCH only. Don't fabricate website findings.
+4. Compose subject + body out loud, in Travis's voice (direct, no em dashes, contractions, no corporate filler, no "I hope this finds you well", no "leverage", no "synergy"). Match the matrix Chris taught you (SPIN / tactical empathy / Hormozi value equation) without naming the frameworks.
+5. End the body with the three-line signature:
+   Travis
+   Outreach Lead
+   BlackRidge Platforms
+6. After reading it, ask Chris if he wants you to send it or adjust. Do NOT emit send_custom_email until Chris confirms with an unambiguous send phrase.
+
+HARD RULE — NEVER OPEN BY BASHING THEIR SITE
+You never, ever start an email by telling the prospect their website is bad, broken, outdated, lacking, hard to read, slow, ugly, or any variation of "your site sucks." That kills the conversation before it starts and makes BlackRidge look like a hostile vendor. Even if the AUDIT says the site is a disaster, you open with curiosity or a genuine observation about their BUSINESS (not their site), and you only mention specific improvements WHEN the prospect asks what you'd do. The first line is never a critique. If you accidentally draft one, rewrite it before reading it aloud.
+
 If an action fails (lead not found, etc.), the server tells you in the next turn so you can adjust. Never speak the JSON aloud — those characters are stripped from the audio feed before TTS.`;
 
 async function buildTravisSnapshot(): Promise<string> {
@@ -332,7 +350,13 @@ type TravisAction =
   | { type: "update_lead"; lead_id?: string; email?: string; notes?: string; status?: string }
   | { type: "pause_all"; reason?: string }
   | { type: "resume_all" }
-  | { type: "note_for_chris"; reason?: string };
+  | { type: "note_for_chris"; reason?: string }
+  | { type: "send_custom_email"; lead_id?: string; subject?: string; body?: string };
+
+// Words that unambiguously mean "send the email I just proposed." Mirrors
+// the Jake gate. Required in Chris's most recent message before
+// send_custom_email will fire.
+const TRAVIS_SEND_CONFIRM_PATTERN = /\b(send (it|that|them|the email|the message|now)|fire (it|that) off|ship it|go ahead( and (send|email))?|yes,?\s*(send|do it|fire)|do it|email (it|that|him|her|them|now)|email it now|confirmed|approved)\b/i;
 
 interface ActionResult {
   type: string;
@@ -435,6 +459,46 @@ async function executeAction(action: TravisAction): Promise<ActionResult> {
         .set({ enrollmentsPaused: false, enrollmentsPausedReason: null })
         .where(eq(outreachSettings.id, "default"));
       return { type: action.type, ok: true, message: "Outreach engine resumed" };
+    }
+
+    if (action.type === "send_custom_email") {
+      if (!action.lead_id) return { type: action.type, ok: false, message: "missing lead_id" };
+      if (!action.subject || !action.body) return { type: action.type, ok: false, message: "missing subject or body" };
+      const [lead] = await db.select().from(outreachLeads).where(eq(outreachLeads.id, action.lead_id));
+      if (!lead) return { type: action.type, ok: false, message: "lead not found" };
+      if (!lead.email) return { type: action.type, ok: false, message: `no email on file for ${lead.businessName}` };
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) return { type: action.type, ok: false, message: "RESEND_API_KEY not configured" };
+      const fromAddress = process.env.TRAVIS_FROM_EMAIL
+        || process.env.OUTREACH_FROM_EMAIL
+        || "travis@blackridgeplatforms.com";
+      const fromName = process.env.TRAVIS_FROM_NAME || "Travis at BlackRidge";
+      try {
+        const { Resend } = await import("resend");
+        await new Resend(apiKey).emails.send({
+          from: `${fromName} <${fromAddress}>`,
+          to: lead.email,
+          replyTo: fromAddress,
+          subject: action.subject,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${action.body.replace(/\n/g, "<br>")}</div>`,
+          tags: [
+            { name: "leadId", value: lead.id },
+            { name: "agent", value: "travis" },
+            { name: "kind", value: "custom_voice_draft" },
+          ],
+        });
+      } catch (err: any) {
+        return { type: action.type, ok: false, message: `send failed: ${err?.message ?? "unknown"}` };
+      }
+      try {
+        await db.execute(sql`
+          INSERT INTO lead_conversations (lead_id, direction, subject, body, ai_generated)
+          VALUES (${lead.id}, 'outbound', ${action.subject}, ${action.body}, true)
+        `);
+      } catch (logErr: any) {
+        console.warn("Travis custom email: failed to log conversation:", logErr?.message);
+      }
+      return { type: action.type, ok: true, message: `Sent custom email to ${lead.businessName} (${lead.email})` };
     }
 
     if (action.type === "note_for_chris") {
@@ -638,7 +702,17 @@ export function registerTravisVoiceRoutes(app: Express, isAuthenticated: Request
 
       const { stripped, actions } = extractActions(fullReply);
       const results: ActionResult[] = [];
+      const latestUserText = latestUser.content ?? "";
+      const hasExplicitSendConfirm = TRAVIS_SEND_CONFIRM_PATTERN.test(latestUserText);
       for (const a of actions) {
+        if (a.type === "send_custom_email" && !hasExplicitSendConfirm) {
+          results.push({
+            type: a.type,
+            ok: false,
+            message: "Refused: Chris's latest message had no explicit send confirmation (\"send it\", \"yes, send\", \"fire it off\", etc.). Read the draft aloud and wait for him to confirm in the next turn.",
+          });
+          continue;
+        }
         const r = await executeAction(a);
         results.push(r);
       }
