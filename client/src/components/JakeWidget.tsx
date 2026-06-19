@@ -260,12 +260,15 @@ export default function JakeWidget() {
         audioCtxRef.current = null;
         sourceRef.current = null;
         gainRef.current = null;
-        const audio = new Audio();
+        // On iOS, REUSE the audio element that was unlocked during the
+        // mic-tap gesture in startListening. Creating a fresh Audio()
+        // would create a still-locked element that plays silently.
+        // On desktop, a fresh element is fine and avoids stale state.
+        const audio = isIOS && audioRef.current ? audioRef.current : new Audio();
         audioRef.current = audio;
         audio.src = url;
         audio.volume = 1.0;
-        // Tell iOS this is part of the user's voice conversation so it
-        // routes through the loud speaker instead of the earpiece.
+        audio.muted = false;
         audio.setAttribute("playsinline", "true");
         let usingWebAudio = false;
         // Skip Web Audio entirely on iOS — see isIOS comment above.
@@ -331,6 +334,25 @@ export default function JakeWidget() {
   }, [messages]);
 
   const startListening = useCallback(() => {
+    // iOS Safari requires audio playback to be initiated DURING a user
+    // gesture. By the time Jake's response comes back over the network,
+    // the gesture context is long gone and audio.play() resolves to
+    // silence. Trick: play a tiny silent buffer NOW while we still
+    // have the gesture — that "unlocks" the audio element for the
+    // rest of the session.
+    if (isIOS && audioRef.current) {
+      try {
+        audioRef.current.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+        audioRef.current.muted = true;
+        audioRef.current.play().then(() => {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.muted = false;
+          }
+        }).catch(() => { /* */ });
+      } catch { /* */ }
+    }
+
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       // No mic — keep typing.

@@ -238,10 +238,13 @@ export default function TravisWidget() {
         audioCtxRef.current = null;
         sourceRef.current = null;
         gainRef.current = null;
-        const audio = new Audio();
+        // On iOS, reuse the audio element unlocked during the mic-tap
+        // gesture in toggleMic; a fresh Audio() would be locked.
+        const audio = isIOS && audioRef.current ? audioRef.current : new Audio();
         audioRef.current = audio;
         audio.src = url;
         audio.volume = 1.0;
+        audio.muted = false;
         audio.setAttribute("playsinline", "true");
         let usingWebAudio = false;
         if (!isIOS) {
@@ -313,6 +316,22 @@ export default function TravisWidget() {
       if (buffered) sendTurn(buffered);
       return;
     }
+
+    // iOS gesture unlock — same trick as Jake. See JakeWidget.startListening
+    // for the long explanation.
+    if (isIOS && audioRef.current) {
+      try {
+        audioRef.current.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+        audioRef.current.muted = true;
+        audioRef.current.play().then(() => {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.muted = false;
+          }
+        }).catch(() => { /* */ });
+      } catch { /* */ }
+    }
+
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
     const rec = new SR();
