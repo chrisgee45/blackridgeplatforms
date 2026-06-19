@@ -141,7 +141,7 @@ Voice rules:
 - No markdown, no bullet points, no asterisks. Just talk.
 - Contractions always. Direct. No corporate filler. No em dashes.
 - Never say "I hope this finds you well", "circle back", "synergy", "leverage", "value proposition".
-- If Chris asks about a specific lead, lead with the most recent thing on their account, then offer to dig deeper.
+- If Chris asks about a specific lead, READ the AUDIT / PITCH / PROBLEMS / NOTES blocks for that lead in the LEAD PIPELINE section below and answer directly from them. Do not say "let me know when you want to dig in" — the research is already in front of you, summarize it. When he asks you to formulate a plan or strategy for a lead, build it from those notes: name the specific problems, tie each one to a BlackRidge capability that solves it, propose an opening line that references the actual research, and lay out the first 2-3 follow-up moves. Be specific, not generic.
 - Stay on the outreach side of the line. Client comms after they sign on belong to Jake. Money and accounting belong to Ridge.
 
 ANTI-HALLUCINATION — NON-NEGOTIABLE
@@ -208,12 +208,45 @@ async function buildTravisSnapshot(): Promise<string> {
     lines.push("");
   }
 
-  // Top leads (most recent activity).
-  const leads = await db.select().from(outreachLeads).orderBy(desc(outreachLeads.createdAt)).limit(25);
+  // Top leads (most recent activity). Verbose per-row format so Travis
+  // can actually read the AI research notes and formulate a sales plan
+  // instead of stopping at surface-level facts.
+  const leads = await db.select().from(outreachLeads).orderBy(desc(outreachLeads.createdAt)).limit(18);
   if (leads.length > 0) {
-    lines.push(`LEAD PIPELINE (most recent ${leads.length})`);
+    lines.push(`LEAD PIPELINE (most recent ${leads.length}) — these are FULL research notes per lead. When Chris asks you to read about a lead or build a plan, draw directly from the AUDIT / PITCH / PROBLEMS / NOTES blocks below. Do NOT default to "let me know when you want to dig in" — the digging is already done; read what's here.`);
     for (const l of leads) {
-      lines.push(`- id=${l.id} | ${l.businessName} | ${l.contactName ?? "(no contact)"} | ${l.email ?? "(no email)"} | ${l.status} | score=${l.aiScore ?? "?"} | value≈$${l.valueEstimate?.toLocaleString() ?? "?"}`);
+      const headerBits = [
+        `id=${l.id}`,
+        l.businessName,
+        l.contactName ?? "(no contact)",
+        l.email ?? "(no email)",
+        l.phone ?? "(no phone)",
+        l.location ?? "(no location)",
+        `status=${l.status}`,
+        `score=${l.aiScore ?? "?"}`,
+        `value≈$${l.valueEstimate?.toLocaleString() ?? "?"}`,
+      ];
+      if (l.industry) headerBits.push(`industry=${l.industry}`);
+      if (l.websiteUrl) headerBits.push(l.websiteUrl);
+      if (l.badSiteScore != null) headerBits.push(`badSiteScore=${l.badSiteScore}/100`);
+      lines.push(`- ${headerBits.join(" | ")}`);
+      const truncate = (s: string, n = 600) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+      if (l.aiAuditSummary) lines.push(`    AUDIT: ${truncate(l.aiAuditSummary)}`);
+      if (l.pitchAngle) lines.push(`    PITCH: ${truncate(l.pitchAngle, 400)}`);
+      if (l.openingLine) lines.push(`    OPENING: ${truncate(l.openingLine, 400)}`);
+      const tp = Array.isArray(l.topProblems) ? (l.topProblems as unknown[]) : [];
+      if (tp.length > 0) {
+        lines.push(`    PROBLEMS:`);
+        for (const p of tp.slice(0, 5)) lines.push(`      - ${truncate(String(p), 240)}`);
+      }
+      const ab = Array.isArray(l.aiBullets) ? (l.aiBullets as unknown[]) : [];
+      if (ab.length > 0) {
+        lines.push(`    BULLETS:`);
+        for (const b of ab.slice(0, 5)) lines.push(`      - ${truncate(String(b), 240)}`);
+      }
+      if (l.visualStyleAssessment) lines.push(`    VISUAL: ${truncate(l.visualStyleAssessment, 320)}`);
+      if (l.conversionAssessment) lines.push(`    CONVERSION: ${truncate(l.conversionAssessment, 320)}`);
+      if (l.notes) lines.push(`    NOTES: ${truncate(l.notes, 500)}`);
     }
     lines.push("");
   }
