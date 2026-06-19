@@ -15,6 +15,7 @@ import { db } from "./db";
 import { projects, projectConversations, clients, contacts, companies, tasks } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
+import { stripDashes } from "./text-utils";
 
 const FRAME_AUDIO = 0x01;
 const FRAME_TEXT = 0x02;
@@ -305,7 +306,7 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
           content: `Project: ${proj.name}\nClient contact: ${contactName ?? "the client"}\n\nChris asked you to send this:\n${action.intent}\n\nWrite the email as Jake.`,
         }],
       });
-      const body = phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+      const body = stripDashes(phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim());
       const subject = `Quick note — ${proj.name}`;
       try {
         await resend.emails.send({
@@ -382,7 +383,7 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
           content: `Project: ${proj.name}\nClient contact: ${contactName ?? "the client"}\n\nChris asked you to send the latest progress with this note: ${action.intent ?? "(no extra context)"}`,
         }],
       });
-      const body = phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+      const body = stripDashes(phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim());
       const subject = `Latest progress — ${proj.name}`;
 
       const { Resend } = await import("resend");
@@ -457,7 +458,7 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
           content: `Project: ${proj.name}\nClient contact: ${contactName ?? "the client"}\nAttachments: ${fileList}\n\nChris asked you to send these with this context: ${action.intent ?? "(no extra context)"}`,
         }],
       });
-      const body = phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+      const body = stripDashes(phrased.content.map(b => (b.type === "text" ? b.text : "")).join("").trim());
       const subject = attachments.length === 1
         ? `${attachments[0].filename} — ${proj.name}`
         : `${attachments.length} files — ${proj.name}`;

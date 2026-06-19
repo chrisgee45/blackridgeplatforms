@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
+import { stripDashes } from "./text-utils";
 
 const FRAME_AUDIO = 0x01;
 const FRAME_TEXT = 0x02;
@@ -473,14 +474,16 @@ async function executeAction(action: TravisAction): Promise<ActionResult> {
         || process.env.OUTREACH_FROM_EMAIL
         || "travis@blackridgeplatforms.com";
       const fromName = process.env.TRAVIS_FROM_NAME || "Travis at BlackRidge";
+      const sanitizedSubject = stripDashes(action.subject);
+      const sanitizedBody = stripDashes(action.body);
       try {
         const { Resend } = await import("resend");
         await new Resend(apiKey).emails.send({
           from: `${fromName} <${fromAddress}>`,
           to: lead.email,
           replyTo: fromAddress,
-          subject: action.subject,
-          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${action.body.replace(/\n/g, "<br>")}</div>`,
+          subject: sanitizedSubject,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${sanitizedBody.replace(/\n/g, "<br>")}</div>`,
           tags: [
             { name: "leadId", value: lead.id },
             { name: "agent", value: "travis" },
@@ -493,7 +496,7 @@ async function executeAction(action: TravisAction): Promise<ActionResult> {
       try {
         await db.execute(sql`
           INSERT INTO lead_conversations (lead_id, direction, subject, body, ai_generated)
-          VALUES (${lead.id}, 'outbound', ${action.subject}, ${action.body}, true)
+          VALUES (${lead.id}, 'outbound', ${sanitizedSubject}, ${sanitizedBody}, true)
         `);
       } catch (logErr: any) {
         console.warn("Travis custom email: failed to log conversation:", logErr?.message);

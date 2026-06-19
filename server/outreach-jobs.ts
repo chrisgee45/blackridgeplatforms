@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { outreachStorage } from "./outreach-storage";
 import { discoverAndVerifyEmail } from "./email-discovery";
+import { stripDashes } from "./text-utils";
 
 const STOP_STATUSES = ["replied", "converted", "unsubscribed", "bounced"];
 
@@ -726,8 +727,8 @@ export async function processGenerateReplyJob(payload: { lead_id: string; inboun
   const replyRaw = replyRawText.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
   const reply = JSON.parse(replyRaw);
 
-  const replyBody = reply.reply || reply.body || "";
-  const replySubject = reply.subject || `Re: ${latestInbound.subject || "Your website"}`;
+  const replyBody = stripDashes(reply.reply || reply.body || "");
+  const replySubject = stripDashes(reply.subject || `Re: ${latestInbound.subject || "Your website"}`);
 
   const mappedStatus = PIPELINE_STATUS_MAP[reply.pipelineStatus] || "engaged";
 
