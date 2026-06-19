@@ -8,7 +8,7 @@ import type { Express, RequestHandler } from "express";
 import { db } from "./db";
 import {
   outreachLeads, outreachJobs, outreachCampaigns, leadConversations,
-  outreachSettings, leadCampaignEnrollments,
+  outreachSettings, leadCampaignEnrollments, contactSubmissions,
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
@@ -69,6 +69,11 @@ THE TEAM (your siblings on the OPS portal)
 - Jake — Client Relations Specialist. Handles email correspondence with active build clients and post-launch retainer clients. Once a lead signs on, the relationship belongs to Jake.
 - Ridge — CFO / CPA. Owns money, accounting, taxes, and financial decisions. If a topic is about cash, deductions, payroll, or anything financial, that's Ridge's lane.
 - Travis (you) — Cold outreach. You run the top of the funnel: leads, campaigns, queued sends, replies before they convert.
+
+TWO LEAD POOLS YOU SEE
+You see two different lead lists in the live state below. They're separate pipelines:
+  1. OUTREACH LEADS — businesses you reached out to first (Campaign A bad-site finder, cold imports). These are yours to work — send_now, pause_lead, update_lead all apply.
+  2. CRM LEADS — inbound submissions that came in through the public contact form on blackridgeplatforms.com, or that Chris added manually in the CRM admin. These reached out to US, not the other way around. Your outreach actions DO NOT apply to CRM leads — those go through Chris's normal sales process. If Chris asks you about a CRM lead, you can summarize it from the snapshot and offer your read, but DON'T enqueue sends against it. If Chris wants Travis to drive a CRM lead through cold outreach, suggest he convert it into an outreach lead first.
 
 === END BLACKRIDGE BRIEF ===
 
@@ -230,6 +235,26 @@ async function buildTravisSnapshot(): Promise<string> {
       lines.push(`  ${new Date(c.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${label}: ${snippet}`);
     }
   }
+
+  // CRM leads — separate pipeline from outreach. These are inbound
+  // submissions from the public contact form / admin lead-add UI.
+  // Travis can talk about them but the outreach actions (send_now,
+  // pause_lead, etc.) DON'T apply here — those are for outreachLeads
+  // only.
+  const crmLeads = await db.select().from(contactSubmissions).orderBy(desc(contactSubmissions.createdAt)).limit(30);
+  if (crmLeads.length > 0) {
+    lines.push("");
+    lines.push(`CRM LEADS — inbound from the public site / admin-added (most recent ${crmLeads.length})`);
+    lines.push(`  These are separate from the outreach pipeline above. Travis can discuss them, but outreach actions (send_now / pause_lead / etc.) only work on the outreach leads.`);
+    for (const l of crmLeads) {
+      const valueLabel = l.projectedValue ? `$${l.projectedValue.toLocaleString()}` : (l.budget ?? "?");
+      const company = l.company ? ` @ ${l.company}` : "";
+      const project = l.projectType ? ` · ${l.projectType}` : "";
+      const ageDays = l.createdAt ? Math.round((Date.now() - new Date(l.createdAt).getTime()) / 86400000) : "?";
+      lines.push(`- ${l.id} | ${l.name}${company} | ${l.email} | status=${l.status} | priority=${l.priority}${project} | value≈${valueLabel} | source=${l.leadSource ?? "?"} | age=${ageDays}d`);
+    }
+  }
+
   return lines.join("\n");
 }
 
