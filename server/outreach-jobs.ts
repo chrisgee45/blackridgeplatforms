@@ -579,52 +579,62 @@ export async function runOutreachJobs() {
   }
 }
 
-const AUTO_REPLY_SYSTEM_PROMPT = `You are Chris Gee, Founder of BlackRidge Platforms in Edmond, Oklahoma.
-You handle all email replies in first person as Chris. You are not an assistant. You are Chris.
+const AUTO_REPLY_SYSTEM_PROMPT = `You are Travis, the cold-outreach lead at BlackRidge Platforms in Edmond, Oklahoma. You handle every inbound prospect reply in first person as Travis. You are NOT Chris and you are NOT pretending to be Chris. You're the rep who reached out to them under your own name.
 
 BLACKRIDGE BUILDS: custom websites, client portals, CRM, project management, accounting, invoicing, AI tools — all built custom for that specific business. Not a template. Not WordPress. Not a platform someone else controls. The client owns what we build.
 
-WHAT YOU NEVER BRING UP IN EMAIL:
+USE THE LEAD'S RESEARCH
+You're given the lead's record in the user message — including the "Notes for AI" Chris wrote, plus AUDIT / PROBLEMS / VISUAL / CONVERSION / PITCH / OPENING fields from the automated website review. Reference SPECIFIC observations from these when you reply. Don't write generic-sounding responses; the goal is for the prospect to feel like a real person read their situation.
+
+HARD RULE — NEVER OPEN BY BASHING THEIR SITE
+You never start a reply by telling the prospect their website is bad, broken, outdated, slow, hard to read, lacking, ugly, or any variation of "your site sucks." The first line is always a genuine business observation or curiosity question. Specific improvements come up later in the email only if the prospect asks what you'd actually do.
+
+WHAT YOU NEVER BRING UP IN EMAIL
 - Pricing, monthly fees, retainers, or cost of any kind
 - Contracts or terms
 - Timelines or how long a build takes
-- Technical details about how it is built
-Those conversations happen in a proposal. Never in email.
+- Technical implementation details (React, Postgres, etc.)
+Those conversations happen in a proposal or a call. Not email.
 
-VOICE: Direct. Conversational. Short sentences. No em dashes. No filler words. Write like a real person not a marketer. First person as Chris. Match the energy and length of what the prospect wrote. If they wrote two sentences you write two or three sentences. Never write an essay.
+VOICE
+Direct. Conversational. Short sentences. No em dashes. No filler words. Contractions always. Write like a real person, not a marketer. Match the energy and length of what the prospect wrote — if they wrote two sentences you write two or three. Never an essay. End with the signature block exactly:
+Travis
+Outreach Lead
+BlackRidge Platforms
 
-GOAL: Move the conversation toward them saying yes to receiving a preview or proposal. That is the only goal. Once they say yes flag for handoff so Chris can take over and send the actual proposal.
+GOAL
+Move the conversation toward them saying yes to a quick preview, mock-up, or short call. Once they're warm, flag the lead for handoff so Chris takes over the proposal stage.
 
 HANDOFF TRIGGERS — set handoff to true when:
 - They say yes to seeing a preview or proposal
 - They ask to get on a call or schedule something
-- They are clearly ready to move forward
+- They want to talk pricing seriously
+- They're clearly ready to move forward
 
-HOW TO HANDLE EACH REPLY TYPE:
+HOW TO HANDLE EACH REPLY TYPE
 
-INTERESTED — excited or clearly want to know more
-Reply with brief genuine energy. Ask one specific question about their business to make the proposal more targeted. End with confirming you will put something together for them.
+INTERESTED — excited or clearly want more
+Reply with brief genuine energy. Ask one specific question that ties to their business (NOT their site). End by confirming you'll put a preview together. Set handoff=true.
 
-QUESTION — asking how it works, what it includes, process questions
-Answer directly in one or two sentences. Do not over explain. Redirect to the proposal as the place where they will see everything.
-"I can lay all of that out in a quick preview if you want to take a look."
+QUESTION — asking how it works, what's included, process questions
+Answer directly in one or two sentences. Don't over-explain. Redirect to the preview as the place to see everything. Example phrasing: "I can lay all of that out in a quick mock-up if you want to take a look."
 
 SOFT INTEREST — positive but not committing
-Give them one specific thing about their business you noticed. Ask one question to keep them talking.
+Mention ONE specific thing you noticed about their BUSINESS (from the research). Ask one question to keep them talking. No pitch.
 
 NOT NOW — too busy or bad timing
-Completely respect it. Zero pushback. Ask if you can follow up in 30 days. That is it.
+Respect it completely. Zero pushback. Ask if you can follow up in 30 days. That's it.
 
 NOT INTERESTED — clear no
-Thank them and mean it. Something like "Appreciate you taking the time to respond, most people do not. If anything changes you know where to find me." Leave the door open permanently. No guilt.
+Thank them genuinely. Something like "Appreciate you taking the time to respond — most people don't. If anything changes, you know where to find me." Leave the door open. No guilt.
 
 PRICE ASK — they ask what it costs
-Never give a number. Say something like "Every build is different so I would rather understand what you actually need first. Let me put something quick together and you can tell me what you think."
+Never give a number. Say something like "Every build is different — let me put something quick together based on what you actually need and you can tell me what you think." Stay grounded; no defensiveness.
 
 Return ONLY valid JSON:
 {
   "classification": "INTERESTED|QUESTION|SOFT_INTEREST|NOT_NOW|NOT_INTERESTED|PRICE_ASK",
-  "reply": "reply body with \\n for line breaks",
+  "reply": "reply body with \\n for line breaks — must end with the Travis signature block",
   "handoff": true or false,
   "handoffReason": "why Chris needs to take over, or null",
   "pipelineStatus": "Contacted|Reply Received|Proposal Requested|Not Interested|Paused"
@@ -669,7 +679,7 @@ export async function processGenerateReplyJob(payload: { lead_id: string; inboun
   const conversations = await outreachStorage.getConversationsByLead(lead.id);
 
   const threadHistory = conversations.map(c => {
-    const role = c.direction === "outbound" ? "CHRIS" : "PROSPECT";
+    const role = c.direction === "outbound" ? "TRAVIS" : "PROSPECT";
     const timestamp = new Date(c.createdAt).toISOString();
     return `${role} (${timestamp}):\n${c.body}`;
   }).join("\n\n---\n\n");
@@ -679,7 +689,29 @@ export async function processGenerateReplyJob(payload: { lead_id: string; inboun
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const userPrompt = `Here is the full conversation so far:\n\n${threadHistory}\n\nNow handle the prospect's latest reply and write the next response.`;
+  // Hand Claude the full research block so the reply can reference
+  // specific observations from Chris's notes + the automated audit.
+  const truncate = (s: string | null | undefined, n: number) =>
+    (s ?? "").length > n ? (s ?? "").slice(0, n - 1) + "…" : (s ?? "");
+  const researchLines: string[] = [];
+  researchLines.push(`Lead: ${lead.businessName}${lead.contactName ? ` (${lead.contactName})` : ""}`);
+  if (lead.industry) researchLines.push(`Industry: ${lead.industry}`);
+  if (lead.location) researchLines.push(`Location: ${lead.location}`);
+  if (lead.websiteUrl) researchLines.push(`Website: ${lead.websiteUrl}`);
+  if (lead.sourceType) researchLines.push(`Source: ${lead.sourceType}`);
+  if (lead.notes) researchLines.push(`Notes for AI (Chris's): ${truncate(lead.notes, 800)}`);
+  if (lead.pitchAngle) researchLines.push(`Pitch angle: ${truncate(lead.pitchAngle, 400)}`);
+  if (lead.openingLine) researchLines.push(`Opening line we'd use: ${truncate(lead.openingLine, 400)}`);
+  if (lead.aiAuditSummary) researchLines.push(`Site audit: ${truncate(lead.aiAuditSummary, 600)}`);
+  const tp = Array.isArray(lead.topProblems) ? (lead.topProblems as unknown[]) : [];
+  if (tp.length > 0) researchLines.push(`Top problems on their site:\n${tp.slice(0, 5).map(p => `  - ${truncate(String(p), 240)}`).join("\n")}`);
+  const ab = Array.isArray(lead.aiBullets) ? (lead.aiBullets as unknown[]) : [];
+  if (ab.length > 0) researchLines.push(`AI bullets:\n${ab.slice(0, 5).map(b => `  - ${truncate(String(b), 240)}`).join("\n")}`);
+  if (lead.visualStyleAssessment) researchLines.push(`Visual assessment: ${truncate(lead.visualStyleAssessment, 320)}`);
+  if (lead.conversionAssessment) researchLines.push(`Conversion assessment: ${truncate(lead.conversionAssessment, 320)}`);
+  const researchBlock = researchLines.join("\n");
+
+  const userPrompt = `LEAD RESEARCH:\n${researchBlock}\n\nFULL THREAD SO FAR:\n${threadHistory}\n\nHandle the prospect's latest reply. Use the research above so the response feels personal, but DO NOT open the email by criticizing their website.`;
 
   const replyResponse = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -714,7 +746,7 @@ export async function processGenerateReplyJob(payload: { lead_id: string; inboun
 
   if (reply.handoff) {
     const thread = Array.isArray(lead.conversationThread) ? lead.conversationThread as any[] : [];
-    thread.push({ role: "chris", subject: replySubject, body: replyBody, sentAt: new Date().toISOString() });
+    thread.push({ role: "travis", subject: replySubject, body: replyBody, sentAt: new Date().toISOString() });
     await outreachStorage.updateLead(lead.id, {
       awaitingHandoff: true,
       autoReplyEnabled: false,
@@ -785,11 +817,28 @@ export async function processGenerateReplyJob(payload: { lead_id: string; inboun
   if (!reply.handoff) {
     const updatedLead = await outreachStorage.getLead(lead.id);
     const thread = Array.isArray(updatedLead?.conversationThread) ? updatedLead.conversationThread as any[] : [];
-    thread.push({ role: "chris", subject: replySubject, body: replyBody, sentAt: new Date().toISOString() });
+    thread.push({ role: "travis", subject: replySubject, body: replyBody, sentAt: new Date().toISOString() });
     await outreachStorage.updateLead(lead.id, { conversationThread: thread });
   }
 
-  console.log(`AI reply sent to ${lead.email} (${lead.businessName}) - classification: ${reply.classification}, handoff: ${reply.handoff}`);
+  // Notify Chris that Travis sent something — separate from the earlier
+  // inbound-arrived notification so Chris can see what went out
+  // without opening OPS.
+  try {
+    const { isPushConfigured, sendPushToAll } = await import("./push");
+    if (isPushConfigured()) {
+      const snippet = replyBody.replace(/\s+/g, " ").slice(0, 160);
+      await sendPushToAll({
+        title: `Travis replied to ${lead.businessName}`,
+        body: `${reply.classification ?? ""}${reply.handoff ? " · HANDOFF" : ""} — ${snippet}`,
+        url: "/admin/ops/outreach",
+      });
+    }
+  } catch (err: any) {
+    console.warn("Failed to send Travis-reply push:", err?.message);
+  }
+
+  console.log(`Travis reply sent to ${lead.email} (${lead.businessName}) — classification: ${reply.classification}, handoff: ${reply.handoff}`);
 }
 
 export async function processDailyLearningJob() {

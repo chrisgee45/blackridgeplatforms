@@ -185,13 +185,13 @@ async function handleInboundEmail(data: any, res: any) {
     await outreachStorage.skipQueuedJobsForLead(lead.id);
   }
 
-  // Removed the auto-draft pipeline. We used to enqueue a
-  // generate_reply job here that had Claude pose as Chris and write
-  // the response automatically. Chris wants Travis to draft replies
-  // himself, from the lead's Notes for AI + research, only after Chris
-  // has reviewed the inbound. So now we flag the lead as awaiting
-  // handoff and push-notify; Travis surfaces it in his snapshot.
-  await outreachStorage.updateLead(lead.id, { awaitingHandoff: true });
+  // Travis handles inbound prospect replies end-to-end now:
+  //   1. Push-notify Chris immediately with a snippet of what came in.
+  //   2. Queue a generate_reply job that runs the Travis-flavored
+  //      auto-reply prompt (no website-bashing, uses lead's Notes for
+  //      AI + research, Travis signature). Lead-conversations get
+  //      logged so Chris can review what went out, and Travis's voice
+  //      snapshot surfaces both halves.
   try {
     if (isPushConfigured()) {
       await sendPushToAll({
@@ -204,7 +204,16 @@ async function handleInboundEmail(data: any, res: any) {
     console.warn("Failed to send inbound push:", err?.message);
   }
 
-  console.log(`Inbound email from ${fromEmail} (${lead.businessName}) — flagged for Travis/Chris review`);
+  await outreachStorage.createJob({
+    type: "generate_reply",
+    payload: {
+      lead_id: lead.id,
+      inbound_conversation_id: conversation.id,
+    },
+    runAt: new Date(Date.now() + 30000),
+  });
+
+  console.log(`Inbound email from ${fromEmail} (${lead.businessName}) — Travis reply queued + push sent`);
   return res.json({ ok: true });
 }
 
