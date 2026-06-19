@@ -2087,14 +2087,28 @@ function LeadDetailDrawer({ leadId, detail, loading, onClose }: {
   };
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
-      apiRequest("PATCH", `/api/outreach/leads/${id}`, data),
-    onSuccess: () => {
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
+      const res = await apiRequest("PATCH", `/api/outreach/leads/${id}`, data);
+      // Parse the body so we can patch the cache directly. Falling
+      // back to refetch alone was leaving the UI showing the pre-save
+      // version of the lead in some cases.
+      return await res.json();
+    },
+    onSuccess: (updatedLead: any) => {
+      // Surgically update the detail cache so notes (and every other
+      // field) appear immediately, without waiting for a refetch.
+      queryClient.setQueryData(["/api/outreach/leads", leadId], (old: any) => {
+        if (!old) return old;
+        return { ...old, lead: { ...old.lead, ...updatedLead } };
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/outreach/leads"] });
       queryClient.invalidateQueries({ queryKey: ["/api/outreach/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/outreach/leads", leadId] });
       toast({ title: "Lead updated" });
       setEditing(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Update failed", description: err?.message, variant: "destructive" });
     },
   });
 
