@@ -53,6 +53,7 @@ import {
   Eye,
   EyeOff,
   Rocket,
+  Megaphone,
   FileText,
   Plus,
   Download,
@@ -1102,6 +1103,8 @@ function LeadDetailContent({
 
         <ConvertToProjectSection lead={lead} onOpenChange={onOpenChange} />
 
+        <ConvertToOutreachSection lead={lead} onOpenChange={onOpenChange} />
+
         <Separator className="border-border/30" />
 
         <div className="flex justify-end">
@@ -1839,6 +1842,57 @@ function ConvertToProjectSection({
           Cancel
         </Button>
       </div>
+    </div>
+  );
+}
+
+function ConvertToOutreachSection({
+  lead,
+  onOpenChange,
+}: {
+  lead: ContactSubmission;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+
+  const convertMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/outreach/leads/import-from-crm", {
+        crmLeadId: lead.id,
+      });
+      return res.json() as Promise<{ id: string }>;
+    },
+    onSuccess: (out) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/outreach/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/outreach/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({ title: "Lead converted to outreach", description: "Travis will pick it up from here." });
+      onOpenChange(false);
+      if (out?.id) navigate(`/admin/ops/outreach`);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Outreach conversion failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (lead.status === "won") return null;
+
+  return (
+    <div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => convertMutation.mutate()}
+        disabled={convertMutation.isPending}
+        data-testid="button-convert-to-outreach"
+      >
+        <Megaphone className="h-4 w-4 mr-2" />
+        {convertMutation.isPending ? "Converting…" : "Convert to Outreach"}
+      </Button>
+      <p className="text-xs text-muted-foreground mt-1">
+        Hands this lead to Travis's outreach pipeline. He'll enrich it, queue campaign step 1, and start nurturing.
+      </p>
     </div>
   );
 }
