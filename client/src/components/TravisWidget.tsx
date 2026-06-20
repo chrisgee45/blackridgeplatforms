@@ -231,24 +231,51 @@ export default function TravisWidget() {
 
       if (audioBufRef.current.length > 0) {
         const blob = new Blob(audioBufRef.current, { type: "audio/mpeg" });
-        const url = URL.createObjectURL(blob);
-        // Fresh audio element + fresh Web Audio graph every play. Reusing
-        // a backgrounded AudioContext is the #1 way Travis goes silent
-        // after a tab switch — blow it all away each time.
-        try { audioCtxRef.current?.close(); } catch { /* */ }
-        audioCtxRef.current = null;
-        sourceRef.current = null;
-        gainRef.current = null;
-        // On iOS, reuse the audio element unlocked during the mic-tap
-        // gesture in toggleMic; a fresh Audio() would be locked.
-        const audio = isIOS && audioRef.current ? audioRef.current : new Audio();
-        audioRef.current = audio;
-        audio.src = url;
-        audio.volume = 1.0;
-        audio.muted = false;
-        audio.setAttribute("playsinline", "true");
-        let usingWebAudio = false;
-        if (!isIOS) {
+
+        // iOS: AudioContext + AudioBufferSourceNode. See JakeWidget for
+        // why HTMLAudioElement playback is unreliable across the
+        // network round-trip on iOS Safari.
+        if (isIOS) {
+          setStatus("speaking");
+          try {
+            if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+              const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+              if (Ctx) audioCtxRef.current = new Ctx() as AudioContext;
+            }
+            const ctx = audioCtxRef.current!;
+            if (ctx.state === "suspended") await ctx.resume().catch(() => { /* */ });
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+              try {
+                ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+              } catch (e) {
+                reject(e);
+              }
+            });
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(ctx.destination);
+            await new Promise<void>((resolve) => {
+              source.onended = () => resolve();
+              try { source.start(0); } catch (e) {
+                console.warn("[Travis] iOS source.start failed:", e);
+                resolve();
+              }
+            });
+          } catch (err) {
+            console.error("[Travis] iOS AudioContext playback failed:", err);
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          try { audioCtxRef.current?.close(); } catch { /* */ }
+          audioCtxRef.current = null;
+          sourceRef.current = null;
+          gainRef.current = null;
+          const audio = new Audio();
+          audioRef.current = audio;
+          audio.src = url;
+          audio.volume = 1.0;
+          let usingWebAudio = false;
           try {
             const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
             if (Ctx) {
@@ -269,29 +296,28 @@ export default function TravisWidget() {
           } catch (err) {
             console.warn("[Travis] Web Audio boost unavailable, plain playback:", err);
           }
-        }
-        setStatus("speaking");
-        try {
-          await audio.play();
-        } catch (playErr) {
-          console.warn("[Travis] audio.play() rejected, retrying plain:", playErr);
-          if (usingWebAudio) {
-            try { audioCtxRef.current?.close(); } catch { /* */ }
-            audioCtxRef.current = null;
-            sourceRef.current = null;
-            gainRef.current = null;
-            const fallback = new Audio(url);
-            audioRef.current = fallback;
-            fallback.volume = 1.0;
-            fallback.setAttribute("playsinline", "true");
-            await fallback.play().catch(() => { /* */ });
+          setStatus("speaking");
+          try {
+            await audio.play();
+          } catch (playErr) {
+            console.warn("[Travis] audio.play() rejected, retrying plain:", playErr);
+            if (usingWebAudio) {
+              try { audioCtxRef.current?.close(); } catch { /* */ }
+              audioCtxRef.current = null;
+              sourceRef.current = null;
+              gainRef.current = null;
+              const fallback = new Audio(url);
+              audioRef.current = fallback;
+              fallback.volume = 1.0;
+              await fallback.play().catch(() => { /* */ });
+            }
           }
+          await new Promise<void>(resolve => {
+            if (!audioRef.current) return resolve();
+            audioRef.current.onended = () => { URL.revokeObjectURL(url); resolve(); };
+            audioRef.current.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+          });
         }
-        await new Promise<void>(resolve => {
-          if (!audioRef.current) return resolve();
-          audioRef.current.onended = () => { URL.revokeObjectURL(url); resolve(); };
-          audioRef.current.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-        });
       }
       setStatus("idle");
     } catch (err: any) {
@@ -318,18 +344,25 @@ export default function TravisWidget() {
       return;
     }
 
-    // iOS gesture unlock — same trick as Jake. See JakeWidget.startListening
-    // for the long explanation.
-    if (isIOS && audioRef.current) {
+    // iOS gesture unlock — see JakeWidget.startListening for the long
+    // explanation. We create + resume an AudioContext inside the user
+    // gesture so iOS Safari trusts later buffer playbacks.
+    if (isIOS) {
       try {
-        audioRef.current.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-        audioRef.current.muted = true;
-        audioRef.current.play().then(() => {
-          if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.muted = false;
-          }
-        }).catch(() => { /* */ });
+        if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+          const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+          if (Ctx) audioCtxRef.current = new Ctx() as AudioContext;
+        }
+        if (audioCtxRef.current?.state === "suspended") {
+          audioCtxRef.current.resume().catch(() => { /* */ });
+        }
+        if (audioCtxRef.current) {
+          const buf = audioCtxRef.current.createBuffer(1, 1, 22050);
+          const src = audioCtxRef.current.createBufferSource();
+          src.buffer = buf;
+          src.connect(audioCtxRef.current.destination);
+          try { src.start(0); } catch { /* */ }
+        }
       } catch { /* */ }
     }
 
@@ -556,6 +589,24 @@ export default function TravisWidget() {
                 const text = input.trim();
                 if (!text || status === "thinking" || status === "speaking") return;
                 setInput("");
+                if (isIOS) {
+                  try {
+                    if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+                      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+                      if (Ctx) audioCtxRef.current = new Ctx() as AudioContext;
+                    }
+                    if (audioCtxRef.current?.state === "suspended") {
+                      audioCtxRef.current.resume().catch(() => { /* */ });
+                    }
+                    if (audioCtxRef.current) {
+                      const buf = audioCtxRef.current.createBuffer(1, 1, 22050);
+                      const src = audioCtxRef.current.createBufferSource();
+                      src.buffer = buf;
+                      src.connect(audioCtxRef.current.destination);
+                      try { src.start(0); } catch { /* */ }
+                    }
+                  } catch { /* */ }
+                }
                 sendTurn(text);
               }}
               style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}
