@@ -15,11 +15,9 @@ const STEPS = [
     templateSubject: "Quick thought about {{business_name}}||{{business_domain}}||noticed this",
     templateBody: `Hey {{first_name}},
 
-I came across {{business_name}} and spent a few minutes on your site. {{opening_line}}
-
 I'm Travis with BlackRidge Platforms. We build custom websites with the full backend portal that runs behind them. Member login, CRM, billing, scheduling, all running from one central place instead of five different tools.
 
-I'd put together a quick mock-up so you can see what a refreshed {{business_name}} could look like. No pitch deck. No pressure. Just want you to see what we see.
+I'd put together a quick mock-up so you can see what a refreshed {{business_name}} could look like. No pitch deck. No pressure.
 
 Mind if I send it over?
 
