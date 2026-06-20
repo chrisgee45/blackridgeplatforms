@@ -157,7 +157,7 @@ const STATUS_VARIANTS: Record<string, string> = {
   needs_review: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
 };
 
-type ViewTab = "leads" | "conversations" | "agent-report" | "agent-chat";
+type ViewTab = "drafts" | "leads" | "conversations" | "agent-report" | "agent-chat";
 
 export default function OutreachPage() {
   const { toast } = useToast();
@@ -360,6 +360,15 @@ export default function OutreachPage() {
           <div className="flex rounded-md border overflow-visible">
             <Button
               variant="ghost"
+              className={`rounded-none toggle-elevate ${activeView === "drafts" ? "toggle-elevated" : ""}`}
+              onClick={() => setActiveView("drafts")}
+              data-testid="button-view-drafts"
+            >
+              <FileText className="w-4 h-4 mr-1.5" /> Drafts
+              <PendingDraftsBadge />
+            </Button>
+            <Button
+              variant="ghost"
               className={`rounded-none toggle-elevate ${activeView === "leads" ? "toggle-elevated" : ""}`}
               onClick={() => setActiveView("leads")}
               data-testid="button-view-leads"
@@ -391,6 +400,7 @@ export default function OutreachPage() {
               <MessageSquare className="w-4 h-4 mr-1.5" /> Agent Chat
             </Button>
           </div>
+          {activeView === "drafts" && null}
           {activeView === "leads" && (
             <>
               <Button onClick={() => setShowScanDialog(true)} variant="outline" data-testid="button-scan-leads">
@@ -414,7 +424,9 @@ export default function OutreachPage() {
         </div>
       </div>
 
-      {activeView === "agent-report" ? (
+      {activeView === "drafts" ? (
+        <PendingDraftsView onOpenLead={(id) => { setSelectedLeadId(id); setActiveView("leads"); }} />
+      ) : activeView === "agent-report" ? (
         <AgentReportView />
       ) : activeView === "agent-chat" ? (
         <AgentChatView />
@@ -2864,6 +2876,169 @@ type ConversationWithLead = LeadConversation & {
     awaitingHandoff: boolean | null;
   } | null;
 };
+
+function PendingDraftsBadge() {
+  const { data: pending = [] } = useQuery<any[]>({
+    queryKey: ["/api/outreach/leads/pending-drafts"],
+    refetchInterval: 60000,
+  });
+  if (pending.length === 0) return null;
+  return (
+    <span className="ml-1.5 inline-flex items-center justify-center text-[10px] font-semibold rounded-full bg-amber-500 text-black w-5 h-5 min-w-5">
+      {pending.length}
+    </span>
+  );
+}
+
+function PendingDraftsView({ onOpenLead }: { onOpenLead: (id: string) => void }) {
+  const { toast } = useToast();
+  const { data: pending = [], refetch } = useQuery<any[]>({
+    queryKey: ["/api/outreach/leads/pending-drafts"],
+  });
+  const [edits, setEdits] = useState<Record<string, { subject: string; body: string }>>({});
+
+  function ensureLocal(lead: any) {
+    if (!edits[lead.id]) {
+      setEdits(prev => ({
+        ...prev,
+        [lead.id]: {
+          subject: lead.step1DraftSubject ?? "",
+          body: lead.step1DraftBody ?? "",
+        },
+      }));
+    }
+  }
+
+  const saveDraft = useMutation({
+    mutationFn: async ({ leadId, subject, body }: { leadId: string; subject: string; body: string }) => {
+      await apiRequest("PATCH", `/api/outreach/leads/${leadId}/step1-draft`, { subject, body });
+    },
+    onSuccess: () => {
+      toast({ title: "Draft saved" });
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const approve = useMutation({
+    mutationFn: async (leadId: string) => {
+      await apiRequest("POST", `/api/outreach/leads/${leadId}/approve-step1`, {});
+    },
+    onSuccess: () => {
+      toast({ title: "Email sent" });
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/outreach/leads"] });
+    },
+    onError: (e: any) => toast({ title: "Approve failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const reject = useMutation({
+    mutationFn: async (leadId: string) => {
+      await apiRequest("POST", `/api/outreach/leads/${leadId}/reject-step1`, {});
+    },
+    onSuccess: () => {
+      toast({ title: "Draft rejected" });
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Reject failed", description: e?.message, variant: "destructive" }),
+  });
+
+  if (pending.length === 0) {
+    return (
+      <div className="text-center py-16 text-sm text-muted-foreground">
+        No first emails awaiting your approval. Travis will draft them here once leads have Notes for AI.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-muted-foreground">
+        Travis drafts every first email for your review. Approve, edit, or reject below. Steps 2+ run on cadence automatically once you approve.
+      </div>
+      {pending.map((lead: any) => {
+        ensureLocal(lead);
+        const local = edits[lead.id] ?? { subject: lead.step1DraftSubject ?? "", body: lead.step1DraftBody ?? "" };
+        const needsNotes = lead.step1Status === "needs_notes";
+        return (
+          <Card key={lead.id}>
+            <CardContent className="py-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium">{lead.businessName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {lead.contactName || "(no contact)"} · {lead.email || "(no email)"} · {lead.industry || "?"}
+                  </div>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => onOpenLead(lead.id)}>
+                  Open lead
+                </Button>
+              </div>
+
+              {needsNotes ? (
+                <div className="border border-amber-500/40 bg-amber-500/5 rounded-md p-3 text-sm">
+                  Travis needs your <strong>Notes for AI</strong> before he can draft this first email. Click <em>Open lead</em> above, fill in the Notes for AI field on the detail panel, save, and Travis will draft the email on the next cycle.
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-muted-foreground">Subject</label>
+                    <Input
+                      value={local.subject}
+                      onChange={(e) => setEdits(prev => ({ ...prev, [lead.id]: { ...local, subject: e.target.value } }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-muted-foreground">Body</label>
+                    <Textarea
+                      value={local.body}
+                      rows={12}
+                      onChange={(e) => setEdits(prev => ({ ...prev, [lead.id]: { ...local, body: e.target.value } }))}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      onClick={() => saveDraft.mutate({ leadId: lead.id, subject: local.subject, body: local.body })}
+                      disabled={saveDraft.isPending}
+                      variant="outline"
+                    >
+                      Save edits
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        // Save edits first if changed, then approve.
+                        if (local.subject !== lead.step1DraftSubject || local.body !== lead.step1DraftBody) {
+                          await saveDraft.mutateAsync({ leadId: lead.id, subject: local.subject, body: local.body });
+                        }
+                        approve.mutate(lead.id);
+                      }}
+                      disabled={approve.isPending || !local.subject.trim() || !local.body.trim()}
+                      className="bg-emerald-600 hover:bg-emerald-500"
+                    >
+                      Approve &amp; Send
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        if (confirm(`Reject this draft and skip outreach for ${lead.businessName}?`)) {
+                          reject.mutate(lead.id);
+                        }
+                      }}
+                      variant="ghost"
+                      className="text-red-400"
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
 
 function ConversationsInboxView({ onOpenLead }: { onOpenLead: (id: string) => void }) {
   const [threadFilter, setThreadFilter] = useState<"all" | "inbound" | "outbound" | "ai">("all");

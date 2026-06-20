@@ -489,6 +489,150 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
     }
   });
 
+  // === Step 1 draft approval flow ===
+
+  // List leads that have a drafted Step 1 awaiting Chris's review.
+  app.get("/api/outreach/leads/pending-drafts", isAuthenticated, async (_req, res) => {
+    try {
+      const leads = await outreachStorage.getLeads();
+      const pending = leads.filter((l: any) =>
+        l.step1Status === "drafted" || l.step1Status === "needs_notes"
+      );
+      res.json(pending);
+    } catch (err: any) {
+      console.error("Pending drafts error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to load drafts" });
+    }
+  });
+
+  // Edit a pending Step 1 draft before approving.
+  app.patch("/api/outreach/leads/:id/step1-draft", isAuthenticated, async (req, res) => {
+    try {
+      const { subject, body } = req.body || {};
+      if (typeof subject !== "string" || typeof body !== "string") {
+        return res.status(400).json({ message: "subject and body required" });
+      }
+      await outreachStorage.updateLead(String(req.params.id), {
+        step1DraftSubject: subject.trim(),
+        step1DraftBody: body.trim(),
+        step1Status: "drafted",
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Edit draft error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to save draft" });
+    }
+  });
+
+  // Approve and send the Step 1 draft. Uses the same Resend sender as
+  // the normal campaign flow + advances the enrollment so Step 2 fires
+  // on cadence.
+  app.post("/api/outreach/leads/:id/approve-step1", isAuthenticated, async (req, res) => {
+    try {
+      const leadId = String(req.params.id);
+      const lead = await outreachStorage.getLead(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const anyLead = lead as any;
+      if (!anyLead.step1DraftSubject || !anyLead.step1DraftBody) {
+        return res.status(400).json({ message: "No draft to approve" });
+      }
+      if (!lead.email) return res.status(400).json({ message: "Lead has no email" });
+      const { getResendClientForOutreach } = await import("./outreach-jobs");
+      const resend = await getResendClientForOutreach();
+      if (!resend) return res.status(500).json({ message: "Resend not configured" });
+      const subject = anyLead.step1DraftSubject as string;
+      const body = anyLead.step1DraftBody as string;
+      const htmlBody = body.replace(/\n/g, "<br>");
+      let resendMessageId: string | undefined;
+      try {
+        const result = await resend.client.emails.send({
+          from: resend.fromEmail,
+          to: lead.email,
+          subject,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; line-height: 1.6;">${htmlBody}</div>`,
+          tags: [
+            { name: "leadId", value: lead.id },
+            { name: "kind", value: "approved_step1" },
+          ],
+        });
+        resendMessageId = (result as any)?.data?.id;
+      } catch (err: any) {
+        console.error("approve-step1 send failed:", err);
+        return res.status(500).json({ message: `Send failed: ${err?.message ?? "unknown"}` });
+      }
+      await outreachStorage.updateLead(leadId, {
+        step1Status: "sent",
+        step1ApprovedAt: new Date(),
+      });
+      await outreachStorage.createEmailEvent({
+        leadId: lead.id,
+        campaignId: "",
+        stepNumber: 1,
+        resendMessageId,
+        toEmail: lead.email,
+        subject,
+        body,
+        status: "sent",
+        sentAt: new Date(),
+      });
+      await outreachStorage.createConversation({
+        leadId: lead.id,
+        direction: "outbound",
+        subject,
+        body,
+        aiGenerated: true,
+        resendMessageId,
+        campaignStep: 1,
+      });
+      // Advance the enrollment so the cadence picks up at Step 2.
+      try {
+        const enrollment = await outreachStorage.getEnrollmentByLead(lead.id);
+        if (enrollment) {
+          await outreachStorage.updateEnrollment(enrollment.id, { currentStep: 1 });
+          const campaign = await outreachStorage.getActiveCampaign();
+          if (campaign) {
+            const steps = await outreachStorage.getCampaignSteps(campaign.id);
+            const next = steps.find((s: any) => s.stepNumber === 2);
+            if (next) {
+              await outreachStorage.createJob({
+                type: "send_campaign_step",
+                payload: {
+                  lead_id: lead.id,
+                  enrollment_id: enrollment.id,
+                  campaign_id: campaign.id,
+                  step_number: 2,
+                },
+                runAt: new Date(Date.now() + (next.delayDays ?? 3) * 86400000),
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn("approve-step1 enrollment advance failed:", err?.message);
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Approve draft error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to approve draft" });
+    }
+  });
+
+  // Reject a draft — clear the draft fields and mark the lead so the
+  // pending list stops surfacing it.
+  app.post("/api/outreach/leads/:id/reject-step1", isAuthenticated, async (req, res) => {
+    try {
+      await outreachStorage.updateLead(String(req.params.id), {
+        step1Status: "rejected",
+        step1DraftSubject: null,
+        step1DraftBody: null,
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Reject draft error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to reject draft" });
+    }
+  });
+
   app.patch("/api/outreach/leads/:id", isAuthenticated, async (req, res) => {
     try {
       const lead = await outreachStorage.updateLead(String(req.params.id), req.body);

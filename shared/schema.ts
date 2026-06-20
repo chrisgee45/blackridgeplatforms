@@ -777,6 +777,11 @@ export const outreachLeads = pgTable("outreach_leads", {
   awaitingHandoff: boolean("awaiting_handoff").default(false),
   handoffReason: text("handoff_reason"),
   autoReplyEnabled: boolean("auto_reply_enabled").default(true),
+  step1DraftSubject: text("step1_draft_subject"),
+  step1DraftBody: text("step1_draft_body"),
+  step1Status: text("step1_status"),
+  step1DraftedAt: timestamp("step1_drafted_at", { withTimezone: true }),
+  step1ApprovedAt: timestamp("step1_approved_at", { withTimezone: true }),
 });
 
 export const insertOutreachLeadSchema = createInsertSchema(outreachLeads).omit({
