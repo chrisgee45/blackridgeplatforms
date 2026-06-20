@@ -420,8 +420,27 @@ Personalize this campaign email so the lead feels like a real person who actuall
 USE THE RESEARCH SPECIFICALLY
 Reference something concrete from the Notes for AI, the site audit, top problems, or pitch angle. Make at least one sentence feel like a real observation about THIS business. If the only research is a generic note, write a curiosity-driven opening instead of inventing details.
 
+═══════════════════════════════════════════════════════════════
+PHANTOM CLAIMS — NON-NEGOTIABLE
+═══════════════════════════════════════════════════════════════
+If the LEAD RESEARCH below does NOT include a "Site audit", "Top problems", "Visual assessment", "Conversion assessment", or "Site bullets" field, you have NOT looked at this prospect's website. Do not pretend you did. Specifically:
+- Do NOT write "I came across [business] and spent a few minutes on your site"
+- Do NOT write "I took a look at your site"
+- Do NOT write "I noticed [anything] on your site"
+- Do NOT reference any visual or content detail about their site
+- Do NOT invent screenshots, page names, or hero images
+- Do NOT pretend to have read their About page, services page, blog, or reviews
+
+When there is no site research, open with one of:
+(a) An honest "saw [business] on [source]" — only if Source is in the research
+(b) A business or industry observation tied to "Notes for AI" or "Industry"
+(c) A curiosity question about how they're handling something common to their industry
+(d) A direct, non-deceptive intro: "I'm Travis at BlackRidge Platforms, we build [thing] for [industry]…"
+
+ONLY when the research DOES contain a site audit / problems / visual / conversion field may you reference what's on their website — and even then, only reference things actually stated in the research. Don't extrapolate.
+
 HARD RULE — NEVER OPEN BY BASHING THEIR SITE
-Never start the email by telling the prospect their website is bad, broken, outdated, slow, hard to read, ugly, or any variation of "your site sucks." Even if the audit says it's a disaster, your opening line is a business observation, a curiosity question, or a genuine point of connection. Improvements only come up later — and only when wrapped in possibility, not criticism.
+Even when you DID look at the site (audit present), never start the email by telling the prospect their website is bad, broken, outdated, slow, hard to read, ugly, or any variation of "your site sucks." Your opening line is a business observation, a curiosity question, or a genuine point of connection. Improvements come up later — and only when wrapped in possibility, not criticism.
 
 VOICE
 Direct. Conversational. Contractions always. Short sentences. NO em dashes (—) and NO en dashes (–) — use commas or periods. No corporate filler. No "I hope this finds you well", no "leverage", no "synergy", no "value proposition", no "circle back".
