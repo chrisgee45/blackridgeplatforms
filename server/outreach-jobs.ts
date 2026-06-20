@@ -519,6 +519,94 @@ export async function processSendCampaignStepJob(payload: {
     return "skipped";
   }
 
+  // Step 1 needs Chris's approval before it goes out. Two gates:
+  //   1. Notes for AI must be present — Travis can't draft a first
+  //      email without research notes to base it on.
+  //   2. Even with notes, the draft just sits as pending until Chris
+  //      approves it via the outreach UI.
+  // Steps 2+ continue to auto-send on cadence once the lead's been
+  // confirmed once.
+  if (payload.step_number === 1) {
+    const anyLead = lead as any;
+    if (anyLead.step1Status === "sent") {
+      console.log(`Step 1 already sent for ${lead.businessName} — skipping`);
+      return "skipped";
+    }
+    if (anyLead.step1Status === "drafted") {
+      console.log(`Step 1 drafted but awaiting Chris's approval for ${lead.businessName} — re-queueing for tomorrow`);
+      return "rescheduled";
+    }
+    const notes = (lead.notes ?? "").trim();
+    if (notes.length < 8) {
+      // No notes → don't draft. Flag the lead so it surfaces in the
+      // pending-drafts UI as "needs notes" and push-notify Chris once.
+      await outreachStorage.updateLead(lead.id, { step1Status: "needs_notes" });
+      try {
+        const { isPushConfigured, sendPushToAll } = await import("./push");
+        if (isPushConfigured()) {
+          await sendPushToAll({
+            title: `${lead.businessName}: add Notes for AI`,
+            body: `Travis needs your notes before he can draft the first email.`,
+            url: "/admin/ops/outreach",
+          });
+        }
+      } catch { /* */ }
+      console.log(`Step 1 blocked for ${lead.businessName}: Notes for AI missing`);
+      return "skipped";
+    }
+    // Generate the draft (will throw to fall back to template if AI
+    // fails), store it, push-notify, but DO NOT SEND.
+    try {
+      const step = await outreachStorage.getCampaignStep(payload.campaign_id, payload.step_number);
+      if (!step) throw new Error("Campaign step not found");
+      const subjectOptions = step.templateSubject.split("||").map(s => s.trim());
+      const rawSubject = subjectOptions[Math.floor(Math.random() * subjectOptions.length)];
+      const templateSubject = renderTemplate(rawSubject, lead);
+      const templateBody = renderTemplate(step.templateBody, lead);
+      let subject = templateSubject;
+      let body = templateBody;
+      if (process.env.ANTHROPIC_API_KEY) {
+        try {
+          const personalized = await personalizeCampaignEmail({
+            lead,
+            stepNumber: 1,
+            templateSubject,
+            templateBody,
+          });
+          if (personalized?.subject && personalized?.body) {
+            subject = personalized.subject;
+            body = personalized.body;
+          }
+        } catch (err: any) {
+          console.warn(`[outreach] step1 personalization failed for ${lead.businessName}: ${err?.message}`);
+        }
+      }
+      subject = stripDashes(subject);
+      body = stripDashes(body);
+      await outreachStorage.updateLead(lead.id, {
+        step1DraftSubject: subject,
+        step1DraftBody: body,
+        step1Status: "drafted",
+        step1DraftedAt: new Date(),
+      });
+      try {
+        const { isPushConfigured, sendPushToAll } = await import("./push");
+        if (isPushConfigured()) {
+          await sendPushToAll({
+            title: `Approve email to ${lead.businessName}`,
+            body: subject.slice(0, 120),
+            url: "/admin/ops/outreach",
+          });
+        }
+      } catch { /* */ }
+      console.log(`Step 1 drafted for ${lead.businessName} — awaiting Chris's approval`);
+      return "skipped";
+    } catch (err: any) {
+      console.error(`Step 1 drafting failed for ${lead.businessName}:`, err?.message);
+      return "skipped";
+    }
+  }
+
   const settings = await outreachStorage.getSettings();
 
   if (!isWithinSendWindow(settings)) {
@@ -1119,8 +1207,26 @@ export async function backfillEmaillessLeads(): Promise<number> {
   return enqueued;
 }
 
+async function ensureStep1DraftColumns(): Promise<void> {
+  const { db } = await import("./db");
+  const { sql } = await import("drizzle-orm");
+  try {
+    await db.execute(sql`
+      ALTER TABLE outreach_leads
+        ADD COLUMN IF NOT EXISTS step1_draft_subject text,
+        ADD COLUMN IF NOT EXISTS step1_draft_body text,
+        ADD COLUMN IF NOT EXISTS step1_status text,
+        ADD COLUMN IF NOT EXISTS step1_drafted_at timestamptz,
+        ADD COLUMN IF NOT EXISTS step1_approved_at timestamptz
+    `);
+  } catch (err: any) {
+    console.error("[outreach] failed to ensure step1 draft columns:", err?.message);
+  }
+}
+
 export function startOutreachJobRunner() {
   console.log("Outreach job runner started (30s interval)");
+  ensureStep1DraftColumns().catch(err => console.error("Step1 columns migration error:", err));
   outreachStorage.cleanupOrphanedJobs()
     .then(n => { if (n > 0) console.log(`Outreach: cleaned up ${n} orphaned job(s) on startup`); })
     .catch(err => console.error("Initial orphan-job cleanup error:", err));
