@@ -378,6 +378,95 @@ Return only valid JSON.`;
   }
 }
 
+/**
+ * Travis personalizes a cold-outreach campaign email body from the
+ * lead's research. The campaign template is passed in as the baseline
+ * — the model should use the same general structure (length, tone,
+ * CTA) but rewrite specifics so the lead feels like a real person
+ * read their situation. Returns null on parse failure; caller falls
+ * back to the static template.
+ */
+async function personalizeCampaignEmail(opts: {
+  lead: any;
+  stepNumber: number;
+  templateSubject: string;
+  templateBody: string;
+}): Promise<{ subject: string; body: string } | null> {
+  const { lead, stepNumber, templateSubject, templateBody } = opts;
+  const truncate = (s: string | null | undefined, n: number) =>
+    (s ?? "").length > n ? (s ?? "").slice(0, n - 1) + "…" : (s ?? "");
+  const researchLines: string[] = [];
+  researchLines.push(`Business: ${lead.businessName}${lead.contactName ? ` (contact: ${lead.contactName})` : ""}`);
+  if (lead.industry) researchLines.push(`Industry: ${lead.industry}`);
+  if (lead.location) researchLines.push(`Location: ${lead.location}`);
+  if (lead.websiteUrl) researchLines.push(`Website: ${lead.websiteUrl}`);
+  if (lead.sourceType) researchLines.push(`Source: ${lead.sourceType}`);
+  if (lead.notes) researchLines.push(`Notes for AI (Chris's): ${truncate(lead.notes, 1000)}`);
+  if (lead.pitchAngle) researchLines.push(`Pitch angle: ${truncate(lead.pitchAngle, 400)}`);
+  if (lead.openingLine) researchLines.push(`Suggested opening: ${truncate(lead.openingLine, 400)}`);
+  if (lead.aiAuditSummary) researchLines.push(`Site audit: ${truncate(lead.aiAuditSummary, 800)}`);
+  const tp = Array.isArray(lead.topProblems) ? (lead.topProblems as unknown[]) : [];
+  if (tp.length > 0) researchLines.push(`Top problems on their site:\n${tp.slice(0, 5).map(p => `  - ${truncate(String(p), 240)}`).join("\n")}`);
+  const ab = Array.isArray(lead.aiBullets) ? (lead.aiBullets as unknown[]) : [];
+  if (ab.length > 0) researchLines.push(`Site bullets:\n${ab.slice(0, 5).map(b => `  - ${truncate(String(b), 240)}`).join("\n")}`);
+  if (lead.visualStyleAssessment) researchLines.push(`Visual assessment: ${truncate(lead.visualStyleAssessment, 320)}`);
+  if (lead.conversionAssessment) researchLines.push(`Conversion assessment: ${truncate(lead.conversionAssessment, 320)}`);
+  const researchBlock = researchLines.join("\n");
+
+  const system = `You are Travis, the cold-outreach lead at BlackRidge Platforms in Edmond, Oklahoma. You write personal first-touch outreach emails. You are NOT Chris and you are NOT a marketer.
+
+Personalize this campaign email so the lead feels like a real person who actually looked at their business is writing. The template body is given to you as a structural baseline (length, tone, CTA structure) — you should rewrite the specifics so they tie to THIS lead's research, not the generic version.
+
+USE THE RESEARCH SPECIFICALLY
+Reference something concrete from the Notes for AI, the site audit, top problems, or pitch angle. Make at least one sentence feel like a real observation about THIS business. If the only research is a generic note, write a curiosity-driven opening instead of inventing details.
+
+HARD RULE — NEVER OPEN BY BASHING THEIR SITE
+Never start the email by telling the prospect their website is bad, broken, outdated, slow, hard to read, ugly, or any variation of "your site sucks." Even if the audit says it's a disaster, your opening line is a business observation, a curiosity question, or a genuine point of connection. Improvements only come up later — and only when wrapped in possibility, not criticism.
+
+VOICE
+Direct. Conversational. Contractions always. Short sentences. NO em dashes (—) and NO en dashes (–) — use commas or periods. No corporate filler. No "I hope this finds you well", no "leverage", no "synergy", no "value proposition", no "circle back".
+
+LENGTH
+Match the template's length within a paragraph or two. Cold outreach is short — three to five short paragraphs max.
+
+SIGNATURE
+End with exactly:
+Travis
+Outreach Lead
+BlackRidge Platforms
+
+OUTPUT
+Return ONLY valid JSON. No prose before or after.
+{
+  "subject": "subject line — short, lowercase, no template variables",
+  "body": "full email body with \\n for line breaks. Ends with the three-line signature."
+}`;
+
+  const userPrompt = `LEAD RESEARCH:
+${researchBlock}
+
+CAMPAIGN STEP: ${stepNumber}
+TEMPLATE SUBJECT (use as structural baseline): ${templateSubject}
+TEMPLATE BODY (use as structural baseline):
+${templateBody}
+
+Now write the personalized version for THIS lead.`;
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const resp = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1200,
+    system,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+  const raw = resp.content.map(b => (b.type === "text" ? b.text : "")).join("").trim();
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  const parsed = JSON.parse(jsonMatch[0]) as { subject?: string; body?: string };
+  if (!parsed.subject || !parsed.body) return null;
+  return { subject: parsed.subject.trim(), body: parsed.body.trim() };
+}
+
 export async function processSendCampaignStepJob(payload: {
   lead_id: string; enrollment_id: string; campaign_id: string; step_number: number;
 }): Promise<"sent" | "rescheduled" | "skipped"> {
@@ -431,8 +520,36 @@ export async function processSendCampaignStepJob(payload: {
 
   const subjectOptions = step.templateSubject.split("||").map(s => s.trim());
   const rawSubject = subjectOptions[Math.floor(Math.random() * subjectOptions.length)];
-  const subject = renderTemplate(rawSubject, lead);
-  const body = renderTemplate(step.templateBody, lead);
+  let subject = renderTemplate(rawSubject, lead);
+  let body = renderTemplate(step.templateBody, lead);
+
+  // Travis personalizes the email from the lead's research instead of
+  // shipping the bare template. Falls back to the template render
+  // above if Claude errors or produces something obviously wrong. The
+  // template stays as the inspiration / fallback baseline.
+  const hasResearch = !!(lead.notes || lead.aiAuditSummary || lead.pitchAngle
+    || (Array.isArray(lead.topProblems) && lead.topProblems.length > 0)
+    || (Array.isArray(lead.aiBullets) && lead.aiBullets.length > 0));
+  if (hasResearch && process.env.ANTHROPIC_API_KEY) {
+    try {
+      const personalized = await personalizeCampaignEmail({
+        lead,
+        stepNumber: payload.step_number,
+        templateSubject: subject,
+        templateBody: body,
+      });
+      if (personalized?.subject && personalized?.body) {
+        subject = personalized.subject;
+        body = personalized.body;
+      }
+    } catch (err: any) {
+      console.warn(`[outreach] personalization failed for ${lead.businessName}, falling back to template: ${err?.message}`);
+    }
+  }
+
+  // Strip em/en dashes regardless of source — template or Claude.
+  subject = stripDashes(subject);
+  body = stripDashes(body);
 
   const htmlBody = body.replace(/\n/g, "<br>");
 
