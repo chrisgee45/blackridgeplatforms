@@ -509,6 +509,15 @@ export async function processSendCampaignStepJob(payload: {
     return "skipped";
   }
 
+  // Cadence runs ONLY for bad_site_finder cold leads. Manually-added
+  // leads, CRM-converts, etc. wait on Chris to direct Travis on what
+  // to send and when. Defense in depth in case an enrollment slipped
+  // through the gates in the create-lead routes.
+  if (lead.sourceType !== "bad_site_finder") {
+    console.log(`Skipping campaign step for ${lead.businessName}: sourceType=${lead.sourceType} (not a cold lead)`);
+    return "skipped";
+  }
+
   const enrollment = await outreachStorage.getEnrollment(payload.enrollment_id);
   if (!enrollment) {
     console.log(`Skipping email for lead ${lead.id}: enrollment not found`);
