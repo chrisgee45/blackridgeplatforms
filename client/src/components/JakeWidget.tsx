@@ -555,6 +555,55 @@ export default function JakeWidget() {
             <div style={{ color: "rgba(226,232,240,0.45)", fontSize: 11, marginTop: -8 }}>
               {status === "listening" ? "tap again when you're done" : "tap the mic and talk"}
             </div>
+
+            {/* Text fallback for when voice isn't available — type and Enter. */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const text = input.trim();
+                if (!text || status === "thinking" || status === "speaking") return;
+                setInput("");
+                sendTurn(text);
+              }}
+              style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}
+            >
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Or type a message to Jake…"
+                disabled={status === "thinking"}
+                data-testid="jake-text-input"
+                style={{
+                  flex: 1,
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(120,145,200,0.35)",
+                  background: "rgba(15,23,42,0.5)",
+                  color: "#e2e8f0",
+                  fontSize: 14,
+                  outline: "none",
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || status === "thinking" || status === "speaking"}
+                aria-label="Send message"
+                data-testid="jake-send-text"
+                style={{
+                  padding: "0 18px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: input.trim() && status === "idle" ? "#3b82f6" : "rgba(59,130,246,0.35)",
+                  color: "white",
+                  cursor: input.trim() && status === "idle" ? "pointer" : "not-allowed",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                Send
+              </button>
+            </form>
           </div>
         </div>
       )}
