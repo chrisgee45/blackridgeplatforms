@@ -265,7 +265,11 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
       });
 
       const settings = await outreachStorage.getSettings();
-      if (!settings.enrollmentsPaused && validated.email) {
+      // Only bad_site_finder cold leads run the automated 5-step
+      // cadence. Manually-added leads and CRM-converts wait on Chris
+      // to drive each outbound through Travis.
+      const isColdLead = validated.sourceType === "bad_site_finder";
+      if (isColdLead && !settings.enrollmentsPaused && validated.email) {
         const campaign = await outreachStorage.getActiveCampaign();
         if (campaign) {
           const enrollment = await outreachStorage.createEnrollment(lead.id, campaign.id);
@@ -316,6 +320,7 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
         email: crmLead.email || null,
         phone: null,
         location: null,
+        sourceType: "crm_convert",
         notes: `Imported from CRM. Project type: ${crmLead.projectType || "N/A"}. Budget: ${crmLead.budget || "N/A"}. Message: ${crmLead.message || "N/A"}`,
       });
 
@@ -327,23 +332,10 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
         runAt: new Date(),
       });
 
-      const settings = await outreachStorage.getSettings();
-      if (!settings.enrollmentsPaused && lead.email) {
-        const campaign = await outreachStorage.getActiveCampaign();
-        if (campaign) {
-          const enrollment = await outreachStorage.createEnrollment(lead.id, campaign.id);
-          await outreachStorage.createJob({
-            type: "send_campaign_step",
-            payload: {
-              lead_id: lead.id,
-              enrollment_id: enrollment.id,
-              campaign_id: campaign.id,
-              step_number: 1,
-            },
-            runAt: new Date(Date.now() + 5000),
-          });
-        }
-      }
+      // CRM-converted leads do NOT auto-enroll in the cadence campaign.
+      // Travis and Chris drive each outbound message conversationally
+      // for these leads; only bad_site_finder cold leads run the
+      // 5-step automated cadence.
 
       // Retire the CRM row so it no longer clutters the inbound list.
       // Default CRM filter hides status="won". Adds a one-line note
@@ -459,7 +451,9 @@ export function registerOutreachRoutes(app: Express, isAuthenticated: RequestHan
           });
 
           const csvSettings = await outreachStorage.getSettings();
-          if (!csvSettings.enrollmentsPaused && validated.email) {
+          // Only bad_site_finder cold leads run cadence (see manual-add
+          // route above for the policy).
+          if (validated.sourceType === "bad_site_finder" && !csvSettings.enrollmentsPaused && validated.email) {
             const campaign = await outreachStorage.getActiveCampaign();
             if (campaign) {
               const enrollment = await outreachStorage.createEnrollment(lead.id, campaign.id);
