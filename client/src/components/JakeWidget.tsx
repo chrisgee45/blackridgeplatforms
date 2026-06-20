@@ -252,27 +252,56 @@ export default function JakeWidget() {
 
       if (audioBufRef.current.length > 0) {
         const blob = new Blob(audioBufRef.current, { type: "audio/mpeg" });
-        const url = URL.createObjectURL(blob);
-        // Fresh audio element + fresh Web Audio graph every play. Reusing
-        // a backgrounded AudioContext is the #1 way Jake goes silent after
-        // a tab switch — we just blow it all away each time.
-        try { audioCtxRef.current?.close(); } catch { /* */ }
-        audioCtxRef.current = null;
-        sourceRef.current = null;
-        gainRef.current = null;
-        // On iOS, REUSE the audio element that was unlocked during the
-        // mic-tap gesture in startListening. Creating a fresh Audio()
-        // would create a still-locked element that plays silently.
-        // On desktop, a fresh element is fine and avoids stale state.
-        const audio = isIOS && audioRef.current ? audioRef.current : new Audio();
-        audioRef.current = audio;
-        audio.src = url;
-        audio.volume = 1.0;
-        audio.muted = false;
-        audio.setAttribute("playsinline", "true");
-        let usingWebAudio = false;
-        // Skip Web Audio entirely on iOS — see isIOS comment above.
-        if (!isIOS) {
+
+        // iOS: use AudioContext + AudioBufferSourceNode. The
+        // HTMLAudioElement path is unreliable on iOS Safari (the
+        // gesture context is lost during the network round-trip, so
+        // play() resolves silently). With AudioContext, once we've
+        // called resume() inside a user gesture, subsequent buffer
+        // playback works without a fresh gesture.
+        if (isIOS) {
+          setStatus("speaking");
+          try {
+            if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+              const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+              if (Ctx) audioCtxRef.current = new Ctx() as AudioContext;
+            }
+            const ctx = audioCtxRef.current!;
+            if (ctx.state === "suspended") await ctx.resume().catch(() => { /* */ });
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+              // Use the callback signature for older iOS support.
+              try {
+                ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+              } catch (e) {
+                reject(e);
+              }
+            });
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(ctx.destination);
+            await new Promise<void>((resolve) => {
+              source.onended = () => resolve();
+              try { source.start(0); } catch (e) {
+                console.warn("[Jake] iOS source.start failed:", e);
+                resolve();
+              }
+            });
+          } catch (err) {
+            console.error("[Jake] iOS AudioContext playback failed:", err);
+          }
+        } else {
+          // Desktop path — Web Audio gain boost via HTMLAudioElement.
+          const url = URL.createObjectURL(blob);
+          try { audioCtxRef.current?.close(); } catch { /* */ }
+          audioCtxRef.current = null;
+          sourceRef.current = null;
+          gainRef.current = null;
+          const audio = new Audio();
+          audioRef.current = audio;
+          audio.src = url;
+          audio.volume = 1.0;
+          let usingWebAudio = false;
           try {
             const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
             if (Ctx) {
@@ -293,29 +322,28 @@ export default function JakeWidget() {
           } catch (err) {
             console.warn("[Jake] Web Audio boost unavailable, plain playback:", err);
           }
-        }
-        setStatus("speaking");
-        try {
-          await audio.play();
-        } catch (playErr) {
-          console.warn("[Jake] audio.play() rejected, retrying plain:", playErr);
-          if (usingWebAudio) {
-            try { audioCtxRef.current?.close(); } catch { /* */ }
-            audioCtxRef.current = null;
-            sourceRef.current = null;
-            gainRef.current = null;
-            const fallback = new Audio(url);
-            audioRef.current = fallback;
-            fallback.volume = 1.0;
-            fallback.setAttribute("playsinline", "true");
-            await fallback.play().catch(() => { /* */ });
+          setStatus("speaking");
+          try {
+            await audio.play();
+          } catch (playErr) {
+            console.warn("[Jake] audio.play() rejected, retrying plain:", playErr);
+            if (usingWebAudio) {
+              try { audioCtxRef.current?.close(); } catch { /* */ }
+              audioCtxRef.current = null;
+              sourceRef.current = null;
+              gainRef.current = null;
+              const fallback = new Audio(url);
+              audioRef.current = fallback;
+              fallback.volume = 1.0;
+              await fallback.play().catch(() => { /* */ });
+            }
           }
+          await new Promise<void>(resolve => {
+            if (!audioRef.current) return resolve();
+            audioRef.current.onended = () => { URL.revokeObjectURL(url); resolve(); };
+            audioRef.current.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+          });
         }
-        await new Promise<void>(resolve => {
-          if (!audioRef.current) return resolve();
-          audioRef.current.onended = () => { URL.revokeObjectURL(url); resolve(); };
-          audioRef.current.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-        });
       }
       setStatus("idle");
     } catch (err: any) {
@@ -335,21 +363,29 @@ export default function JakeWidget() {
 
   const startListening = useCallback(() => {
     // iOS Safari requires audio playback to be initiated DURING a user
-    // gesture. By the time Jake's response comes back over the network,
-    // the gesture context is long gone and audio.play() resolves to
-    // silence. Trick: play a tiny silent buffer NOW while we still
-    // have the gesture — that "unlocks" the audio element for the
-    // rest of the session.
-    if (isIOS && audioRef.current) {
+    // gesture. We use AudioContext for iOS playback (more reliable than
+    // HTMLAudioElement across network round-trips), and AudioContext
+    // needs resume() called inside the gesture to switch from
+    // "suspended" to "running". Once running, it stays running across
+    // network calls.
+    if (isIOS) {
       try {
-        audioRef.current.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-        audioRef.current.muted = true;
-        audioRef.current.play().then(() => {
-          if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.muted = false;
-          }
-        }).catch(() => { /* */ });
+        if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+          const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+          if (Ctx) audioCtxRef.current = new Ctx() as AudioContext;
+        }
+        if (audioCtxRef.current?.state === "suspended") {
+          audioCtxRef.current.resume().catch(() => { /* */ });
+        }
+        // Bonus: play a 1-sample silent BufferSource to fully unlock
+        // on older iOS that doesn't honor resume() alone.
+        if (audioCtxRef.current) {
+          const buf = audioCtxRef.current.createBuffer(1, 1, 22050);
+          const src = audioCtxRef.current.createBufferSource();
+          src.buffer = buf;
+          src.connect(audioCtxRef.current.destination);
+          try { src.start(0); } catch { /* */ }
+        }
       } catch { /* */ }
     }
 
@@ -563,6 +599,25 @@ export default function JakeWidget() {
                 const text = input.trim();
                 if (!text || status === "thinking" || status === "speaking") return;
                 setInput("");
+                // iOS gesture unlock — same path as the mic tap.
+                if (isIOS) {
+                  try {
+                    if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+                      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+                      if (Ctx) audioCtxRef.current = new Ctx() as AudioContext;
+                    }
+                    if (audioCtxRef.current?.state === "suspended") {
+                      audioCtxRef.current.resume().catch(() => { /* */ });
+                    }
+                    if (audioCtxRef.current) {
+                      const buf = audioCtxRef.current.createBuffer(1, 1, 22050);
+                      const src = audioCtxRef.current.createBufferSource();
+                      src.buffer = buf;
+                      src.connect(audioCtxRef.current.destination);
+                      try { src.start(0); } catch { /* */ }
+                    }
+                  } catch { /* */ }
+                }
                 sendTurn(text);
               }}
               style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}
