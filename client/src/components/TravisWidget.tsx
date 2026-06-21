@@ -395,7 +395,11 @@ export default function TravisWidget() {
   // Last assistant turn = caption shown beside the big face.
   const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && (m.content || m.actions?.length));
   const lastUser = [...messages].reverse().find(m => m.role === "user");
-  const recentActions = lastAssistant?.actions ?? [];
+  // Only surface SUCCESSFUL action chips on screen. Failed actions
+  // (typically the send-confirmation gate refusing a premature send)
+  // are internal feedback for the LLM — Chris doesn't need to see
+  // red "Refused: …" pills next to Travis's face.
+  const recentActions = (lastAssistant?.actions ?? []).filter((a: any) => a?.ok === true);
 
   const bubbleSize = 58;
   const fullSize = Math.min(Math.round(Math.min(vw, vh) * 0.62), 480);
