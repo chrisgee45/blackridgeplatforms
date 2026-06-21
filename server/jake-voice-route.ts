@@ -595,6 +595,24 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
           console.warn("Jake voice history load failed:", err);
         }
       }
+      // Cross-device memory: if no per-conversation history loaded
+      // (fresh device, cleared localStorage, etc.) fall back to the
+      // most recent global Jake messages. Chris is the only user so
+      // a global tail is safe.
+      if (historyFromDb.length === 0) {
+        try {
+          const r = await db.execute(sql`
+            SELECT role, content
+            FROM jake_voice_messages
+            ORDER BY created_at DESC
+            LIMIT 40
+          `);
+          const rows = (((r as any)?.rows ?? (r as any) ?? []) as { role: string; content: string }[]);
+          historyFromDb = rows.reverse();
+        } catch (err) {
+          console.warn("Jake voice global history load failed:", err);
+        }
+      }
 
       // Prefer DB history + the latest user message from incoming.
       const latestUser = incoming[incoming.length - 1];

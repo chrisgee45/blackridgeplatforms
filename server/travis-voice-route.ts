@@ -595,6 +595,25 @@ export function registerTravisVoiceRoutes(app: Express, isAuthenticated: Request
           console.warn("Travis voice history load failed:", err);
         }
       }
+      // If we didn't get any history from the requested conversation
+      // (or no conversationId was sent — e.g. fresh device, cleared
+      // localStorage), fall back to the most recent global Travis
+      // messages so memory survives across devices. Chris is the only
+      // user so a global tail is safe.
+      if (historyFromDb.length === 0) {
+        try {
+          const r = await db.execute(sql`
+            SELECT role, content
+            FROM travis_voice_messages
+            ORDER BY created_at DESC
+            LIMIT 40
+          `);
+          const rows = (((r as any)?.rows ?? (r as any) ?? []) as { role: string; content: string }[]);
+          historyFromDb = rows.reverse(); // back to chronological order
+        } catch (err) {
+          console.warn("Travis voice global history load failed:", err);
+        }
+      }
 
       const latestUser = incoming[incoming.length - 1];
       const combined = historyFromDb.length > 0
