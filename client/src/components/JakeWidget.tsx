@@ -433,7 +433,10 @@ export default function JakeWidget() {
   // Last assistant turn for caption + actions row in fullscreen.
   const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && (m.content || m.actions?.length));
   const lastUser = [...messages].reverse().find(m => m.role === "user");
-  const recentActions = lastAssistant?.actions ?? [];
+  // Only show SUCCESSFUL action chips. Failed actions (the email-send
+  // confirmation gate refusing a premature send, etc.) are internal
+  // LLM feedback — Chris doesn't need a red "Refused: ..." pill.
+  const recentActions = (lastAssistant?.actions ?? []).filter((a: any) => a?.ok === true);
   const fullSize = typeof window !== "undefined"
     ? Math.min(Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.62), 480)
     : 360;
