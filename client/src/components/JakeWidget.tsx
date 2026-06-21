@@ -157,10 +157,11 @@ export default function JakeWidget() {
     setStatus("idle");
   }, []);
 
-  const sendTurn = useCallback(async (userText: string) => {
+  const sendTurn = useCallback(async (userText: string, opts: { silent?: boolean } = {}) => {
     const trimmed = userText.trim();
     if (!trimmed) return;
     setInput("");
+    const silent = !!opts.silent;
     const newMessages: Message[] = [...messages, { role: "user", content: trimmed }, { role: "assistant", content: "" }];
     setMessages(newMessages);
     setStatus("thinking");
@@ -180,6 +181,7 @@ export default function JakeWidget() {
           // Drop the empty assistant placeholder we just appended for UI.
           messages: newMessages.filter(m => m.content && m.content.length > 0),
           conversationId,
+          silent,
         }),
       });
       if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
@@ -618,7 +620,7 @@ export default function JakeWidget() {
                     }
                   } catch { /* */ }
                 }
-                sendTurn(text);
+                sendTurn(text, { silent: true });
               }}
               style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}
             >

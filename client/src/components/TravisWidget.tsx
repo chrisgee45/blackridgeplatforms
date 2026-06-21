@@ -143,9 +143,10 @@ export default function TravisWidget() {
     setStatus("idle");
   }, []);
 
-  const sendTurn = useCallback(async (userText: string) => {
+  const sendTurn = useCallback(async (userText: string, opts: { silent?: boolean } = {}) => {
     const trimmed = userText.trim();
     if (!trimmed) return;
+    const silent = !!opts.silent;
     const newMessages: Message[] = [...messages, { role: "user", content: trimmed }, { role: "assistant", content: "" }];
     setMessages(newMessages);
     setStatus("thinking");
@@ -163,6 +164,7 @@ export default function TravisWidget() {
         body: JSON.stringify({
           messages: newMessages.filter(m => m.content && m.content.length > 0),
           conversationId,
+          silent,
         }),
       });
       if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
@@ -607,7 +609,7 @@ export default function TravisWidget() {
                     }
                   } catch { /* */ }
                 }
-                sendTurn(text);
+                sendTurn(text, { silent: true });
               }}
               style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}
             >

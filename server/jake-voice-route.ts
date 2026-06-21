@@ -567,6 +567,10 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
 
       const conversationId = typeof req.body?.conversationId === "string" ? req.body.conversationId : null;
       const messagesIn = Array.isArray(req.body?.messages) ? req.body.messages : [];
+      // When the user typed instead of spoke, the client sets silent=true.
+      // We still stream the text frames so the UI updates live, but skip
+      // ElevenLabs TTS entirely — no audio sent back, no API call made.
+      const silent = req.body?.silent === true;
       const incoming = messagesIn
         .map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content ?? "") }))
         .filter((m: any) => m.content.length > 0);
@@ -618,6 +622,7 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
       const sendDone = (m: object) => sendFrame(FRAME_DONE, Buffer.from(JSON.stringify(m), "utf-8"));
 
       async function streamTTS(text: string): Promise<void> {
+        if (silent) return; // text-mode input → no audio out
         const cleaned = text.replace(/<[^>]*>/g, "").slice(0, 2000);
         if (!cleaned.trim()) return;
         try {
