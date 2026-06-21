@@ -81,6 +81,10 @@ export default function JakeWidget() {
   const [status, setStatus] = useState<Status>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  // Track whether the most recent input was text. When it is, we
+  // surface Jake's reply as a caption — voice playback would normally
+  // carry the response, but in text mode there's nothing audible.
+  const [lastInputWasText, setLastInputWasText] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     try { return window.localStorage.getItem(STORAGE_KEY); } catch { return null; }
@@ -427,7 +431,10 @@ export default function JakeWidget() {
     const buffered = transcriptBufferRef.current.trim();
     transcriptBufferRef.current = "";
     setStatus("idle");
-    if (buffered) sendTurn(buffered);
+    if (buffered) {
+      setLastInputWasText(false);
+      sendTurn(buffered);
+    }
   }, [sendTurn]);
 
   // Last assistant turn for caption + actions row in fullscreen.
@@ -552,8 +559,26 @@ export default function JakeWidget() {
               </div>
             </div>
 
-            {/* No transcript here — Chris asked for a clean face takeover,
-                not a chat box. Only action confirmations show below. */}
+            {/* Text-mode caption — only appears when Chris typed his
+                last message. Voice mode stays face-only because the
+                spoken reply already carries the response. */}
+            {lastInputWasText && lastAssistant?.content && status !== "thinking" && (
+              <div
+                style={{
+                  color: "#e2e8f0",
+                  fontSize: 15,
+                  lineHeight: 1.5,
+                  maxWidth: 520,
+                  margin: "0 auto",
+                  textAlign: "center",
+                  whiteSpace: "pre-wrap",
+                  padding: "0 8px",
+                }}
+                data-testid="jake-text-reply"
+              >
+                {lastAssistant.content}
+              </div>
+            )}
 
             {recentActions.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
@@ -623,6 +648,7 @@ export default function JakeWidget() {
                     }
                   } catch { /* */ }
                 }
+                setLastInputWasText(true);
                 sendTurn(text, { silent: true });
               }}
               style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}

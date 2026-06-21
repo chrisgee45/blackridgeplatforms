@@ -75,6 +75,8 @@ export default function TravisWidget() {
   const [status, setStatus] = useState<Status>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  // Caption visible only when last input was text. See JakeWidget.
+  const [lastInputWasText, setLastInputWasText] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     try { return window.localStorage.getItem(STORAGE_KEY); } catch { return null; }
@@ -342,7 +344,10 @@ export default function TravisWidget() {
       const buffered = transcriptBufferRef.current.trim();
       transcriptBufferRef.current = "";
       setStatus("idle");
-      if (buffered) sendTurn(buffered);
+      if (buffered) {
+        setLastInputWasText(false);
+        sendTurn(buffered);
+      }
       return;
     }
 
@@ -530,6 +535,25 @@ export default function TravisWidget() {
               </div>
             </div>
 
+            {/* Text-mode caption — same pattern as Jake. */}
+            {lastInputWasText && lastAssistant?.content && status !== "thinking" && (
+              <div
+                style={{
+                  color: "#fef3c7",
+                  fontSize: 15,
+                  lineHeight: 1.5,
+                  maxWidth: 520,
+                  margin: "0 auto",
+                  textAlign: "center",
+                  whiteSpace: "pre-wrap",
+                  padding: "0 8px",
+                }}
+                data-testid="travis-text-reply"
+              >
+                {lastAssistant.content}
+              </div>
+            )}
+
             {/* No transcript here — Chris asked for a clean face takeover,
                 not a chat box. Only action confirmations show below. */}
 
@@ -613,6 +637,7 @@ export default function TravisWidget() {
                     }
                   } catch { /* */ }
                 }
+                setLastInputWasText(true);
                 sendTurn(text, { silent: true });
               }}
               style={{ width: "100%", maxWidth: 480, display: "flex", gap: 8, marginTop: 4 }}
