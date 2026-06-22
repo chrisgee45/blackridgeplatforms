@@ -125,6 +125,10 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
   const speechEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOpenRef = useRef(false);
   const transcriptBufferRef = useRef("");
+  // iOS Safari rarely fires isFinal in continuous mode — the spoken
+  // text arrives as interim results. Keep the latest interim around
+  // so onspeechend / onend has SOMETHING to send.
+  const interimBufferRef = useRef("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listeningWhileSpeakingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -244,6 +248,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
     }
     listeningWhileSpeakingRef.current = false;
     transcriptBufferRef.current = "";
+    interimBufferRef.current = "";
     setStatus("online");
     statusRef.current = "online";
   }, []);
@@ -299,6 +304,10 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
 
       if (finalTranscript.trim()) {
         transcriptBufferRef.current += " " + finalTranscript.trim();
+        interimBufferRef.current = ""; // promoted to final
+      }
+      if (interimTranscript.trim()) {
+        interimBufferRef.current = interimTranscript.trim();
       }
 
       if (interimTranscript) {
@@ -306,13 +315,17 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
         silenceTimerRef.current = null;
       }
 
-      if (finalTranscript.trim()) {
+      // Fire the silence timer on EITHER a final or interim chunk.
+      // iOS often only yields interim results, so waiting for final
+      // alone would never trigger the send.
+      if (finalTranscript.trim() || interimTranscript.trim()) {
         silenceTimerRef.current = setTimeout(() => {
-          const fullText = transcriptBufferRef.current.trim();
+          const fullText = (transcriptBufferRef.current.trim() || interimBufferRef.current.trim()).trim();
           if (fullText) {
             try { recognitionRef.current?.stop(); } catch {}
             recognitionRef.current = null;
             transcriptBufferRef.current = "";
+            interimBufferRef.current = "";
             setStatus("online");
             statusRef.current = "online";
             streamRidgeRef.current(fullText);
@@ -324,11 +337,12 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
     recognition.onspeechend = () => {
       if (!silenceTimerRef.current) {
         silenceTimerRef.current = setTimeout(() => {
-          const fullText = transcriptBufferRef.current.trim();
+          const fullText = (transcriptBufferRef.current.trim() || interimBufferRef.current.trim()).trim();
           if (fullText) {
             try { recognitionRef.current?.stop(); } catch {}
             recognitionRef.current = null;
             transcriptBufferRef.current = "";
+            interimBufferRef.current = "";
             setStatus("online");
             statusRef.current = "online";
             streamRidgeRef.current(fullText);
@@ -347,9 +361,10 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
-      const fullText = transcriptBufferRef.current.trim();
+      const fullText = (transcriptBufferRef.current.trim() || interimBufferRef.current.trim()).trim();
       if (fullText && statusRef.current === "listening") {
         transcriptBufferRef.current = "";
+        interimBufferRef.current = "";
         setStatus("online");
         statusRef.current = "online";
         streamRidgeRef.current(fullText);
