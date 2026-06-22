@@ -582,21 +582,24 @@ export function registerTravisVoiceRoutes(app: Express, isAuthenticated: Request
 
       // Each historical row carries its timestamp so the model can
       // reason about "yesterday" / "four days ago" correctly.
+      const readRow = (row: any) => ({
+        role: row.role,
+        content: row.content,
+        createdAt: row.created_at
+          ? new Date(row.created_at)
+          : (row.createdAt ? new Date(row.createdAt) : null),
+      });
       let historyFromDb: { role: string; content: string; createdAt: Date | null }[] = [];
       if (conversationId) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content, created_at AS "createdAt"
+            SELECT role, content, created_at
             FROM travis_voice_messages
             WHERE conversation_id = ${conversationId}
             ORDER BY created_at ASC
             LIMIT 40
           `);
-          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
-            role: row.role,
-            content: row.content,
-            createdAt: row.createdAt ? new Date(row.createdAt) : null,
-          }));
+          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(readRow);
         } catch (err) {
           console.warn("Travis voice history load failed:", err);
         }
@@ -604,16 +607,12 @@ export function registerTravisVoiceRoutes(app: Express, isAuthenticated: Request
       if (historyFromDb.length === 0) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content, created_at AS "createdAt"
+            SELECT role, content, created_at
             FROM travis_voice_messages
             ORDER BY created_at DESC
             LIMIT 40
           `);
-          const rows = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
-            role: row.role,
-            content: row.content,
-            createdAt: row.createdAt ? new Date(row.createdAt) : null,
-          }));
+          const rows = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(readRow);
           historyFromDb = rows.reverse();
         } catch (err) {
           console.warn("Travis voice global history load failed:", err);
