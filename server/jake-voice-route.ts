@@ -578,51 +578,74 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
         return res.status(400).json({ error: "No user message" });
       }
 
-      // Load persisted history if a conversation id was supplied. Merge
-      // with what the client sent (the client may have offline messages).
-      let historyFromDb: { role: string; content: string }[] = [];
+      // Load persisted history with timestamps. Stamping each row's
+      // timestamp into the content gives Jake anchors for relative-
+      // time reasoning ("yesterday", "four days ago").
+      let historyFromDb: { role: string; content: string; createdAt: Date | null }[] = [];
       if (conversationId) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content
+            SELECT role, content, created_at AS "createdAt"
             FROM jake_voice_messages
             WHERE conversation_id = ${conversationId}
             ORDER BY created_at ASC
             LIMIT 40
           `);
-          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as { role: string; content: string }[]);
+          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
+            role: row.role,
+            content: row.content,
+            createdAt: row.createdAt ? new Date(row.createdAt) : null,
+          }));
         } catch (err) {
           console.warn("Jake voice history load failed:", err);
         }
       }
-      // Cross-device memory: if no per-conversation history loaded
-      // (fresh device, cleared localStorage, etc.) fall back to the
-      // most recent global Jake messages. Chris is the only user so
-      // a global tail is safe.
       if (historyFromDb.length === 0) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content
+            SELECT role, content, created_at AS "createdAt"
             FROM jake_voice_messages
             ORDER BY created_at DESC
             LIMIT 40
           `);
-          const rows = (((r as any)?.rows ?? (r as any) ?? []) as { role: string; content: string }[]);
+          const rows = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
+            role: row.role,
+            content: row.content,
+            createdAt: row.createdAt ? new Date(row.createdAt) : null,
+          }));
           historyFromDb = rows.reverse();
         } catch (err) {
           console.warn("Jake voice global history load failed:", err);
         }
       }
+      const stampedHistory = historyFromDb.map(row => ({
+        role: row.role,
+        content: row.createdAt
+          ? `[${row.createdAt.toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })} CT] ${row.content}`
+          : row.content,
+      }));
 
       // Prefer DB history + the latest user message from incoming.
       const latestUser = incoming[incoming.length - 1];
-      const combined = historyFromDb.length > 0
-        ? [...historyFromDb, latestUser]
+      const combined = stampedHistory.length > 0
+        ? [...stampedHistory, latestUser]
         : incoming;
       const trimmed = combined.slice(-24);
 
+      const now = new Date();
+      const nowStr = now.toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const timeHeader = `CURRENT MOMENT: ${nowStr} Central Time. Each prior message in this thread is prefixed with its timestamp in square brackets like "[Jun 15, 2026 10:15 AM CT]". Use these to compute how long ago anything was — do NOT guess at relative times.\n\n`;
+
       const snapshot = await buildJakeSnapshot();
-      const system = `${JAKE_SYSTEM_VOICE}\n\n=== LIVE JAKE STATE ===\n${snapshot}`;
+      const system = `${timeHeader}${JAKE_SYSTEM_VOICE}\n\n=== LIVE JAKE STATE ===\n${snapshot}`;
 
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("Transfer-Encoding", "chunked");
