@@ -97,6 +97,7 @@ export default function TravisWidget() {
   const audioBufRef = useRef<Uint8Array[]>([]);
   const recognitionRef = useRef<any>(null);
   const transcriptBufferRef = useRef<string>("");
+  const interimBufferRef = useRef<string>("");
   const [vw, setVw] = useState<number>(typeof window !== "undefined" ? window.innerWidth : 1024);
   const [vh, setVh] = useState<number>(typeof window !== "undefined" ? window.innerHeight : 768);
 
@@ -341,13 +342,21 @@ export default function TravisWidget() {
         try { rec.stop(); } catch { /* */ }
         recognitionRef.current = null;
       }
-      const buffered = transcriptBufferRef.current.trim();
-      transcriptBufferRef.current = "";
-      setStatus("idle");
-      if (buffered) {
-        setLastInputWasText(false);
-        sendTurn(buffered);
-      }
+      // iOS Safari needs a tick to flush pending onresult. Falls back
+      // to the interim buffer if the finalized one is empty — iOS
+      // often never fires isFinal results in continuous mode.
+      setTimeout(() => {
+        const finalText = transcriptBufferRef.current.trim();
+        const interim = interimBufferRef.current.trim();
+        const buffered = finalText || interim;
+        transcriptBufferRef.current = "";
+        interimBufferRef.current = "";
+        setStatus("idle");
+        if (buffered) {
+          setLastInputWasText(false);
+          sendTurn(buffered);
+        }
+      }, 250);
       return;
     }
 
@@ -380,18 +389,23 @@ export default function TravisWidget() {
     rec.interimResults = true;
     rec.lang = "en-US";
     transcriptBufferRef.current = "";
+    interimBufferRef.current = "";
     rec.onstart = () => setStatus("listening");
     rec.onerror = () => setStatus("idle");
-    // Don't auto-send on end — the next mic tap sends the buffer.
-    rec.onend = () => { /* */ };
+    rec.onend = () => { /* finishListening sends the buffer manually */ };
     rec.onresult = (e: any) => {
+      let liveInterim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
+        const piece = r[0]?.transcript ?? "";
+        if (!piece.trim()) continue;
         if (r.isFinal) {
-          const piece = r[0]?.transcript ?? "";
-          if (piece.trim()) transcriptBufferRef.current += (transcriptBufferRef.current ? " " : "") + piece.trim();
+          transcriptBufferRef.current += (transcriptBufferRef.current ? " " : "") + piece.trim();
+        } else {
+          liveInterim += (liveInterim ? " " : "") + piece.trim();
         }
       }
+      if (liveInterim) interimBufferRef.current = liveInterim;
     };
     recognitionRef.current = rec;
     try { rec.start(); } catch { /* */ }

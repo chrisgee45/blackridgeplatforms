@@ -113,6 +113,12 @@ export default function JakeWidget() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const transcriptBufferRef = useRef<string>("");
+  // iOS Safari's Web Speech API often never fires isFinal results in
+  // continuous mode — the whole utterance arrives as one or more
+  // interim chunks instead. We keep a separate interim buffer so we
+  // can fall back to it if the finalized one is empty when Chris taps
+  // to send.
+  const interimBufferRef = useRef<string>("");
 
   useEffect(() => { injectStyles(); }, []);
   useEffect(() => { if (!audioRef.current) audioRef.current = new Audio(); }, []);
@@ -405,18 +411,24 @@ export default function JakeWidget() {
     rec.interimResults = true;
     rec.lang = "en-US";
     transcriptBufferRef.current = "";
+    interimBufferRef.current = "";
     rec.onstart = () => setStatus("listening");
     rec.onerror = () => setStatus("idle");
     // Don't auto-send on end — wait for Chris to tap the mic again.
     rec.onend = () => { /* finishListening sends the buffer manually */ };
     rec.onresult = (e: any) => {
+      let liveInterim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
+        const piece = r[0]?.transcript ?? "";
+        if (!piece.trim()) continue;
         if (r.isFinal) {
-          const piece = r[0]?.transcript ?? "";
-          if (piece.trim()) transcriptBufferRef.current += (transcriptBufferRef.current ? " " : "") + piece.trim();
+          transcriptBufferRef.current += (transcriptBufferRef.current ? " " : "") + piece.trim();
+        } else {
+          liveInterim += (liveInterim ? " " : "") + piece.trim();
         }
       }
+      if (liveInterim) interimBufferRef.current = liveInterim;
     };
     recognitionRef.current = rec;
     try { rec.start(); } catch { /* already started */ }
@@ -428,13 +440,21 @@ export default function JakeWidget() {
       try { rec.stop(); } catch { /* */ }
       recognitionRef.current = null;
     }
-    const buffered = transcriptBufferRef.current.trim();
-    transcriptBufferRef.current = "";
-    setStatus("idle");
-    if (buffered) {
-      setLastInputWasText(false);
-      sendTurn(buffered);
-    }
+    // Give iOS a short tick to flush any pending onresult before we
+    // read the buffer. Without this the buffer is often empty even
+    // though the user clearly spoke.
+    setTimeout(() => {
+      const finalText = transcriptBufferRef.current.trim();
+      const interim = interimBufferRef.current.trim();
+      const buffered = finalText || interim; // fall back to interim
+      transcriptBufferRef.current = "";
+      interimBufferRef.current = "";
+      setStatus("idle");
+      if (buffered) {
+        setLastInputWasText(false);
+        sendTurn(buffered);
+      }
+    }, 250);
   }, [sendTurn]);
 
   // Last assistant turn for caption + actions row in fullscreen.
