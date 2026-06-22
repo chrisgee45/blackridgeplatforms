@@ -580,49 +580,79 @@ export function registerTravisVoiceRoutes(app: Express, isAuthenticated: Request
         return res.status(400).json({ error: "No user message" });
       }
 
-      let historyFromDb: { role: string; content: string }[] = [];
+      // Each historical row carries its timestamp so the model can
+      // reason about "yesterday" / "four days ago" correctly.
+      let historyFromDb: { role: string; content: string; createdAt: Date | null }[] = [];
       if (conversationId) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content
+            SELECT role, content, created_at AS "createdAt"
             FROM travis_voice_messages
             WHERE conversation_id = ${conversationId}
             ORDER BY created_at ASC
             LIMIT 40
           `);
-          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as { role: string; content: string }[]);
+          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
+            role: row.role,
+            content: row.content,
+            createdAt: row.createdAt ? new Date(row.createdAt) : null,
+          }));
         } catch (err) {
           console.warn("Travis voice history load failed:", err);
         }
       }
-      // If we didn't get any history from the requested conversation
-      // (or no conversationId was sent — e.g. fresh device, cleared
-      // localStorage), fall back to the most recent global Travis
-      // messages so memory survives across devices. Chris is the only
-      // user so a global tail is safe.
       if (historyFromDb.length === 0) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content
+            SELECT role, content, created_at AS "createdAt"
             FROM travis_voice_messages
             ORDER BY created_at DESC
             LIMIT 40
           `);
-          const rows = (((r as any)?.rows ?? (r as any) ?? []) as { role: string; content: string }[]);
-          historyFromDb = rows.reverse(); // back to chronological order
+          const rows = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
+            role: row.role,
+            content: row.content,
+            createdAt: row.createdAt ? new Date(row.createdAt) : null,
+          }));
+          historyFromDb = rows.reverse();
         } catch (err) {
           console.warn("Travis voice global history load failed:", err);
         }
       }
+      // Stamp each history row with its date so the model has anchors
+      // for relative-time language. Strips back off when we map to the
+      // Anthropic messages shape.
+      const stampedHistory = historyFromDb.map(row => ({
+        role: row.role,
+        content: row.createdAt
+          ? `[${row.createdAt.toLocaleString("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })} CT] ${row.content}`
+          : row.content,
+      }));
 
       const latestUser = incoming[incoming.length - 1];
-      const combined = historyFromDb.length > 0
-        ? [...historyFromDb, latestUser]
+      const combined = stampedHistory.length > 0
+        ? [...stampedHistory, latestUser]
         : incoming;
       const trimmed = combined.slice(-24);
 
+      // Inject the current moment so Travis can reason about
+      // "yesterday" / "X days ago" against the timestamps embedded in
+      // each history message above. Central Time matches Chris's
+      // Edmond, OK base.
+      const now = new Date();
+      const nowStr = now.toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const timeHeader = `CURRENT MOMENT: ${nowStr} Central Time. Each prior message in this thread is prefixed with its timestamp in square brackets like "[Jun 15, 2026 10:15 AM CT]". Use these to compute how long ago anything was — do NOT guess at relative times.\n\n`;
+
       const snapshot = await buildTravisSnapshot();
-      const system = `${TRAVIS_SYSTEM_VOICE}\n\n=== LIVE TRAVIS STATE ===\n${snapshot}`;
+      const system = `${timeHeader}${TRAVIS_SYSTEM_VOICE}\n\n=== LIVE TRAVIS STATE ===\n${snapshot}`;
 
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("Transfer-Encoding", "chunked");
