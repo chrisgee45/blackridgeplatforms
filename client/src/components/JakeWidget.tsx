@@ -361,10 +361,11 @@ export default function JakeWidget() {
     } catch (err: any) {
       if (err?.name !== "AbortError") {
         console.error("[Jake] stream error:", err);
+        const detail = err?.message || String(err);
         setMessages(prev => {
           const copy = [...prev];
           if (copy.length > 0 && copy[copy.length - 1].role === "assistant" && !copy[copy.length - 1].content) {
-            copy[copy.length - 1] = { role: "assistant", content: "I couldn't reach the server just now. Try again in a sec." };
+            copy[copy.length - 1] = { role: "assistant", content: `I couldn't reach the server just now. (${detail}) Try again in a sec.` };
           }
           return copy;
         });
@@ -582,7 +583,10 @@ export default function JakeWidget() {
             {/* Text-mode caption — only appears when Chris typed his
                 last message. Voice mode stays face-only because the
                 spoken reply already carries the response. */}
-            {lastInputWasText && lastAssistant?.content && status !== "thinking" && (
+            {/* Show the reply text whenever the user typed (silent path)
+                OR whenever the response is an error notice — otherwise
+                voice users get a silent failure with no on-screen clue. */}
+            {(lastInputWasText || /couldn't reach the server/i.test(lastAssistant?.content ?? "")) && lastAssistant?.content && status !== "thinking" && (
               <div
                 style={{
                   color: "#e2e8f0",

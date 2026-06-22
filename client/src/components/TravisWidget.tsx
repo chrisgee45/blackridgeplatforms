@@ -328,6 +328,14 @@ export default function TravisWidget() {
     } catch (err: any) {
       if (err?.name !== "AbortError") {
         console.error("[Travis] stream error:", err);
+        const detail = err?.message || String(err);
+        setMessages(prev => {
+          const copy = [...prev];
+          if (copy.length > 0 && copy[copy.length - 1].role === "assistant" && !copy[copy.length - 1].content) {
+            copy[copy.length - 1] = { role: "assistant", content: `I couldn't reach the server just now. (${detail}) Try again in a sec.` };
+          }
+          return copy;
+        });
       }
       setStatus("idle");
     }
@@ -550,7 +558,10 @@ export default function TravisWidget() {
             </div>
 
             {/* Text-mode caption — same pattern as Jake. */}
-            {lastInputWasText && lastAssistant?.content && status !== "thinking" && (
+            {/* Show the reply text whenever the user typed OR when
+                the response is an error — voice users would otherwise
+                see no visible clue that anything failed. */}
+            {(lastInputWasText || /couldn't reach the server/i.test(lastAssistant?.content ?? "")) && lastAssistant?.content && status !== "thinking" && (
               <div
                 style={{
                   color: "#fef3c7",

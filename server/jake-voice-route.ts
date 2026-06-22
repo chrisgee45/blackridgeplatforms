@@ -578,24 +578,27 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
         return res.status(400).json({ error: "No user message" });
       }
 
-      // Load persisted history with timestamps. Stamping each row's
-      // timestamp into the content gives Jake anchors for relative-
-      // time reasoning ("yesterday", "four days ago").
+      // Load persisted history with timestamps. Stamp each row's
+      // timestamp into the content so Jake can reason about
+      // "yesterday" / "four days ago" against real dates.
+      const readRow = (row: any) => ({
+        role: row.role,
+        content: row.content,
+        createdAt: row.created_at
+          ? new Date(row.created_at)
+          : (row.createdAt ? new Date(row.createdAt) : null),
+      });
       let historyFromDb: { role: string; content: string; createdAt: Date | null }[] = [];
       if (conversationId) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content, created_at AS "createdAt"
+            SELECT role, content, created_at
             FROM jake_voice_messages
             WHERE conversation_id = ${conversationId}
             ORDER BY created_at ASC
             LIMIT 40
           `);
-          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
-            role: row.role,
-            content: row.content,
-            createdAt: row.createdAt ? new Date(row.createdAt) : null,
-          }));
+          historyFromDb = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(readRow);
         } catch (err) {
           console.warn("Jake voice history load failed:", err);
         }
@@ -603,16 +606,12 @@ export function registerJakeVoiceRoutes(app: Express, isAuthenticated: RequestHa
       if (historyFromDb.length === 0) {
         try {
           const r = await db.execute(sql`
-            SELECT role, content, created_at AS "createdAt"
+            SELECT role, content, created_at
             FROM jake_voice_messages
             ORDER BY created_at DESC
             LIMIT 40
           `);
-          const rows = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(row => ({
-            role: row.role,
-            content: row.content,
-            createdAt: row.createdAt ? new Date(row.createdAt) : null,
-          }));
+          const rows = (((r as any)?.rows ?? (r as any) ?? []) as any[]).map(readRow);
           historyFromDb = rows.reverse();
         } catch (err) {
           console.warn("Jake voice global history load failed:", err);
