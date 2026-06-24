@@ -21,7 +21,7 @@ interface Message {
 type Status = "idle" | "listening" | "thinking" | "speaking";
 
 const STORAGE_KEY = "david-conversation-id";
-const GREETING = "Hi, I'm David. Ask me anything about what BlackRidge builds, how we work, or what it costs — or I can set up a call with Chris for you.";
+const GREETING = "Hi, I'm David. Ask me anything about what BlackRidge builds and how we work — or I can set up a call with Chris to talk through your project and pricing.";
 
 const FRAME_AUDIO = 0x01;
 const FRAME_TEXT = 0x02;
