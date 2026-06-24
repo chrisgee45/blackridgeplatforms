@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import DavidWidget from "@/components/DavidWidget";
 import rkjScreenshot from "@assets/Screenshot_2026-02-11_110341_1770829532587.png";
 import heatwaveScreenshot from "@assets/Screenshot_2026-02-16_190342_1771290376120.png";
 import budgetwiseScreenshot from "@assets/Screenshot_2026-02-16_194159_1771292597157.png";
@@ -1360,6 +1361,7 @@ export default function Home() {
       <AboutSection />
       <ContactSection />
       <Footer />
+      <DavidWidget />
     </div>
   );
 }
