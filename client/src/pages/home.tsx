@@ -43,7 +43,6 @@ import {
   BarChart3,
   Mail,
   MapPin,
-  Mountain,
   Phone,
   CloudCog,
   ShieldCheck,
@@ -79,10 +78,7 @@ function Navbar() {
           className="flex items-center gap-2"
           data-testid="link-home"
         >
-          <Mountain className="h-6 w-6 text-primary" />
-          <span className="text-lg font-bold tracking-tight text-foreground">
-            BlackRidge<span className="text-primary"> Platforms</span>
-          </span>
+          <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 sm:h-10 w-auto" />
         </button>
 
         <div className="hidden md:flex items-center gap-8">
@@ -1308,10 +1304,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-            <Mountain className="h-5 w-5 text-primary" />
-            <span className="font-bold tracking-tight">
-              BlackRidge<span className="text-primary"> Platforms</span>
-            </span>
+            <img src="/blackridge-logo.png" alt="BlackRidge Platforms" className="h-9 w-auto" />
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-6">
