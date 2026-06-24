@@ -24,6 +24,7 @@ import { registerPushRoutes, ensurePushTable } from "./push-routes";
 import { registerJakeRoutes, ensureJakeSchema } from "./jake-routes";
 import { registerJakeVoiceRoutes } from "./jake-voice-route";
 import { registerTravisVoiceRoutes } from "./travis-voice-route";
+import { registerDavidPublicRoutes } from "./david-public-route";
 import { registerServiceAccountRoutes } from "./service-accounts-routes";
 import { registerExternalApiRoutes } from "./external-api-routes";
 import { registerQaAgentRoutes } from "./qa-agent-routes";
@@ -321,6 +322,7 @@ export async function registerRoutes(
   registerJakeRoutes(app, isAuthenticated);
   registerJakeVoiceRoutes(app, isAuthenticated);
   registerTravisVoiceRoutes(app, isAuthenticated);
+  registerDavidPublicRoutes(app);
   registerServiceAccountRoutes(app, isAuthenticated);
   registerExternalApiRoutes(app);
   registerQaAgentRoutes(app, isAuthenticated);
