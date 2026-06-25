@@ -436,17 +436,21 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
     setTimeout(() => startListening(), 50);
   }, [stopRidge, startListening]);
 
-  const sendReport = useCallback(async (content: string, msgIndex: number) => {
+  const sendReport = useCallback(async (focusContent: string, msgIndex: number) => {
     if (sendingReport.has(msgIndex) || reportSentFor.has(msgIndex)) return;
     setSendingReport((prev) => new Set(prev).add(msgIndex));
-    const firstSentence = content.split(/[.!?]/)[0]?.trim() || "RIDGE CFO Report";
-    const subject = `RIDGE Report: ${firstSentence.slice(0, 80)}`;
+    // Send the conversation through the clicked message so the server can
+    // generate the ACTUAL report from what was discussed — not just this one
+    // chat line (which may be a "I'll send that over" acknowledgment).
+    const convo = messages
+      .slice(0, msgIndex + 1)
+      .map((m) => ({ role: m.role, content: m.content }));
     try {
       const resp = await fetch("/api/ridge/send-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content, subject }),
+        body: JSON.stringify({ messages: convo, focusContent }),
       });
       if (resp.ok) setReportSentFor((prev) => new Set(prev).add(msgIndex));
     } catch {}
@@ -455,7 +459,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
       next.delete(msgIndex);
       return next;
     });
-  }, [sendingReport, reportSentFor]);
+  }, [sendingReport, reportSentFor, messages]);
 
   const streamRidge = useCallback(async (userText: string) => {
     const userMsg: Message = { role: "user", content: userText, timestamp: new Date() };
