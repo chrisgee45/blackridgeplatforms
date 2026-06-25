@@ -16,7 +16,41 @@ import type { Express } from "express";
 import { db } from "./db";
 import { contactSubmissions } from "@shared/schema";
 import { sql } from "drizzle-orm";
-import { getResendClient, buildEmailSignatureHtml, buildEmailSignatureText } from "./email";
+import { getResendClient } from "./email";
+
+const SIGNATURE_LOGO_URL = "https://www.blackridgeplatforms.com/blackridge-logo.png";
+const SIG_GOLD = "#bd8b22";
+
+/** David's own HTML email signature — distinct from Chris's. */
+function davidSignatureHtml(): string {
+  return `
+  <table cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;border-top:2px solid ${SIG_GOLD};padding-top:16px;font-family:Arial,Helvetica,sans-serif;">
+    <tr>
+      <td bgcolor="#0d0d0d" style="background-color:#0d0d0d;padding:14px 18px;vertical-align:middle;">
+        <img src="${SIGNATURE_LOGO_URL}" alt="BlackRidge Platforms" width="118" style="display:block;border:0;" />
+      </td>
+      <td style="width:20px;font-size:0;line-height:0;">&nbsp;</td>
+      <td style="vertical-align:middle;">
+        <div style="font-size:13px;color:#555555;">Sincerely,</div>
+        <div style="font-size:16px;font-weight:bold;color:#1a1a1a;margin-top:4px;">David</div>
+        <div style="font-size:12px;font-weight:bold;color:${SIG_GOLD};margin-top:3px;">Customer Service &nbsp;|&nbsp; BlackRidge Platforms</div>
+        <div style="font-size:12px;margin-top:9px;"><a href="https://blackridgeplatforms.com" style="color:${SIG_GOLD};text-decoration:none;">blackridgeplatforms.com</a></div>
+        <div style="font-size:10px;color:#9aa0a6;letter-spacing:1.5px;margin-top:10px;">WEBSITES &nbsp;&bull;&nbsp; PORTALS &nbsp;&bull;&nbsp; CRM &nbsp;&bull;&nbsp; AI SYSTEMS</div>
+      </td>
+    </tr>
+  </table>`;
+}
+
+/** Plain-text version of David's signature. */
+function davidSignatureText(): string {
+  return [
+    "Sincerely,",
+    "David",
+    "Customer Service | BlackRidge Platforms",
+    "blackridgeplatforms.com",
+    "WEBSITES • PORTALS • CRM • AI SYSTEMS",
+  ].join("\n");
+}
 
 const FRAME_AUDIO = 0x01;
 const FRAME_TEXT = 0x02;
@@ -25,7 +59,7 @@ const FRAME_DONE = 0x03;
 const DAVID_SYSTEM = `You are David, the concierge for BlackRidge Platforms. You're talking to a visitor on the public website, blackridgeplatforms.com, by voice. Treat every person you talk to as a potential client who's curious about what we do.
 
 Your two jobs:
-1. Answer questions about BlackRidge accurately — what we build, our stack, how we operate, our process, roughly what it costs.
+1. Answer questions about BlackRidge accurately — what we build, our stack, how we operate, and our process. (Pricing is Chris's department — see the pricing rule below.)
 2. When someone's interested in working with us, set up a call: collect their name, email, what they're looking for, and when's good for them, then log the appointment request.
 
 This is a VOICE conversation. Talk like a real, warm, sharp person. Short turns. React first, then answer. Quick questions get one-sentence answers; expand only when they want depth. No markdown, no bullet points, no asterisks, no em dashes. Use contractions. Never say "I hope this finds you well", "synergy", "leverage", or "value proposition".
@@ -78,8 +112,8 @@ Every site runs through a 50-plus item QA checklist covering accessibility, form
 TRACK RECORD (only state these exact figures — never inflate them)
 50-plus platforms delivered, a 99.9% uptime guarantee, and a 4.9 out of 5 client rating. If someone wants specific client names or case studies, don't invent any — offer to have Chris walk them through real examples on a call.
 
-PRICING (when they ask)
-Pricing depends on scope, but most projects land between $1,500 and $3,500 for the build, with an optional monthly retainer for hosting, maintenance, and ongoing changes after launch. If they want a firm number, tell them the honest answer is it depends on what they need, and the best next step is a quick call so we can scope it. Most clients make the build cost back on a customer or two.
+PRICING (when they ask) — IMPORTANT, READ CAREFULLY
+You do NOT quote prices, ranges, or ballpark figures. Ever. Every project is different and the cost depends entirely on what the business actually needs. When price comes up, acknowledge it's a fair question, then explain that Chris handles all pricing and proposals personally — he puts together a tailored quote once he understands the scope. Your move is to learn a little about what they're looking for and get them on Chris's calendar so he can give them real numbers and a proposal. Don't say "it depends" and leave it there; turn it into setting up the call. If they push hard for a number, stay warm but hold the line: "I don't want to throw out a number that's wrong for your project — that's exactly what Chris will nail down for you on a quick call."
 
 WHY US VS THE ALTERNATIVES
 - vs a DIY site builder (Wix/Squarespace/WordPress): those can't handle real business logic, custom portals, or integrated backends, and you never truly own them. We build exactly what your operation needs and hand you the code.
@@ -97,15 +131,18 @@ STAY IN YOUR LANE
 You're the knowledgeable front door. You can explain what we build, our stack, how we work, and ballpark pricing. You do NOT sign contracts, quote firm delivery dates, give legal or tax advice, or commit to anything binding — for anything firm, you set up a call with Chris. Never discuss how the company runs internally beyond what's in this brief, other clients' private details, or anything off-topic. If asked something inappropriate or unrelated, gently steer back to how BlackRidge can help them.
 
 BOOKING AN APPOINTMENT — this is the goal
-When the visitor wants to talk to someone, get a quote, see what we'd build for them, or "book a call", help them set it up. Collect, conversationally and without interrogating:
+When the visitor wants to talk to someone, get a quote or pricing, see what we'd build for them, or "book a call", help them set it up. Collect, conversationally and without interrogating:
 - their name
 - their email (read it back to confirm you got it right)
-- one line on what they're looking for or what business they run
+- the name of their business or company, if they have one
+- one line on what they're looking for
 - when's generally good for them (e.g. "weekday mornings", "next week", "this afternoon") — a rough preference is fine; Chris confirms the exact time
 
 Once you have at least a name and a valid email, log the request with this action:
 
-<david_action>{"type":"request_appointment","name":"<their name>","email":"<their email>","phone":"<optional>","preferred_time":"<rough preference>","topic":"<one line on what they want>"}</david_action>
+<david_action>{"type":"request_appointment","name":"<their name>","email":"<their email>","phone":"<optional>","company":"<their business name, optional>","preferred_time":"<rough preference>","topic":"<one line on what they want>"}</david_action>
+
+Logging this automatically adds them to the BlackRidge CRM and emails Chris, so always capture the request through this action rather than just telling them to email us.
 
 After it logs, tell them in plain English that you've got it and Chris will reach out to lock in a time. Don't promise an exact time yourself — we confirm by email. Only emit the action once you actually have their name and email; if you're missing one, ask for it first. Never read the action JSON or the angle-bracket tags out loud — those are stripped before you're heard.
 
@@ -134,6 +171,7 @@ type DavidAction = {
   name?: string;
   email?: string;
   phone?: string;
+  company?: string;
   preferred_time?: string;
   topic?: string;
 };
@@ -168,6 +206,7 @@ async function executeAppointment(action: DavidAction): Promise<ActionResult> {
   const name = (action.name ?? "").trim();
   const email = (action.email ?? "").trim().toLowerCase();
   const phone = (action.phone ?? "").trim();
+  const company = (action.company ?? "").trim();
   const preferred = (action.preferred_time ?? "").trim();
   const topic = (action.topic ?? "").trim();
 
@@ -183,6 +222,10 @@ async function executeAppointment(action: DavidAction): Promise<ActionResult> {
     phone ? `Phone: ${phone}` : null,
   ].filter(Boolean) as string[];
   const message = messageParts.join("\n");
+  const notesParts = [
+    preferred ? `Preferred time: ${preferred}` : null,
+    phone ? `Phone: ${phone}` : null,
+  ].filter(Boolean) as string[];
 
   let leadId: string;
   try {
@@ -191,11 +234,12 @@ async function executeAppointment(action: DavidAction): Promise<ActionResult> {
       .values({
         name,
         email,
+        company: company || null,
         message,
         status: "new",
         priority: "high",
         leadSource: "Website Assistant (David)",
-        notes: phone ? `Phone: ${phone}` : null,
+        notes: notesParts.length ? notesParts.join(" · ") : null,
       })
       .returning();
     leadId = lead.id;
@@ -222,8 +266,8 @@ async function executeAppointment(action: DavidAction): Promise<ActionResult> {
         from: resend.fromEmail,
         to: [email],
         subject: "Thanks for reaching out to BlackRidge Platforms",
-        html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">Hi ${escapeHtml(name)},<br/><br/>Thanks for reaching out. I've passed your request along to Chris and he'll get back to you to lock in a time that works.<br/><br/>${topic ? "You mentioned you're looking for: " + escapeHtml(topic) + "<br/><br/>" : ""}Talk soon.<br/><br/>Best,${buildEmailSignatureHtml()}</div>`,
-        text: `Hi ${name},\n\nThanks for reaching out. I've passed your request along to Chris and he'll get back to you to lock in a time that works.\n\n${topic ? "You mentioned you're looking for: " + topic + "\n\n" : ""}Talk soon.\n\nBest,\n\n${buildEmailSignatureText()}`,
+        html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;">Hi ${escapeHtml(name)},<br/><br/>Thanks for reaching out to BlackRidge Platforms. I've passed your request along to Chris and he'll get back to you personally to lock in a time that works — and to walk you through pricing and a proposal tailored to what you need.<br/><br/>${topic ? "You mentioned you're looking for: " + escapeHtml(topic) + "<br/><br/>" : ""}Talk soon.${davidSignatureHtml()}</div>`,
+        text: `Hi ${name},\n\nThanks for reaching out to BlackRidge Platforms. I've passed your request along to Chris and he'll get back to you personally to lock in a time that works — and to walk you through pricing and a proposal tailored to what you need.\n\n${topic ? "You mentioned you're looking for: " + topic + "\n\n" : ""}Talk soon.\n\n${davidSignatureText()}`,
       })
       .catch((e) => console.error("David visitor confirm failed:", e?.message));
   }
