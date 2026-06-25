@@ -291,6 +291,134 @@ const isAuthenticated: RequestHandler = (req, res, next) => {
   res.status(401).json({ message: "Unauthorized" });
 };
 
+// ---------------------------------------------------------------------------
+// RIDGE report generation.
+//
+// When Chris asks Ridge to email him a report on what they discussed, the
+// emailed PDF must contain the ACTUAL report — the figures, terms, and
+// substance of the conversation — not Ridge's conversational acknowledgment
+// ("sure, I'll send that over"). These helpers take the conversation and run
+// a dedicated generation pass that writes the real document, then build and
+// email the PDF.
+// ---------------------------------------------------------------------------
+
+const RIDGE_REPORT_SYSTEM = `You are Ridge, the CFO and CPA at BlackRidge Platforms, writing a formal financial document for Chris Gee, the founder and your only reader.
+
+Chris asked you to email him a written report or document about something the two of you just discussed (the conversation is below). WRITE THAT ACTUAL DOCUMENT IN FULL. What you write IS the deliverable — there is no separate attachment, so the document must stand on its own.
+
+Rules:
+- Produce the real report: the figures, dollar amounts, terms, deal structure, projections, recommendations, and next steps — whatever Chris asked for — laid out clearly and professionally with plain-text section headings.
+- NEVER write a cover note or acknowledgment. Do not write "I'll send that over", "here's the report", "as discussed, attached is...", "let me know if you need anything else", or anything that talks ABOUT the report instead of BEING the report. If your output reads like an email or a verbal reply, you've done it wrong.
+- Ground every number, name, date, percentage, and term in what was actually said in the conversation. Do not invent facts that were not discussed. If a needed detail never came up, write "[to confirm]" rather than guessing.
+- No markdown symbols (no #, *, backticks). Start directly with a clear title line for the document, then the body.
+- Be specific and thorough. Chris will rely on this document.`;
+
+async function generateRidgeReportContent(
+  conversation: { role: string; content: string }[],
+  anthropicKey: string,
+  focusHint?: string,
+): Promise<string> {
+  const convoMsgs = conversation
+    .filter((m) => m && typeof m.content === "string" && m.content.trim().length > 0)
+    .slice(-24)
+    .map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
+
+  const instruction = focusHint
+    ? `Write the complete document Chris asked for now — the actual report itself, not a cover note. Focus especially on: ${focusHint}`
+    : "Write the complete document Chris asked for now — the actual report itself, not a cover note.";
+
+  // The generation prompt needs to end on a user turn carrying the instruction.
+  if (convoMsgs.length > 0 && convoMsgs[convoMsgs.length - 1].role === "user") {
+    convoMsgs[convoMsgs.length - 1] = {
+      role: "user",
+      content: `${convoMsgs[convoMsgs.length - 1].content}\n\n[${instruction}]`,
+    };
+  } else {
+    convoMsgs.push({ role: "user", content: instruction });
+  }
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": anthropicKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2200,
+      system: RIDGE_REPORT_SYSTEM,
+      messages: convoMsgs,
+    }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`report generation failed: ${resp.status} ${errText.slice(0, 200)}`);
+  }
+  const data = (await resp.json()) as any;
+  const text = Array.isArray(data?.content)
+    ? data.content.map((b: any) => b?.text ?? "").join("").trim()
+    : "";
+  if (!text) throw new Error("report generation returned empty content");
+  return text;
+}
+
+function buildRidgePdf(reportContent: string): Promise<Buffer> {
+  const reportNow = new Date();
+  const dateStr = reportNow.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = reportNow.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ size: "letter", margin: 60 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc.rect(0, 0, doc.page.width, 70).fill("#0A0A0A");
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#C9A840").text("BLACKRIDGE PLATFORMS", 60, 22, { align: "left" });
+    doc.moveDown(1);
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#333333").text("RIDGE — CFO Report", 60, 90);
+    doc.font("Helvetica").fontSize(10).fillColor("#888888").text(`${dateStr} at ${timeStr}`, 60, 112);
+    doc.moveTo(60, 135).lineTo(doc.page.width - 60, 135).strokeColor("#E5E5E5").stroke();
+    doc.moveDown(2);
+    doc.font("Helvetica").fontSize(11).fillColor("#222222").text(reportContent, 60, 150, { width: doc.page.width - 120, lineGap: 5 });
+    const footerY = doc.page.height - 40;
+    doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor("#E5E5E5").stroke();
+    doc.font("Helvetica").fontSize(8).fillColor("#AAAAAA").text("BlackRidge Platforms | Confidential", 60, footerY, { align: "center", width: doc.page.width - 120 });
+    doc.end();
+  });
+}
+
+function deriveReportSubject(reportContent: string): string {
+  const firstLine = reportContent.split(/\n/).map((s) => s.trim()).find(Boolean) || "CFO Report";
+  return `RIDGE Report: ${firstLine.replace(/[#*`]/g, "").slice(0, 80)}`;
+}
+
+/**
+ * Generate the real report from the conversation, then build + email the PDF.
+ * Returns true if the email was sent. Throws on generation/PDF failure so the
+ * caller can log it.
+ */
+async function generateAndEmailRidgeReport(
+  conversation: { role: string; content: string }[],
+  anthropicKey: string,
+  opts: { focusHint?: string; subject?: string } = {},
+): Promise<boolean> {
+  const reportContent = await generateRidgeReportContent(conversation, anthropicKey, opts.focusHint);
+  const subject = opts.subject?.trim() || deriveReportSubject(reportContent);
+  const pdfBuffer = await buildRidgePdf(reportContent);
+  const resend = getResendClient();
+  if (!resend) return false;
+  await resend.client.emails.send({
+    from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",
+    to: "chris@blackridgeplatforms.com",
+    subject,
+    html: `<p style="font-family:Arial,sans-serif;color:#333;">Your RIDGE CFO report is attached.</p>`,
+    attachments: [{ filename: "RIDGE_CFO_Report.pdf", content: pdfBuffer.toString("base64") }],
+  });
+  return true;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1354,51 +1482,12 @@ ${snapshot}`;
 
       if (detectPdfTrigger(fullReply)) {
         try {
-          const reportContent = fullReply;
-          const firstSentence = reportContent.split(/[.!?]/)[0]?.trim() || "RIDGE CFO Report";
-          const subject = `RIDGE Report: ${firstSentence.slice(0, 80)}`;
-
-          const reportNow = new Date();
-          const dateStr = reportNow.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-          const timeStr = reportNow.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-
-          const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-            const doc = new PDFDocument({ size: "letter", margin: 60 });
-            const chunks: Buffer[] = [];
-            doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-            doc.on("end", () => resolve(Buffer.concat(chunks)));
-            doc.on("error", reject);
-            doc.rect(0, 0, doc.page.width, 70).fill("#0A0A0A");
-            doc.font("Helvetica-Bold").fontSize(18).fillColor("#C9A840")
-              .text("BLACKRIDGE PLATFORMS", 60, 22, { align: "left" });
-            doc.moveDown(1);
-            doc.font("Helvetica-Bold").fontSize(14).fillColor("#333333")
-              .text("RIDGE — CFO Report", 60, 90);
-            doc.font("Helvetica").fontSize(10).fillColor("#888888")
-              .text(`${dateStr} at ${timeStr}`, 60, 112);
-            doc.moveTo(60, 135).lineTo(doc.page.width - 60, 135).strokeColor("#E5E5E5").stroke();
-            doc.moveDown(2);
-            doc.font("Helvetica").fontSize(11).fillColor("#222222")
-              .text(reportContent, 60, 150, { width: doc.page.width - 120, lineGap: 5 });
-            const footerY = doc.page.height - 40;
-            doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor("#E5E5E5").stroke();
-            doc.font("Helvetica").fontSize(8).fillColor("#AAAAAA")
-              .text("BlackRidge Platforms | Confidential", 60, footerY, { align: "center", width: doc.page.width - 120 });
-            doc.end();
-          });
-
-          const resend = getResendClient();
-          if (resend) {
-            await resend.client.emails.send({
-              from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",
-              to: "chris@blackridgeplatforms.com",
-              subject: String(subject),
-              html: `<p style="font-family:Arial,sans-serif;color:#333;">Your RIDGE CFO report is attached.</p>`,
-              attachments: [{ filename: "RIDGE_CFO_Report.pdf", content: pdfBuffer.toString("base64") }],
-            });
-            console.log("RIDGE auto-sent report to chris@blackridgeplatforms.com");
-            reportSent = true;
-          }
+          // Generate the ACTUAL report from the conversation — not Ridge's
+          // verbal "I'll send that over" line, which is what tripped the
+          // trigger in the first place.
+          const convo = [...trimmed, { role: "assistant", content: fullReply }];
+          reportSent = await generateAndEmailRidgeReport(convo, process.env.ANTHROPIC_API_KEY!);
+          if (reportSent) console.log("RIDGE auto-sent report to chris@blackridgeplatforms.com");
         } catch (reportErr: any) {
           console.error("RIDGE auto-report send failed:", reportErr.message);
         }
@@ -1652,41 +1741,11 @@ ${snapshot}`;
       let reportSent = false;
       if (detectPdfTrigger(fullReply)) {
         try {
-          const firstSentence = fullReply.split(/[.!?]/)[0]?.trim() || "RIDGE CFO Report";
-          const subject = `RIDGE Report: ${firstSentence.slice(0, 80)}`;
-          const reportNow = new Date();
-          const dateStr = reportNow.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-          const timeStr = reportNow.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-          const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-            const doc = new PDFDocument({ size: "letter", margin: 60 });
-            const chunks: Buffer[] = [];
-            doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-            doc.on("end", () => resolve(Buffer.concat(chunks)));
-            doc.on("error", reject);
-            doc.rect(0, 0, doc.page.width, 70).fill("#0A0A0A");
-            doc.font("Helvetica-Bold").fontSize(18).fillColor("#C9A840").text("BLACKRIDGE PLATFORMS", 60, 22, { align: "left" });
-            doc.moveDown(1);
-            doc.font("Helvetica-Bold").fontSize(14).fillColor("#333333").text("RIDGE — CFO Report", 60, 90);
-            doc.font("Helvetica").fontSize(10).fillColor("#888888").text(`${dateStr} at ${timeStr}`, 60, 112);
-            doc.moveTo(60, 135).lineTo(doc.page.width - 60, 135).strokeColor("#E5E5E5").stroke();
-            doc.moveDown(2);
-            doc.font("Helvetica").fontSize(11).fillColor("#222222").text(fullReply, 60, 150, { width: doc.page.width - 120, lineGap: 5 });
-            const footerY = doc.page.height - 40;
-            doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor("#E5E5E5").stroke();
-            doc.font("Helvetica").fontSize(8).fillColor("#AAAAAA").text("BlackRidge Platforms | Confidential", 60, footerY, { align: "center", width: doc.page.width - 120 });
-            doc.end();
-          });
-          const resend = getResendClient();
-          if (resend) {
-            await resend.client.emails.send({
-              from: resend.fromEmail || "BlackRidge Platforms <onboarding@resend.dev>",
-              to: "chris@blackridgeplatforms.com",
-              subject: String(subject),
-              html: `<p style="font-family:Arial,sans-serif;color:#333;">Your RIDGE CFO report is attached.</p>`,
-              attachments: [{ filename: "RIDGE_CFO_Report.pdf", content: pdfBuffer.toString("base64") }],
-            });
-            reportSent = true;
-          }
+          // Generate the ACTUAL report from the conversation, not Ridge's
+          // spoken "sending that over" line.
+          const convo = [...trimmed, { role: "assistant", content: fullReply }];
+          reportSent = await generateAndEmailRidgeReport(convo, anthropicKey);
+          if (reportSent) console.log("RIDGE auto-sent report to chris@blackridgeplatforms.com");
         } catch (reportErr: any) {
           console.error("RIDGE stream auto-report failed:", reportErr.message);
         }
@@ -1706,9 +1765,37 @@ ${snapshot}`;
 
   app.post("/api/ridge/send-report", isAuthenticated, async (req, res) => {
     try {
-      const { content, subject } = req.body;
+      const { messages, content, subject, focusContent } = req.body;
+
+      // Preferred path: the client sends the conversation, and we generate
+      // the actual report from what was discussed — so the PDF contains the
+      // real deal/figures, not a chat acknowledgment like "I'll send that over."
+      if (Array.isArray(messages) && messages.length > 0) {
+        const anthropicKey = process.env.ANTHROPIC_API_KEY;
+        if (!anthropicKey) {
+          return res.status(500).json({ error: "AI not configured" });
+        }
+        const convo = messages
+          .filter((m: any) => m && typeof m.content === "string" && m.content.trim().length > 0)
+          .map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(0, 8000) }))
+          .slice(-24);
+        if (convo.length === 0) {
+          return res.status(400).json({ error: "No usable conversation content" });
+        }
+        const sent = await generateAndEmailRidgeReport(convo, anthropicKey, {
+          focusHint: typeof focusContent === "string" && focusContent.trim() ? focusContent.slice(0, 2000) : undefined,
+          subject: typeof subject === "string" && subject.trim() ? subject.slice(0, 200) : undefined,
+        });
+        if (!sent) {
+          return res.status(500).json({ error: "Email service not configured" });
+        }
+        console.log("RIDGE report (generated from conversation) sent to chris@blackridgeplatforms.com");
+        return res.json({ success: true });
+      }
+
+      // Legacy path: caller supplied finished report content directly.
       if (!content || typeof content !== "string" || !subject || typeof subject !== "string") {
-        return res.status(400).json({ error: "content and subject are required" });
+        return res.status(400).json({ error: "messages, or content and subject, are required" });
       }
       if (content.length > 20000) {
         return res.status(400).json({ error: "Content too long (max 20,000 characters)" });
@@ -1717,43 +1804,7 @@ ${snapshot}`;
         return res.status(400).json({ error: "Subject too long (max 200 characters)" });
       }
 
-      const now = new Date();
-      const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-
-      const pdfBuffer = await new Promise<Buffer>((resolve, reject) => {
-        const doc = new PDFDocument({ size: "letter", margin: 60 });
-        const chunks: Buffer[] = [];
-        doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-        doc.on("end", () => resolve(Buffer.concat(chunks)));
-        doc.on("error", reject);
-
-        doc.rect(0, 0, doc.page.width, 70).fill("#0A0A0A");
-        doc.font("Helvetica-Bold").fontSize(18).fillColor("#C9A840")
-          .text("BLACKRIDGE PLATFORMS", 60, 22, { align: "left" });
-
-        doc.moveDown(1);
-        doc.font("Helvetica-Bold").fontSize(14).fillColor("#333333")
-          .text("RIDGE — CFO Report", 60, 90);
-        doc.font("Helvetica").fontSize(10).fillColor("#888888")
-          .text(`${dateStr} at ${timeStr}`, 60, 112);
-
-        doc.moveTo(60, 135).lineTo(doc.page.width - 60, 135).strokeColor("#E5E5E5").stroke();
-
-        doc.moveDown(2);
-        doc.font("Helvetica").fontSize(11).fillColor("#222222")
-          .text(content, 60, 150, {
-            width: doc.page.width - 120,
-            lineGap: 5,
-          });
-
-        const footerY = doc.page.height - 40;
-        doc.moveTo(60, footerY - 10).lineTo(doc.page.width - 60, footerY - 10).strokeColor("#E5E5E5").stroke();
-        doc.font("Helvetica").fontSize(8).fillColor("#AAAAAA")
-          .text("BlackRidge Platforms | Confidential", 60, footerY, { align: "center", width: doc.page.width - 120 });
-
-        doc.end();
-      });
+      const pdfBuffer = await buildRidgePdf(content);
 
       const resend = getResendClient();
       if (!resend) {
