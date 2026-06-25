@@ -509,8 +509,7 @@ export default function JakeWidget() {
             zIndex: 10000,
             animation: "jake-fade 0.18s ease-out",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            overflowY: "auto",
           }}
           data-testid="jake-widget-fullscreen"
         >
@@ -518,7 +517,7 @@ export default function JakeWidget() {
             onClick={() => { stop(); setOpen(false); }}
             aria-label="Close Jake"
             style={{
-              position: "absolute", top: 20, right: 24,
+              position: "fixed", zIndex: 10001, top: 20, right: 24,
               width: 40, height: 40, borderRadius: "50%",
               border: "1px solid rgba(120,145,200,0.4)",
               background: "rgba(15,23,42,0.6)",
@@ -530,7 +529,7 @@ export default function JakeWidget() {
             ×
           </button>
 
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, padding: 24, maxWidth: 640, width: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, padding: "64px 24px 32px", maxWidth: 640, width: "100%", margin: "auto" }}>
             {/* Avatar — large */}
             <div style={{ position: "relative", width: fullSize, height: fullSize }}>
               {status === "speaking" && (
