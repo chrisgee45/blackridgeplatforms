@@ -467,8 +467,7 @@ export default function DavidWidget() {
             zIndex: 10000,
             animation: "david-fade-up 0.18s ease-out",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            overflowY: "auto",
           }}
           data-testid="david-widget-fullscreen"
         >
@@ -476,7 +475,8 @@ export default function DavidWidget() {
             onClick={() => { stop(); setOpen(false); }}
             aria-label="Close David"
             style={{
-              position: "absolute",
+              position: "fixed",
+              zIndex: 10001,
               top: 20,
               right: 24,
               width: 40,
@@ -495,7 +495,7 @@ export default function DavidWidget() {
             ×
           </button>
 
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 22, padding: 24, maxWidth: 640, width: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 22, padding: "64px 24px 32px", maxWidth: 640, width: "100%", margin: "auto" }}>
             {/* Avatar */}
             <div style={{ position: "relative", width: fullSize, height: fullSize }}>
               {status === "speaking" && (

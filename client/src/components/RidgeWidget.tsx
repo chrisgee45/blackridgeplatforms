@@ -890,8 +890,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             zIndex: 10000,
             animation: "ridge-fade-in 0.25s ease-out",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            overflowY: "auto",
           }}
           data-testid="ridge-fullscreen"
         >
@@ -899,7 +898,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             onClick={() => { setIsOpen(false); setViewMode("face"); }}
             aria-label="Close Ridge"
             style={{
-              position: "absolute", top: 20, right: 24,
+              position: "fixed", zIndex: 10001, top: 20, right: 24,
               width: 40, height: 40, borderRadius: "50%",
               border: "1px solid rgba(201,168,64,0.5)",
               background: "rgba(10,10,10,0.7)",
@@ -910,7 +909,7 @@ export default function RidgeWidget({ autoGreet = false }: { autoGreet?: boolean
             ×
           </button>
 
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, padding: 24, maxWidth: 640, width: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, padding: "64px 24px 32px", maxWidth: 640, width: "100%", margin: "auto" }}>
             <div
               style={{
                 width: Math.min(Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.62), 480),
