@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { ProposalLibrary, SendUploadedProposalDialog } from "@/components/ProposalLibrary";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -157,7 +158,7 @@ const STATUS_VARIANTS: Record<string, string> = {
   needs_review: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
 };
 
-type ViewTab = "drafts" | "leads" | "conversations" | "agent-report" | "agent-chat";
+type ViewTab = "drafts" | "leads" | "conversations" | "agent-report" | "agent-chat" | "proposals";
 
 export default function OutreachPage() {
   const { toast } = useToast();
@@ -399,6 +400,14 @@ export default function OutreachPage() {
             >
               <MessageSquare className="w-4 h-4 mr-1.5" /> Agent Chat
             </Button>
+            <Button
+              variant="ghost"
+              className={`rounded-none toggle-elevate ${activeView === "proposals" ? "toggle-elevated" : ""}`}
+              onClick={() => setActiveView("proposals")}
+              data-testid="button-view-proposals"
+            >
+              <FileText className="w-4 h-4 mr-1.5" /> Proposals
+            </Button>
           </div>
           {activeView === "drafts" && null}
           {activeView === "leads" && (
@@ -430,6 +439,18 @@ export default function OutreachPage() {
         <AgentReportView />
       ) : activeView === "agent-chat" ? (
         <AgentChatView />
+      ) : activeView === "proposals" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Proposal Library</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Upload finished proposals once, then send them to any lead. Ask the AI agent in chat (e.g. "send the website proposal to [business]") and it will email it as an attachment.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ProposalLibrary />
+          </CardContent>
+        </Card>
       ) : activeView === "conversations" ? (
         <ConversationsInboxView onOpenLead={(id) => { setSelectedLeadId(id); setActiveView("leads"); }} />
       ) : (
@@ -2076,6 +2097,7 @@ function LeadDetailDrawer({ leadId, detail, loading, onClose }: {
   const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, string>>({});
+  const [sendProposalOpen, setSendProposalOpen] = useState(false);
 
   const startEditing = () => {
     if (!detail?.lead) return;
@@ -2632,6 +2654,14 @@ function LeadDetailDrawer({ leadId, detail, loading, onClose }: {
                 </>
               )}
 
+              <Button
+                variant="outline"
+                onClick={() => setSendProposalOpen(true)}
+                data-testid="button-send-proposal"
+              >
+                <FileText className="w-4 h-4 mr-1" /> Send Proposal
+              </Button>
+
               {!lead.crmLeadId ? (
                 <Button
                   variant="outline"
@@ -2671,6 +2701,15 @@ function LeadDetailDrawer({ leadId, detail, loading, onClose }: {
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
+
+            <SendUploadedProposalDialog
+              open={sendProposalOpen}
+              onOpenChange={setSendProposalOpen}
+              leadType="outreach"
+              leadId={lead.id}
+              leadLabel={lead.businessName}
+              leadEmail={lead.email}
+            />
           </div>
         )}
       </DialogContent>

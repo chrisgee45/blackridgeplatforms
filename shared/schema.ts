@@ -996,6 +996,30 @@ export const insertProposalSchema = createInsertSchema(proposals).omit({
 export type InsertProposal = z.infer<typeof insertProposalSchema>;
 export type Proposal = typeof proposals.$inferSelect;
 
+// === Proposal Assets (reusable uploaded proposals) ===
+// Pre-made proposal files (PDF/DOCX/etc.) the user uploads once and the
+// AI/agent can attach and send to any lead (CRM or outreach) on request.
+
+export const proposalAssets = pgTable("proposal_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  storageKey: text("storage_key").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type"),
+  fileSize: integer("file_size"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertProposalAssetSchema = createInsertSchema(proposalAssets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertProposalAsset = z.infer<typeof insertProposalAssetSchema>;
+export type ProposalAsset = typeof proposalAssets.$inferSelect;
+
 // === Web Push Subscriptions ===
 
 export const pushSubscriptions = pgTable("push_subscriptions", {

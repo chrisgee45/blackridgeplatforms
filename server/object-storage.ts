@@ -104,6 +104,7 @@ interface StorageFile {
   exists(): Promise<[boolean]>;
   getMetadata(): Promise<[{ contentType?: string; size: number }]>;
   download(res: Response, cacheTtlSec?: number): Promise<void>;
+  readBuffer(): Promise<Buffer>;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +153,10 @@ class LocalFile implements StorageFile {
       /* no sidecar — best-effort */
     }
     return [{ contentType, size: stat.size }];
+  }
+
+  async readBuffer(): Promise<Buffer> {
+    return fs.readFile(this.fsPath);
   }
 
   async download(res: Response, cacheTtlSec = 3600): Promise<void> {
@@ -225,6 +230,17 @@ class S3File implements StorageFile {
   async getMetadata(): Promise<[{ contentType?: string; size: number }]> {
     const head = await getS3().send(new HeadObjectCommand({ Bucket: S3_DOC_BUCKET, Key: this.key }));
     return [{ contentType: head.ContentType, size: head.ContentLength ?? 0 }];
+  }
+
+  async readBuffer(): Promise<Buffer> {
+    const result = await getS3().send(new GetObjectCommand({ Bucket: S3_DOC_BUCKET, Key: this.key }));
+    const body = result.Body as Readable | undefined;
+    if (!body) throw new ObjectNotFoundError();
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
   }
 
   async download(res: Response, cacheTtlSec = 3600): Promise<void> {
@@ -360,6 +376,17 @@ export class ObjectStorageService {
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     return file;
+  }
+
+  /**
+   * Read a stored object fully into memory. Used when the bytes need to
+   * travel somewhere other than an HTTP response — e.g. attaching an
+   * uploaded proposal file to an outgoing email. Throws
+   * ObjectNotFoundError if the object is absent.
+   */
+  async readObjectBuffer(requestPath: string): Promise<Buffer> {
+    const file = await this.getObjectEntityFile(requestPath);
+    return file.readBuffer();
   }
 
   async downloadObject(file: StorageFile, res: Response, cacheTtlSec = 3600) {
