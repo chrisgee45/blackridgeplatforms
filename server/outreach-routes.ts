@@ -1,9 +1,10 @@
 import type { Express, RequestHandler } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { outreachStorage } from "./outreach-storage";
-import { insertOutreachLeadSchema, emailEvents } from "@shared/schema";
+import { insertOutreachLeadSchema, emailEvents, proposalAssets } from "@shared/schema";
 import { db } from "./db";
-import { desc, sql } from "drizzle-orm";
+import { desc, sql, eq } from "drizzle-orm";
+import { sendProposalAssetEmail } from "./proposal-asset-routes";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { seedCampaignA } from "./outreach-seed";
@@ -1417,6 +1418,11 @@ ${convos.map((c: any) => `  [${c.direction}] ${new Date(c.createdAt).toLocaleDat
 
       const insightsSummary = insights.slice(0, 5).map((i: any) => `- [${i.type}] ${i.insight}`).join("\n");
 
+      const proposalLibrary = await db.select().from(proposalAssets).orderBy(desc(proposalAssets.createdAt));
+      const proposalLibrarySummary = proposalLibrary.length
+        ? proposalLibrary.map((p) => `- ID: ${p.id} | "${p.name}" (${p.fileName})${p.description ? ` — ${p.description}` : ""}`).join("\n")
+        : "No uploaded proposals in the library yet.";
+
       const contextBlock = `CURRENT SYSTEM STATE:
 Total leads: ${leadsSummary.total}
 Lead statuses: ${JSON.stringify(leadsSummary.byStatus)}
@@ -1434,7 +1440,10 @@ RECENT INSIGHTS:
 ${insightsSummary || "No insights yet."}
 
 RECENT CONVERSATIONS:
-${recentConvoSummary || "No conversations yet."}`;
+${recentConvoSummary || "No conversations yet."}
+
+PROPOSAL LIBRARY (pre-made proposal files Chris uploaded, ready to send as email attachments):
+${proposalLibrarySummary}`;
 
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -1471,6 +1480,22 @@ EMAIL_ACTION_END
 After the EMAIL_ACTION block, add a brief chat confirmation like "Done — just sent that to your inbox." or similar.
 
 IMPORTANT: Only use EMAIL_ACTION when Chris explicitly asks you to email/send something. For normal chat responses, just reply normally without EMAIL_ACTION tags.
+
+SEND PROPOSAL CAPABILITY:
+Chris can pre-upload finished proposal files (PDFs, etc.) into the PROPOSAL LIBRARY shown below. When Chris asks you to send one of those proposals to a specific lead (e.g. "send the website proposal to Acme Dental", "email Acme our standard proposal"), you MUST format your response using this EXACT structure:
+
+SEND_PROPOSAL_START
+PROPOSAL_ID: [the exact ID from the PROPOSAL LIBRARY]
+LEAD_ID: [the exact lead ID from the leads data]
+MESSAGE:
+[An optional short, friendly cover note for the email body. Leave blank to use the default note.]
+SEND_PROPOSAL_END
+
+Rules for SEND_PROPOSAL:
+- Only use it when Chris clearly asks to send a specific uploaded proposal to a specific lead.
+- The lead must have an email address. If you cannot find the lead's ID or email, do NOT use the action — instead tell Chris what's missing.
+- If the PROPOSAL LIBRARY is empty or no proposal matches what Chris described, do NOT guess. Tell him to upload it first (Outreach > Proposals).
+- After the SEND_PROPOSAL block, add a brief chat confirmation.
 
 WHAT YOU CANNOT DO (be honest about these):
 - You cannot directly modify lead data or trigger campaign actions in this chat — those changes need to be made through the leads interface
@@ -1525,6 +1550,45 @@ ${contextBlock}`;
           }
         } else {
           reply = `Here's what I drafted for you:\n\nSubject: ${emailSubject}\n\n${emailBody}\n\n---\n${chatText || ""}\n\n(Email delivery is not available right now — you can copy the above content.)`.trim();
+        }
+      }
+
+      const proposalMatch = reply.match(/SEND_PROPOSAL_START\s*\n\s*PROPOSAL_ID:\s*(.+?)\n\s*LEAD_ID:\s*(.+?)\n\s*(?:MESSAGE:\s*\n?([\s\S]*?))?\s*SEND_PROPOSAL_END/);
+      if (proposalMatch) {
+        const proposalId = proposalMatch[1].trim();
+        const targetLeadId = proposalMatch[2].trim();
+        const coverNote = (proposalMatch[3] || "").trim();
+        const chatText = reply.replace(/SEND_PROPOSAL_START[\s\S]*?SEND_PROPOSAL_END\s*/, "").trim();
+
+        try {
+          const [asset] = await db.select().from(proposalAssets).where(eq(proposalAssets.id, proposalId)).limit(1);
+          const lead = await outreachStorage.getLead(targetLeadId);
+          if (!asset) {
+            reply = `I couldn't find that proposal in the library. Upload it under Outreach > Proposals first, then ask me again.${chatText ? "\n\n" + chatText : ""}`;
+          } else if (!lead) {
+            reply = `I couldn't match that to a lead in the database, so I didn't send anything.${chatText ? "\n\n" + chatText : ""}`;
+          } else if (!lead.email) {
+            reply = `${lead.businessName} doesn't have an email address on file, so I couldn't send the proposal. Add one and I'll send it right over.${chatText ? "\n\n" + chatText : ""}`;
+          } else {
+            const result = await sendProposalAssetEmail(asset, {
+              toEmail: lead.email,
+              toName: lead.contactName || lead.businessName,
+              subject: asset.name,
+              message: coverNote || undefined,
+            });
+            await outreachStorage.createConversation({
+              leadId: lead.id,
+              direction: "outbound",
+              subject: asset.name,
+              body: `Sent proposal "${asset.name}" (${asset.fileName}) as an attachment.`,
+              aiGenerated: true,
+              resendMessageId: result.resendMessageId,
+            });
+            reply = chatText || `Done — I sent "${asset.name}" to ${lead.businessName} at ${lead.email}.`;
+          }
+        } catch (err: any) {
+          console.error("Agent send-proposal failed:", err);
+          reply = `I tried to send that proposal but hit an error: ${err?.message || "unknown error"}.${chatText ? "\n\n" + chatText : ""}`;
         }
       }
 

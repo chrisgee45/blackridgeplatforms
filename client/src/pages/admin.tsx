@@ -5,6 +5,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/auth-utils";
 import { MfaSettingsDialog } from "@/components/MfaSettings";
+import { ProposalLibrary, SendUploadedProposalDialog } from "@/components/ProposalLibrary";
 import CrmCalendar from "@/components/crm/crm-calendar";
 import { Calendar as OpsCalendar } from "@/pages/ops/calendar-page";
 import { format } from "date-fns";
@@ -56,6 +57,7 @@ import {
   Megaphone,
   FileText,
   Plus,
+  Upload,
   Download,
   AlertTriangle,
   Clock,
@@ -1378,6 +1380,7 @@ function LeadProposalsSection({ lead }: { lead: ContactSubmission }) {
   const { toast } = useToast();
   const [selected, setSelected] = useState<Proposal | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [sendUploadOpen, setSendUploadOpen] = useState(false);
 
   const { data: proposals = [], isLoading } = useQuery<Proposal[]>({
     queryKey: ["/api/leads", lead.id, "proposals"],
@@ -1415,18 +1418,29 @@ function LeadProposalsSection({ lead }: { lead: ContactSubmission }) {
           <FileText className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-semibold">Proposals</span>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => generateMutation.mutate()}
-          disabled={generateMutation.isPending}
-          data-testid="button-generate-proposal"
-        >
-          {generateMutation.isPending
-            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            : <Sparkles className="h-4 w-4 mr-1" />}
-          {generateMutation.isPending ? "Writing..." : "Generate with AI"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSendUploadOpen(true)}
+            data-testid="button-send-uploaded-proposal"
+          >
+            <Upload className="h-4 w-4 mr-1" />
+            Send Uploaded
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending}
+            data-testid="button-generate-proposal"
+          >
+            {generateMutation.isPending
+              ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              : <Sparkles className="h-4 w-4 mr-1" />}
+            {generateMutation.isPending ? "Writing..." : "Generate with AI"}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -1473,6 +1487,15 @@ function LeadProposalsSection({ lead }: { lead: ContactSubmission }) {
           lead={lead}
         />
       )}
+
+      <SendUploadedProposalDialog
+        open={sendUploadOpen}
+        onOpenChange={setSendUploadOpen}
+        leadType="crm"
+        leadId={lead.id}
+        leadLabel={lead.name}
+        leadEmail={lead.email}
+      />
     </div>
   );
 }
@@ -1908,7 +1931,7 @@ export default function AdminPortal() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [mfaOpen, setMfaOpen] = useState(false);
-  const [view, setView] = useState<"leads" | "calendar">("leads");
+  const [view, setView] = useState<"leads" | "calendar" | "proposals">("leads");
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery<ContactSubmission[]>({
     queryKey: ["/api/leads"],
@@ -2028,6 +2051,13 @@ export default function AdminPortal() {
               >
                 <CalendarDays className="h-3.5 w-3.5" /> Calendar
               </button>
+              <button
+                onClick={() => setView("proposals")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${view === "proposals" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                data-testid="button-view-proposals"
+              >
+                <FileText className="h-3.5 w-3.5" /> Proposals
+              </button>
             </div>
           </div>
 
@@ -2077,6 +2107,9 @@ export default function AdminPortal() {
                 <DropdownMenuItem onClick={() => setView("calendar")} data-testid="menu-view-calendar">
                   <CalendarDays className="h-4 w-4 mr-2" /> Calendar
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setView("proposals")} data-testid="menu-view-proposals">
+                  <FileText className="h-4 w-4 mr-2" /> Proposals
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setAddLeadOpen(true)} data-testid="menu-add-lead">
                   <Plus className="h-4 w-4 mr-2" /> Add Lead
                 </DropdownMenuItem>
@@ -2101,6 +2134,18 @@ export default function AdminPortal() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {view === "calendar" ? (
           <CrmCalendar leads={leads} />
+        ) : view === "proposals" ? (
+          <>
+            <div className="mb-6">
+              <h1 className="text-2xl font-bold mb-1" data-testid="text-proposals-title">Proposal Library</h1>
+              <p className="text-muted-foreground text-sm">
+                Upload finished proposals once, then send them to any lead. Your AI agent can send these on request too.
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-card/30 p-4 sm:p-6 max-w-3xl">
+              <ProposalLibrary />
+            </div>
+          </>
         ) : (
         <>
         <div className="mb-8">

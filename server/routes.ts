@@ -20,6 +20,7 @@ import { bookkeepingStorage } from "./bookkeeping-storage";
 import { registerCrmCalendarRoutes, ensureCrmSchema, startEventReminderRunner } from "./crm-calendar";
 import { registerBookingRoutes } from "./booking-routes";
 import { registerProposalRoutes } from "./proposal-routes";
+import { registerProposalAssetRoutes } from "./proposal-asset-routes";
 import { registerPushRoutes, ensurePushTable } from "./push-routes";
 import { registerJakeRoutes, ensureJakeSchema } from "./jake-routes";
 import { registerJakeVoiceRoutes } from "./jake-voice-route";
@@ -318,6 +319,7 @@ export async function registerRoutes(
   registerCrmCalendarRoutes(app, isAuthenticated);
   registerBookingRoutes(app);
   registerProposalRoutes(app, isAuthenticated);
+  registerProposalAssetRoutes(app, isAuthenticated);
   registerPushRoutes(app, isAuthenticated);
   registerJakeRoutes(app, isAuthenticated);
   registerJakeVoiceRoutes(app, isAuthenticated);
