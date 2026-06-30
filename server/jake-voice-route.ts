@@ -50,6 +50,9 @@ Add a task to a project. Use the project_id from the LIVE STATE block, never inv
 <jake_action>{"type":"note_for_chris","reason":"<one-sentence FYI>"}</jake_action>
 Fire a push notification to Chris. Use this when he wants you to remind him about something or flag something later. Safe to fire immediately.
 
+<jake_action>{"type":"email_report","project_id":"<id or omit>","intent":"<what Chris wants the report to cover, in his words>"}</jake_action>
+Build a PDF report and email it to Chris's own inbox. This is INTERNAL — it always goes to Chris, never to a client — so it is SAFE to fire immediately the moment Chris asks for a report. Use it whenever Chris says things like "send me a report on X", "email me what so-and-so asked for", "PDF me everything HeatWave wants done", "put together a report and send it to me". Set project_id from the LIVE STATE block when the report is about one specific client or project (Jake will pull that client's messages, requests, and open tasks). OMIT project_id for a book-wide activity report across every client. Always put what Chris wants covered in "intent". After firing it, just say you're sending it to his inbox.
+
 <jake_action>{"type":"email_client","project_id":"<id>","intent":"<what Chris wants the client to know, in his words>"}</jake_action>
 Send an email to the client linked to that project.
 
@@ -222,6 +225,7 @@ type JakeAction =
   | { type: "email_client"; project_id?: string; intent?: string }
   | { type: "share_progress"; project_id?: string; intent?: string }
   | { type: "send_documents"; project_id?: string; document_ids?: string[]; intent?: string }
+  | { type: "email_report"; project_id?: string; intent?: string }
   | { type: "note_for_chris"; reason?: string };
 
 interface ActionResult {
@@ -495,6 +499,22 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
         classification: "DOCUMENTS_SEND",
       });
       return { type: action.type, ok: true, message: `Sent ${attachments.length} document${attachments.length === 1 ? "" : "s"} (${fileList}) to ${contactName ?? contactEmail}` };
+    }
+
+    if (action.type === "email_report") {
+      // Internal report to Chris himself — never goes to a client, so it is
+      // not gated by the client-email confirmation rule. If a project_id is
+      // given, validate it; otherwise build a book-wide report.
+      if (action.project_id) {
+        const [proj] = await db.select().from(projects).where(eq(projects.id, action.project_id));
+        if (!proj) return { type: action.type, ok: false, message: "project not found" };
+      }
+      const { buildAndEmailJakeReport } = await import("./jake-report");
+      const result = await buildAndEmailJakeReport({
+        projectId: action.project_id ?? null,
+        intent: action.intent ?? null,
+      });
+      return { type: action.type, ok: result.ok, message: result.message };
     }
 
     if (action.type === "note_for_chris") {
