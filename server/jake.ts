@@ -81,8 +81,8 @@ C) HANDOFF — set handoff true, leave reply empty. ONLY use this when you genui
 
 Default behavior: pick (B) — REPLY + NOTIFY CHRIS — whenever the client is asking Chris to do something. Reserve (C) handoff for the short list above. Most messages will be (A) or (B), few will be (C).
 
-LOGGING WORK THE CLIENT ASKS FOR
-Whenever the client asks for something concrete to be done (add/change content, add a feature, fix something, send something over, schedule something), set createTask true and write a short taskTitle describing the work from Chris's side. This drops a task onto the project board so nothing the client requests gets lost. Set taskPriority to "urgent" only for genuinely time-sensitive asks, otherwise "high" for explicit requests and "medium" for nice-to-haves. Do NOT create a task for pure status questions, thank-yous, or small talk. When you create a task you should almost always also set notifyChris so he gets the heads-up.
+FLAGGING WORK THE CLIENT ASKS FOR
+Whenever the client asks for something concrete to be done (add/change content, add a feature, fix something, send something over, schedule something), set notifyChris true and write notifyReason as a short, action-oriented summary Chris can approve at a glance (e.g. "Wants a contact form on the homepage", "Asking to swap the hero photo for the new gym shot"). You do NOT create tasks yourself. Chris reviews the request and decides whether to put it on the board, so just acknowledge it to the client and flag it for him. Do NOT notify for pure status questions, thank-yous, or small talk.
 
 CRITICAL RULES
 - Read the client's MOST RECENT message carefully and respond to what they actually said. Never send a generic "checking in" or follow-up unless the client explicitly asked for a status check.
@@ -751,19 +751,6 @@ If the client requests visual progress AND screenshots are available, set attach
             type: "boolean",
             description: "True ONLY for complaints, frustration, renegotiation of brief terms, messages Jake can't read, or topics he genuinely doesn't know. When true, leave reply empty.",
           },
-          createTask: {
-            type: "boolean",
-            description: "True when the client asked for something concrete to be done. Logs a task on this project so the request isn't lost. Skip for status questions, thank-yous, or small talk.",
-          },
-          taskTitle: {
-            type: "string",
-            description: "Required when createTask is true. Short, action-oriented title written from Chris's side (e.g. 'Add a contact form to the homepage', 'Swap the hero photo for the new gym shot').",
-          },
-          taskPriority: {
-            type: "string",
-            enum: ["low", "medium", "high", "urgent"],
-            description: "Priority for the created task. 'urgent' only for time-sensitive asks, 'high' for explicit requests, 'medium' for nice-to-haves.",
-          },
           handoffReason: {
             type: "string",
             description: "Required when handoff is true. One sentence explaining what Chris needs to address.",
@@ -801,9 +788,6 @@ If the client requests visual progress AND screenshots are available, set attach
     notifyReason?: string;
     attachProgress?: boolean;
     attachProgressIds?: string[];
-    createTask?: boolean;
-    taskTitle?: string;
-    taskPriority?: string;
   };
   if (toolBlock && typeof toolBlock.input === "object") {
     parsed = {
@@ -817,9 +801,6 @@ If the client requests visual progress AND screenshots are available, set attach
       attachProgressIds: Array.isArray(toolBlock.input.attachProgressIds)
         ? toolBlock.input.attachProgressIds.filter((id: unknown) => typeof id === "string") as string[]
         : undefined,
-      createTask: !!toolBlock.input.createTask,
-      taskTitle: typeof toolBlock.input.taskTitle === "string" ? toolBlock.input.taskTitle : undefined,
-      taskPriority: typeof toolBlock.input.taskPriority === "string" ? toolBlock.input.taskPriority : undefined,
     };
   } else {
     // Refusal or malformed tool use — fall back to a handoff so we never
@@ -931,29 +912,10 @@ If the client requests visual progress AND screenshots are available, set attach
 
   console.log(`Jake replied to ${ctx.contactEmail} re: ${ctx.project.name}`);
 
-  // Log a task on the project when the client asked for concrete work, so
-  // the request lands on the board instead of living only in the thread.
-  if (parsed.createTask && parsed.taskTitle?.trim()) {
-    const priority = ["low", "medium", "high", "urgent"].includes((parsed.taskPriority ?? "").toLowerCase())
-      ? (parsed.taskPriority as string).toLowerCase()
-      : "high";
-    try {
-      await db.insert(tasks).values({
-        projectId,
-        title: parsed.taskTitle.trim().slice(0, 200),
-        description: `Requested by ${ctx.contactName ?? ctx.clientName ?? "the client"} via Jake.`,
-        status: "todo",
-        priority,
-        assignedTo: "Chris",
-      });
-      console.log(`Jake logged task "${parsed.taskTitle.trim()}" on ${ctx.project.name}`);
-    } catch (err: any) {
-      console.error("Jake task creation failed:", err?.message);
-    }
-  }
-
-  // FYI push — client asked for something Chris needs to do. Jake already
-  // sent the reply; this just makes sure Chris doesn't have to hunt for it.
+  // Client asked for something Chris needs to act on. Jake never creates a
+  // task himself — he flags it here so Chris can review the request and
+  // decide whether it goes on the board (he can then tell Jake to add it,
+  // or add it from the OPS portal).
   if (parsed.notifyChris) {
     await notifyChris(
       projectId,
