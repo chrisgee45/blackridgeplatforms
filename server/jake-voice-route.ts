@@ -12,7 +12,7 @@
  */
 import type { Express, RequestHandler } from "express";
 import { db } from "./db";
-import { projects, projectConversations, clients, contacts, companies, tasks } from "@shared/schema";
+import { projects, projectConversations, clients, contacts, companies, tasks, crmEvents } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { isPushConfigured, sendPushToAll } from "./push";
 import { stripDashes } from "./text-utils";
@@ -38,7 +38,7 @@ Voice rules:
 - Stay on the BlackRidge side of the line. You handle client comms, project status, conversation context. Money / accounting / tax questions belong to Ridge (the other AI on this portal).
 
 EXECUTING ACTIONS — important
-When Chris asks you to actually do something — add a task to a project, set a reminder — you DO it in this turn. Emails to clients are different and follow a strict two-step rule below.
+When Chris asks you to actually do something — add a task to a project, put something on the calendar, set a reminder, send him a report — you DO it in this turn. These all act on Chris's own workspace, so they are safe to fire immediately. Emails to CLIENTS are the exception and follow a strict two-step rule below.
 
 To execute an action, wrap a single JSON object in <jake_action></jake_action> tags. After emitting an action, briefly confirm in plain English what you did so the spoken response sounds natural.
 
@@ -48,7 +48,10 @@ Available actions:
 Add a task to a project. Use the project_id from the LIVE STATE block, never invent one. Priority is one of: low / medium / high / urgent. Safe to fire immediately when Chris asks for a task.
 
 <jake_action>{"type":"note_for_chris","reason":"<one-sentence FYI>"}</jake_action>
-Fire a push notification to Chris. Use this when he wants you to remind him about something or flag something later. Safe to fire immediately.
+Fire a push notification to Chris RIGHT NOW. Use this for an immediate flag ("remind me about this", "flag that"). For anything tied to a future date or time, use add_calendar_event instead so it lands on the calendar and reminds him then.
+
+<jake_action>{"type":"add_calendar_event","title":"<short title>","start_at":"<ISO 8601 datetime>","end_at":"<ISO 8601 or omit>","event_type":"meeting","location":"<or omit>","notes":"<or omit>","reminder_minutes":60}</jake_action>
+Add an event to the BlackRidge calendar and optionally set a reminder. This is INTERNAL (Chris's own calendar), so it is SAFE to fire immediately the moment he asks. Use it for "put X on my calendar", "schedule a call with so-and-so Tuesday at 2", "remind me to follow up with HeatWave Friday morning". The CURRENT MOMENT header tells you today's date and time in Central — compute start_at from it and emit a full ISO 8601 timestamp (e.g. "2026-07-02T14:00:00-05:00"); never guess a date. event_type is one of meeting / call / demo / follow_up / other (default meeting; use follow_up or other for plain reminders). reminder_minutes, if set, is how many minutes BEFORE the event Chris gets a text and push — it must be one of 15, 30, 60, 120, or 1440 (1440 = one day before); omit it for no reminder. For a plain "remind me to do X at TIME", set start_at to that time and reminder_minutes to 15 so he gets pinged right around then. After firing it, confirm the day and time in plain English.
 
 <jake_action>{"type":"email_report","project_id":"<id or omit>","intent":"<what Chris wants the report to cover, in his words>"}</jake_action>
 Build a PDF report and email it to Chris's own inbox. This is INTERNAL — it always goes to Chris, never to a client — so it is SAFE to fire immediately the moment Chris asks for a report. Use it whenever Chris says things like "send me a report on X", "email me what so-and-so asked for", "PDF me everything HeatWave wants done", "put together a report and send it to me". Set project_id from the LIVE STATE block when the report is about one specific client or project (Jake will pull that client's messages, requests, and open tasks). OMIT project_id for a book-wide activity report across every client. Always put what Chris wants covered in "intent". After firing it, just say you're sending it to his inbox.
@@ -171,6 +174,34 @@ async function buildJakeSnapshot(): Promise<string> {
       }
     }
   }
+
+  // Upcoming calendar so Jake can answer "what's on my calendar" and avoid
+  // double-booking when Chris asks him to schedule something.
+  try {
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 30 * 86400000);
+    const upcoming = await db
+      .select()
+      .from(crmEvents)
+      .where(sql`${crmEvents.startAt} >= ${now} AND ${crmEvents.startAt} <= ${horizon}`)
+      .orderBy(crmEvents.startAt)
+      .limit(20);
+    if (upcoming.length > 0) {
+      lines.push("");
+      lines.push(`Upcoming calendar events (next 30 days):`);
+      for (const ev of upcoming) {
+        const when = new Date(ev.startAt).toLocaleString("en-US", {
+          timeZone: "America/Chicago",
+          weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+        });
+        const rem = ev.reminderMinutes ? ` · reminder ${ev.reminderMinutes >= 1440 ? "1d" : ev.reminderMinutes + "m"} before` : "";
+        lines.push(`- ${when} CT · ${ev.title}${ev.location ? ` @ ${ev.location}` : ""} [${ev.type}]${rem}`);
+      }
+    }
+  } catch (err) {
+    console.warn("Jake calendar snapshot load failed:", err);
+  }
+
   return lines.join("\n");
 }
 
@@ -226,6 +257,7 @@ type JakeAction =
   | { type: "share_progress"; project_id?: string; intent?: string }
   | { type: "send_documents"; project_id?: string; document_ids?: string[]; intent?: string }
   | { type: "email_report"; project_id?: string; intent?: string }
+  | { type: "add_calendar_event"; title?: string; start_at?: string; end_at?: string; event_type?: string; location?: string; notes?: string; reminder_minutes?: number }
   | { type: "note_for_chris"; reason?: string };
 
 interface ActionResult {
@@ -515,6 +547,48 @@ async function executeAction(action: JakeAction): Promise<ActionResult> {
         intent: action.intent ?? null,
       });
       return { type: action.type, ok: result.ok, message: result.message };
+    }
+
+    if (action.type === "add_calendar_event") {
+      // Internal — goes on Chris's own BlackRidge calendar, so no client
+      // confirmation gate. Mirrors POST /api/crm/events validation.
+      const title = typeof action.title === "string" ? action.title.trim() : "";
+      if (!title) return { type: action.type, ok: false, message: "missing title" };
+      const startAt = action.start_at ? new Date(action.start_at) : null;
+      if (!startAt || isNaN(startAt.getTime())) {
+        return { type: action.type, ok: false, message: "missing or invalid start_at (need an ISO 8601 datetime)" };
+      }
+      const endRaw = action.end_at ? new Date(action.end_at) : null;
+      const endAt = endRaw && !isNaN(endRaw.getTime()) ? endRaw : null;
+      const validTypes = ["meeting", "call", "demo", "follow_up", "other"];
+      const type = validTypes.includes((action.event_type ?? "").toLowerCase())
+        ? (action.event_type as string).toLowerCase()
+        : "meeting";
+      const allowedReminders = [15, 30, 60, 120, 1440];
+      const reminderMinutes = action.reminder_minutes != null && allowedReminders.includes(Number(action.reminder_minutes))
+        ? Number(action.reminder_minutes)
+        : null;
+
+      await db.insert(crmEvents).values({
+        title: title.slice(0, 200),
+        type,
+        startAt,
+        endAt,
+        location: typeof action.location === "string" ? action.location.trim() || null : null,
+        notes: typeof action.notes === "string" ? action.notes.trim() || null : null,
+        status: "scheduled",
+        reminderMinutes,
+        createdBy: "jake",
+      });
+
+      const whenStr = startAt.toLocaleString("en-US", {
+        timeZone: "America/Chicago",
+        weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      });
+      const reminderStr = reminderMinutes
+        ? ` (reminder ${reminderMinutes >= 1440 ? "1 day" : `${reminderMinutes} min`} before)`
+        : "";
+      return { type: action.type, ok: true, message: `Added "${title}" to the calendar for ${whenStr} CT${reminderStr}` };
     }
 
     if (action.type === "note_for_chris") {
